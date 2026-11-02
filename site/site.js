@@ -1,9 +1,8 @@
-// 웹감자(webgamja) 홈페이지 스크립트: 스크롤 움직임(나타나기, 폰 화면 바꾸기, 글자 채우기)과 방문 통계(동의한 사람만)
+// 웹감자(webgamja) 홈페이지 스크립트: 스크롤 움직임(나타나기, 폰 화면 바꾸기, 글자 채우기)과 방문 통계(기본 집계, 추적 안 함 신호 존중)
 (function () {
   'use strict';
-  // 구글 애널리틱스(GA4) 측정 ID. 비워 두면 방문 통계를 전혀 쓰지 않고 동의 창도 나타나지 않는다. 예: 'G-XXXXXXXXXX'
-  // (지금은 쓰지 않는다. 나중에 방문자가 늘면 'G-TEHPG2PZTW'를 다시 넣는다)
-  var GA_MEASUREMENT_ID = '';
+  // 구글 애널리틱스(GA4) 측정 ID. 비워 두면 방문 통계를 전혀 쓰지 않는다. 예: 'G-XXXXXXXXXX'
+  var GA_MEASUREMENT_ID = 'G-TEHPG2PZTW';
 
   var root = document.documentElement;
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -56,6 +55,7 @@
       steps.forEach(function (s, k) { s.classList.toggle('on', k === i); });
       screens.forEach(function (s, k) { s.classList.toggle('on', k === i); });
       [].forEach.call(dotsEl.children, function (d, k) { d.classList.toggle('on', k === i); });
+      if (window.__track) window.__track('story_step', { step: i + 1 }, true);
     };
     showStep(0);
     // 글이 올라가는 길(화면 아래 끝 0 → 글이 보이는 영역의 위 끝 1) 중 몇 %를 지났는지로 "지금 읽는 글"을 정한다.
@@ -109,7 +109,9 @@
   // 흐르는 크루: 내용을 두 번 이어 붙여서 끊김 없이 돌게 한다
   [].forEach.call(document.querySelectorAll('.track'), function (t) { t.innerHTML += t.innerHTML; });
 
-  // 방문 통계 (구글 애널리틱스): 사용자가 동의하기 전에는 아무것도 불러오지 않는다
+  // 방문 통계 (구글 애널리틱스): 동의 창 없이 기본으로 집계한다. 개인정보처리방침 6번과 같은 내용이다.
+  // 브라우저의 "추적 안 함(DNT)"이나 Global Privacy Control 신호를 켜 둔 방문자는 처음부터 집계하지 않는다
+  var signal = navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
   function loadGA() {
     if (!GA_MEASUREMENT_ID || window.__gaLoaded) return;
     window.__gaLoaded = true;
@@ -122,27 +124,38 @@
     s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(GA_MEASUREMENT_ID);
     document.head.appendChild(s);
   }
-  // 기본으로 집계하고, 방문자는 언제든 맨 아래 "방문 통계 끄기"로 거부할 수 있다. 개인정보처리방침 6번과 같은 내용이다.
-  // 브라우저의 "추적 안 함(DNT)"이나 Global Privacy Control 신호를 켜 둔 방문자는 처음부터 집계하지 않는다
-  var OFF_KEY = 'home-stats-off';
-  var en = document.documentElement.lang === 'en';
-  var toggle = document.getElementById('consentReset');
-  var signal = navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
-  function statsOff() { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } }
-  function label() {
-    if (!toggle) return;
-    toggle.textContent = statsOff() ? (en ? 'Turn on visit statistics' : '방문 통계 켜기') : (en ? 'Turn off visit statistics' : '방문 통계 끄기');
+  if (!GA_MEASUREMENT_ID) return;
+  window['ga-disable-' + GA_MEASUREMENT_ID] = signal; // 구글 애널리틱스가 정해 둔 "집계 끄기" 스위치
+  if (signal) return;
+  loadGA();
+
+  // 어디서 들어와서 어디까지 보고 무엇을 눌렀는지: 기본 측정(페이지, 유입 경로, 기기, 위치)에 아래 행동을 더한다
+  // 이벤트 이름: download_click(내려받기), github_click, lang_switch(언어 바꿈), nav_click(메뉴), scroll_depth(25/50/75/100%), story_step(이야기 1~4단계), contact_click(메일)
+  var sent = {};
+  function track(name, params, once) {
+    var key = name + JSON.stringify(params || {});
+    if (once && sent[key]) return;
+    sent[key] = 1;
+    if (window.gtag) window.gtag('event', name, params || {});
   }
-  if (!GA_MEASUREMENT_ID) { if (toggle) toggle.style.display = 'none'; return; }
-  window['ga-disable-' + GA_MEASUREMENT_ID] = statsOff() || signal; // 구글 애널리틱스가 정해 둔 "집계 끄기" 스위치
-  if (!window['ga-disable-' + GA_MEASUREMENT_ID]) loadGA();
-  label();
-  if (toggle) toggle.onclick = function (e) {
-    e.preventDefault();
-    var off = !statsOff();
-    try { localStorage.setItem(OFF_KEY, off ? '1' : '0'); } catch (err) { /* 저장이 막혀 있으면 이번 방문에만 적용된다 */ }
-    window['ga-disable-' + GA_MEASUREMENT_ID] = off || signal;
-    if (!off && !signal) loadGA();
-    label();
-  };
+  window.__track = track;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var where = a.closest('header') ? 'header' : a.closest('footer') ? 'footer' : 'page';
+    if (/gamja\.apk/.test(href)) track('download_click', { place: where });
+    else if (/^mailto:/.test(href)) track('contact_click', { place: where });
+    else if (/github\.com/.test(href)) track('github_click', { place: where, link: href.replace(/^https?:\/\/github\.com\//, '').slice(0, 60) });
+    else if (a.hasAttribute('lang') && a.classList.contains('icon-btn')) track('lang_switch', { to: a.getAttribute('lang') });
+    else if (a.closest('nav')) track('nav_click', { link: href.slice(0, 40) });
+  });
+  var depths = [25, 50, 75, 100];
+  function onDepth() {
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    if (h <= 0) return;
+    var p = window.scrollY / h * 100;
+    depths.forEach(function (d) { if (p >= d) track('scroll_depth', { percent: d }, true); });
+  }
+  window.addEventListener('scroll', onDepth, { passive: true });
 })();
