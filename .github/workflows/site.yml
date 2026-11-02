@@ -1,0 +1,44 @@
+name: 홈페이지 올리기 (Firebase)
+
+# site/ 폴더의 홈페이지를 Firebase Hosting(프로젝트 gamja-web)에 올린다. 공개 저장소(webgamja/gamja)에서만 돌아간다.
+# 필요한 것: 저장소 Secrets의 FIREBASE_SERVICE_ACCOUNT (Firebase Hosting 권한이 있는 서비스 계정 열쇠 JSON). 없으면 올리지 않고 안내만 남긴다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'webgamja/gamja'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 올릴 준비가 됐는지 확인
+        id: chk
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "## ⚠️ FIREBASE_SERVICE_ACCOUNT가 없어서 홈페이지를 올리지 않았어요" >> "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Firebase Hosting에 올리기
+        if: steps.chk.outputs.ok == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: gamja-web
+          channelId: live
