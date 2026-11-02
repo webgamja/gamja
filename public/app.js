@@ -196,6 +196,8 @@
     if (off) els.send.disabled = true; else updateSendState();
     for (const id of ['compactBtn', 'newBtn', 'ttsBtn']) $(id).classList.toggle('hidden', gone);
     $('compactBtn').classList.toggle('hidden', gone || group);
+    $('roomCompactNote').classList.toggle('hidden', gone || group);
+    $('roomActions').classList.toggle('hidden', gone); // 삭제된 크루의 방에서는 대화 관리를 보여 주지 않는다
     $('attachBtn').classList.toggle('hidden', gone || group);
     if (!gone && !chats.some((c) => c.name === project)) refreshChats().then(() => { if (chats.some((c) => c.name === project)) applyGone(); }); // 참여자 정보를 아직 못 받았으면 받은 뒤에 다시 맞춘다
   }
@@ -1238,6 +1240,7 @@
     if (history.length && !confirm('새 대화를 시작할까요? (모든 기기에서 지금 대화가 지워져요)')) return;
     stopSpeaking();
     try { await api('/api/history/reset', { project }); } catch (err) { return alert(err.message); }
+    roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫고 새 대화를 보여 준다
     loadConversation();
   };
   // 터미널 등에서 시작한 기존 Claude Code 세션을 이 프로젝트 대화로 불러온다
@@ -1281,8 +1284,9 @@
     $('appGroup').classList.toggle('hidden', !window.GamjaApp);
     $('infoAppRow').classList.toggle('hidden', !window.GamjaApp);
     // 감자알 로그는 일반 사용자에게 필요 없어서 숨겨 둔다. 나중에 프로(개발자) 모드를 켰을 때만 보여 준다 (앱에서만)
-    const PRO_MODE = false;
-    $('appLog').classList.toggle('hidden', !(window.GamjaApp && PRO_MODE));
+    $('appLog').classList.toggle('hidden', !(window.GamjaApp && d.info.pro));
+    $('extRowTitle').textContent = window.GAMJA_I18N.t('ext.rowTitle');
+    $('extRowSub').textContent = window.GAMJA_I18N.t('ext.rowSub');
     if (window.GamjaApp) $('infoApp').textContent = window.GamjaApp.appVersion();
     for (const r of settingsEl.querySelectorAll('input[name=theme]')) r.checked = r.value === theme;
     for (const r of settingsEl.querySelectorAll('input[name=lang]')) r.checked = r.value === window.GAMJA_I18N.pref;
@@ -1349,6 +1353,12 @@
     const blurb = T('chat.deletedCrew');
     const members = ((chats.find((c) => c.name === project) || {}).members || [crewOf(project)]);
     $('roomTitleH').textContent = T('room.title');
+    // 대화 관리: 새 대화와 대화 압축은 ⋯ 메뉴가 아니라 여기서 한다
+    $('roomManageH').textContent = T('room.manage');
+    $('newBtn').textContent = T('room.new');
+    $('roomNewNote').textContent = T('room.newNote');
+    $('compactBtn').textContent = T('room.compact');
+    $('roomCompactNote').textContent = T('room.compactNote');
     $('roomForm').innerHTML =
       `<h3>${escapeHtml(T('room.name'))}</h3><input id="roomName" maxlength="40" placeholder="${escapeHtml(p.text)}" value="${escapeHtml(getRoomTitles()[project] || '')}" autocomplete="off">` +
       `<p class="settings-note">${escapeHtml(T('room.nameNote'))}</p>` +
@@ -1542,7 +1552,7 @@
   const UPDATE_BTN_COOLDOWN = 1000; // 버전 옆 🔄 버튼을 누른 뒤 다시 누를 수 있기까지 (밀리초)
 
   // 감자 앱 기능 (앱 안에서만): 앱이 안드로이드 화면을 띄워 준다
-  for (const [id, fn] of [['appUpdate', 'checkUpdate'], ['appAddress', 'showAddress'], ['appLogin', 'openLogin'],
+  for (const [id, fn] of [['appUpdate', 'checkUpdate'], ['appLogin', 'openLogin'],
     ['appBattery', 'batterySettings'], ['appLog', 'showLog'], ['appLicense', 'showLicenses']]) {
     $(id).onclick = () => {
       try { window.GamjaApp[fn](); } catch { toast('감자 앱에서만 쓸 수 있어요'); }
@@ -1663,6 +1673,7 @@
     if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
     if (!confirm('지금 대화를 압축할까요?\n화면의 대화 기록은 그대로 남고, Claude의 기억만 요약본으로 바뀌어요. 오래된 세부 내용은 일부 빠질 수 있어요.')) return;
     try { await api('/api/compact', { project }); } catch (err) { return alert(err.message); }
+    roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫는다
     loadConversation(); // 진행 상황을 따라가며 보여 준다
   };
 
@@ -1687,12 +1698,35 @@
     clearTimeout(tunnelPoll);
     let t;
     try { t = await api('/api/tunnel'); } catch { return; }
+    $('tunnelPro').classList.toggle('hidden', !t.pro);
+    $('proLocked').classList.toggle('hidden', !!t.pro);
     renderTunnel(t);
     if (t.status === 'starting' && !tunnelEl.classList.contains('hidden')) tunnelPoll = setTimeout(refreshTunnel, 1500);
   }
+  // 같은 와이파이 접속 스위치 (기본 꺼짐)
+  async function refreshLan() {
+    const T = window.GAMJA_I18N.t;
+    let d;
+    try { d = await api('/api/lan'); } catch { return; }
+    $('lanToggle').checked = d.enabled;
+    $('lanInfo').classList.toggle('hidden', !d.enabled);
+    $('lanAddrs').textContent = d.addresses.length ? T('ext.lanAddrs', { addrs: d.addresses.join(', ') }) : T('ext.lanNone');
+    $('lanShowApp').classList.toggle('hidden', !window.GamjaApp);
+  }
+  $('lanToggle').onchange = async () => {
+    try { await api('/api/lan', { on: $('lanToggle').checked }); } catch (err) { alert(err.message); }
+    refreshLan();
+  };
+  $('lanShowApp').onclick = () => {
+    try { window.GamjaApp.showAddress(); } catch { toast('감자 앱에서만 쓸 수 있어요'); }
+  };
   $('tunnelBtn').onclick = () => {
+    const T = window.GAMJA_I18N.t;
+    for (const [id, key] of [['extTitle', 'ext.title'], ['lanH', 'ext.lanH'], ['lanLabel', 'ext.lanLabel'], ['lanNote', 'ext.lanNote'],
+      ['lanShowApp', 'ext.lanShowApp'], ['lanPwNote', 'ext.lanPwNote'], ['proH', 'ext.proH'], ['proLockedTitle', 'ext.proTitle'], ['proLockedNote', 'ext.proNote']]) $(id).textContent = T(key);
     els.menu.classList.add('hidden');
     tunnelEl.classList.remove('hidden');
+    refreshLan();
     refreshTunnel();
   };
   $('tunnelBack').onclick = () => { clearTimeout(tunnelPoll); tunnelEl.classList.add('hidden'); };
@@ -1904,7 +1938,26 @@
     prompt(`${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`, command);
   };
   $('rollbackBtn').onclick =() => adminAction('/api/admin/rollback', '바로 이전의 안정 버전으로 코드를 되돌리고 재시작할까요?');
-  els.menuBtn.onclick = (e) => { e.stopPropagation(); els.menu.classList.toggle('hidden'); };
+  // ---------- 화면비율 (⋯ 메뉴): 크롬의 확대·축소 줄처럼 [−] 100% [＋] ----------
+  function renderZoomRow() {
+    const T = window.GAMJA_I18N.t;
+    const i = ZOOM_STEPS.indexOf(msgZoom);
+    $('zoomLabel').textContent = T('menu.zoom');
+    $('zoomVal').textContent = `${Math.round(msgZoom * 100)}%`;
+    $('zoomVal').title = T('menu.zoomReset');
+    $('zoomOut').disabled = i <= 0;
+    $('zoomIn').disabled = i >= ZOOM_STEPS.length - 1;
+  }
+  function stepZoom(dir) {
+    const i = Math.max(0, Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(msgZoom) + dir));
+    applyMsgZoom(ZOOM_STEPS[i]);
+    store.set('cc:zoom', msgZoom);
+    renderZoomRow();
+  }
+  $('zoomOut').onclick = () => stepZoom(-1);
+  $('zoomIn').onclick = () => stepZoom(1);
+  $('zoomVal').onclick = () => { applyMsgZoom(1); store.set('cc:zoom', msgZoom); renderZoomRow(); }; // 가운데 숫자를 누르면 100%로
+  els.menuBtn.onclick = (e) => { e.stopPropagation(); renderZoomRow(); els.menu.classList.toggle('hidden'); };
   document.addEventListener('click', (e) => { if (!els.menu.contains(e.target)) els.menu.classList.add('hidden'); });
 
   // ---------- 메시지 렌더링 ----------

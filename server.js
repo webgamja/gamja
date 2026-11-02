@@ -294,7 +294,8 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const MODELS = ['', 'opus', 'sonnet']; // '' = Claude Code 기본값
 const AUTOCOMPACT = ['', '200k', '400k']; // '' = Claude Code 기본(한계 가까이에서 자동 압축)
 const EFFORTS = ['', 'low', 'medium', 'high']; // 생각 깊이 (--effort). '' = Claude Code 기본값
-let settings = { nickname: '', style: '', model: '', autocompact: '', effort: '' };
+// lanAccess: 같은 와이파이의 다른 기기(PC·아이폰 등)에서 접속하는 것을 허용할지. 기본은 꺼짐 (이 폰 안의 감자 앱·브라우저만)
+let settings = { nickname: '', style: '', model: '', autocompact: '', effort: '', lanAccess: false };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch {}
 function saveSettings() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -592,7 +593,11 @@ function download(url, dest, redirects = 5) {
     }).on('error', reject);
   });
 }
+// 개발자·Pro 모드: 외부 접속 주소(인터넷 터널)는 Pro에서 우리 서버로 제공할 예정이라, 무료 감자에서는 막아 둔다.
+// 개발 중인 폰에서만 data/pro-mode 파일을 두거나 .env에 GAMJA_PRO=1을 적으면 켜진다
+const PRO_MODE = process.env.GAMJA_PRO === '1' || fs.existsSync(path.join(DATA_DIR, 'pro-mode'));
 async function startTunnel() {
+  if (!PRO_MODE) return; // 화면을 거치지 않고 부르더라도 막는다
   if (tunnel.status === 'on' || tunnel.status === 'starting') return;
   Object.assign(tunnel, { status: 'starting', url: null, error: null });
   try {
@@ -1435,6 +1440,14 @@ const server = http.createServer(async (req, res) => {
   // 이 폰 안에서 직접 연 화면인지 (감자 앱, 이 폰의 브라우저). 외부 접속 주소(터널)를 거친 요청은 포함하지 않는다
   const isLocal = fromLocal && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'];
 
+  // 같은 와이파이 접속이 꺼져 있으면(기본) 이 폰 안의 요청과 개발자 모드의 터널만 받는다.
+  // 새 폰 설치 주소(/install/…)는 30분짜리 토큰이 따로 지켜서 예외로 둔다
+  if (!fromLocal && !settings.lanAccess && !p.startsWith('/install/')) {
+    const msg = '같은 와이파이 접속이 꺼져 있어요. 이 폰의 감자 앱에서 더보기 → 연결 → 외부 접속에서 켜 주세요. (Same-Wi-Fi access is off. Turn it on in the GAMJA app: More > Connections > External access.)';
+    if (p.startsWith('/api/')) return send(res, 403, { error: msg });
+    return send(res, 403, msg);
+  }
+
   try {
     if (p === '/api/login' && req.method === 'POST') {
       if (tooManyAttempts(ip)) return send(res, 429, { error: `비밀번호를 여러 번 틀렸어요. ${waitMinutes(attempts, ip)}분 뒤에 다시 시도해 주세요.` });
@@ -1759,12 +1772,23 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/api/tunnel' && req.method === 'GET') {
         if (tunnel.status === 'on' && !pidAlive(tunnel.pid)) stopTunnel(); // 터널이 혼자 꺼졌으면 정리
-        return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12 });
+        return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12, pro: PRO_MODE });
       }
       if (p === '/api/tunnel' && req.method === 'POST') {
         const { on } = await readBody(req);
+        if (on && !PRO_MODE) return send(res, 403, { error: '외부 접속 주소는 Pro에서 제공할 예정이에요. (준비 중)' });
         if (on) startTunnel(); else stopTunnel(); // 켜기는 오래 걸리므로 기다리지 않고, 화면이 상태를 따라감
         return send(res, 200, { ...tunnel });
+      }
+      // 같은 와이파이 접속: 켜면 같은 와이파이의 PC·아이폰·다른 폰이 이 폰의 주소로 접속할 수 있다 (기본 꺼짐)
+      if (p === '/api/lan' && req.method === 'GET') {
+        return send(res, 200, { enabled: !!settings.lanAccess, addresses: lanOrigins(), pro: PRO_MODE });
+      }
+      if (p === '/api/lan' && req.method === 'POST') {
+        if (!isLocal && !settings.lanAccess) return send(res, 403, { error: '이 폰에서만 바꿀 수 있어요.' });
+        settings = { ...settings, lanAccess: !!(await readBody(req)).on };
+        saveSettings();
+        return send(res, 200, { enabled: settings.lanAccess, addresses: lanOrigins() });
       }
       if (p === '/api/settings' && req.method === 'GET') {
         const project = url.searchParams.get('project') || '';
@@ -1776,6 +1800,7 @@ const server = http.createServer(async (req, res) => {
           context: conv?.context ?? null, // 지금 대화 길이(토큰), 0 = 방금 압축함, null = 아직 모름
           info: {
             gamjaVersion: JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version,
+            pro: PRO_MODE, // 개발자·Pro 모드인지 (감자알 로그, 외부 접속 주소 같은 개발자용 화면을 보여 준다)
             build: RUNNING_BUILD, // 감자 앱 설치본의 빌드 번호 (개발용은 0)
             updates: recentUpdates().slice(-8).reverse(), // 최근 자동 업데이트 기록 (최신이 먼저)
             local: isLocal, // 이 폰 안에서 연 화면인지 (비밀번호 바꿀 때 현재 비밀번호를 묻지 않음)
@@ -1871,6 +1896,7 @@ const server = http.createServer(async (req, res) => {
         const effort = String(b.effort || '');
         if (!EFFORTS.includes(effort)) return send(res, 400, { error: '알 수 없는 생각 깊이' });
         settings = {
+          ...settings, // 같은 와이파이 접속 같은 다른 설정은 그대로 둔다
           nickname: String(b.nickname || '').trim().slice(0, 30),
           style: String(b.style || '').trim().slice(0, 200),
           model,

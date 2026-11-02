@@ -101,6 +101,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border-radius: 8px; color: var(--bot-fg); font-size: 14px; text-decoration: none;
 }
 .menu-item:active { background: rgba(0,0,0,.06); }
+/* 화면비율: 크롬의 확대·축소 줄처럼 [−] 100% [＋] */
+.menu-zoom { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 4px 6px 8px; }
+.menu-zoom:active { background: none; }
+.zoom-ctl { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.zoom-ctl button { border: 0; background: none; color: inherit; font: inherit; font-size: 16px; font-weight: 700; padding: 6px 12px; }
+.zoom-ctl button:active { background: rgba(0,0,0,.08); }
+.zoom-ctl button:disabled { opacity: .3; }
+.zoom-ctl #zoomVal { min-width: 62px; font-size: 13px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
 #logoutBtn { width: 100%; text-align: left; border: 0; background: none; padding: 10px 8px; border-radius: 8px; color: var(--danger); }
 
 .messages {

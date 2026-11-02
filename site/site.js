@@ -2,7 +2,8 @@
 (function () {
   'use strict';
   // 구글 애널리틱스(GA4) 측정 ID. 비워 두면 방문 통계를 전혀 쓰지 않고 동의 창도 나타나지 않는다. 예: 'G-XXXXXXXXXX'
-  var GA_MEASUREMENT_ID = 'G-TEHPG2PZTW';
+  // (지금은 쓰지 않는다. 나중에 방문자가 늘면 'G-TEHPG2PZTW'를 다시 넣는다)
+  var GA_MEASUREMENT_ID = '';
 
   var root = document.documentElement;
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -121,18 +122,27 @@
     s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(GA_MEASUREMENT_ID);
     document.head.appendChild(s);
   }
-  function choice() { try { return localStorage.getItem('home-consent'); } catch (e) { return null; } }
-  function setChoice(v) { try { localStorage.setItem('home-consent', v); } catch (e) { /* 무시 */ } }
-  var box = document.getElementById('consent');
-  var reset = document.getElementById('consentReset');
-  if (!GA_MEASUREMENT_ID) { if (reset) reset.style.display = 'none'; return; } // 방문 통계를 안 쓰는 동안은 동의 창도 설정 링크도 없다
-  function showBox() { if (box) box.style.display = 'flex'; }
-  function hideBox() { if (box) box.style.display = 'none'; }
-  var c = choice();
-  if (c === 'yes') loadGA(); else if (!c) showBox();
-  if (box) {
-    box.querySelector('.yes').onclick = function () { setChoice('yes'); hideBox(); loadGA(); };
-    box.querySelector('.no').onclick = function () { setChoice('no'); hideBox(); };
+  // 기본으로 집계하고, 방문자는 언제든 맨 아래 "방문 통계 끄기"로 거부할 수 있다. 개인정보처리방침 6번과 같은 내용이다.
+  // 브라우저의 "추적 안 함(DNT)"이나 Global Privacy Control 신호를 켜 둔 방문자는 처음부터 집계하지 않는다
+  var OFF_KEY = 'home-stats-off';
+  var en = document.documentElement.lang === 'en';
+  var toggle = document.getElementById('consentReset');
+  var signal = navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
+  function statsOff() { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } }
+  function label() {
+    if (!toggle) return;
+    toggle.textContent = statsOff() ? (en ? 'Turn on visit statistics' : '방문 통계 켜기') : (en ? 'Turn off visit statistics' : '방문 통계 끄기');
   }
-  if (reset) reset.onclick = function (e) { e.preventDefault(); showBox(); };
+  if (!GA_MEASUREMENT_ID) { if (toggle) toggle.style.display = 'none'; return; }
+  window['ga-disable-' + GA_MEASUREMENT_ID] = statsOff() || signal; // 구글 애널리틱스가 정해 둔 "집계 끄기" 스위치
+  if (!window['ga-disable-' + GA_MEASUREMENT_ID]) loadGA();
+  label();
+  if (toggle) toggle.onclick = function (e) {
+    e.preventDefault();
+    var off = !statsOff();
+    try { localStorage.setItem(OFF_KEY, off ? '1' : '0'); } catch (err) { /* 저장이 막혀 있으면 이번 방문에만 적용된다 */ }
+    window['ga-disable-' + GA_MEASUREMENT_ID] = off || signal;
+    if (!off && !signal) loadGA();
+    label();
+  };
 })();

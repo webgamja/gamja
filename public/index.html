@@ -35,9 +35,11 @@
       </div>
       <!-- ⋯ 메뉴: 지금 이 대화에 대한 것만. 크루 설정은 크루 탭의 프로필 창에, 앱 전체 설정은 더보기 탭에 있다 -->
       <div id="menu" class="menu hidden">
-        <button id="compactBtn" class="menu-item">🗜 대화 압축</button>
         <button id="ttsBtn" class="menu-item" aria-pressed="false">🔇 답변 읽어주기: 꺼짐</button>
-        <button id="newBtn" class="menu-item">＋ 새 대화</button>
+        <div id="zoomRow" class="menu-item menu-zoom">
+          <span id="zoomLabel">화면비율</span>
+          <span class="zoom-ctl"><button id="zoomOut" type="button" aria-label="줄이기">−</button><button id="zoomVal" type="button">100%</button><button id="zoomIn" type="button" aria-label="키우기">＋</button></span>
+        </div>
         <button id="settingsBtn" class="menu-item">⚙️ 채팅방 설정</button>
       </div>
     </header>
@@ -119,9 +121,25 @@
   <section id="tunnelPanel" class="settings ui hidden">
     <header class="settings-bar">
       <button id="tunnelBack" class="icon-btn" title="닫기">←</button>
-      <h2>🌐 외부 접속 주소</h2>
+      <h2 id="extTitle">🌐 외부 접속</h2>
     </header>
     <div class="settings-body">
+      <h3 id="lanH"></h3>
+      <label class="settings-row"><span id="lanLabel"></span><input id="lanToggle" type="checkbox"></label>
+      <p id="lanNote" class="settings-note"></p>
+      <div id="lanInfo" class="hidden">
+        <p id="lanAddrs" class="settings-note"></p>
+        <button id="lanShowApp" class="settings-save hidden" type="button"></button>
+        <p id="lanPwNote" class="settings-note"></p>
+      </div>
+
+      <h3 id="proH"></h3>
+      <div id="proLocked" class="settings-note">
+        <p><b id="proLockedTitle"></b></p>
+        <p id="proLockedNote"></p>
+      </div>
+
+      <div id="tunnelPro" class="hidden">
       <p class="settings-note">켜면 <b>https://…trycloudflare.com</b> 주소가 생겨요. 와이파이 밖(LTE)이나 아이폰 Safari에서도 접속되고, <b>마이크·음성 대화</b>도 쓸 수 있어요.</p>
       <h3>상태</h3>
       <p class="settings-row"><span>터널</span><b id="tunnelStatus">-</b></p>
@@ -135,6 +153,7 @@
       <p id="tunnelWeak" class="settings-note err hidden">• 지금 비밀번호가 짧아요. 12자 이상의 길고 복잡한 비밀번호로 바꾸는 걸 강하게 권해요.</p>
       <p class="settings-note">• 무료 테스트용 터널이라 끌 때마다 주소가 바뀌고, 안정성은 보장되지 않아요. (서버 재시작에는 주소가 유지돼요)</p>
       <p class="settings-note">• 쓰지 않을 때는 꺼 두세요.</p>
+      </div>
     </div>
   </section>
 
@@ -224,6 +243,13 @@
           <input id="resumeInput" placeholder="세션 ID 붙여넣기 (터미널에서 하던 대화 이어가기)" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="submit">이어가기</button>
         </form>
+      </div>
+      <div id="roomActions">
+        <h3 id="roomManageH"></h3>
+        <button id="newBtn" class="settings-ghost" type="button"></button>
+        <p id="roomNewNote" class="settings-note"></p>
+        <button id="compactBtn" class="settings-ghost" type="button"></button>
+        <p id="roomCompactNote" class="settings-note"></p>
       </div>
       <p id="roomDeleteNote" class="settings-note"></p>
       <button id="roomDelete" class="settings-danger" type="button"></button>
@@ -368,7 +394,7 @@
       </div>
 
       <div id="page-connect" class="set-page hidden" data-title="🌐 연결">
-      <button id="tunnelBtn" class="set-row"><span class="pick-icon">🌐</span><span><b>외부 접속 주소</b><small>와이파이 밖에서도, 아이폰에서도 접속해요 (https)</small></span><i>›</i></button>
+      <button id="tunnelBtn" class="set-row"><span class="pick-icon">🌐</span><span><b id="extRowTitle">외부 접속</b><small id="extRowSub">같은 와이파이의 다른 기기에서 접속해요</small></span><i>›</i></button>
       <button id="ghBtn" class="set-row"><span class="pick-icon">🐙</span><span><b>GitHub 연결 (기록 보관)</b><small>크루가 일한 결과를 내 GitHub 비공개 저장소에 자동으로 기록해요</small></span><i>›</i></button>
       <button id="installBtn" class="set-row"><span class="pick-icon">📦</span><span><b>다른 폰에 감자 설치</b><small>새 폰에 붙여 넣을 한 줄 명령을 만들어요</small></span><i>›</i></button>
       </div>
@@ -378,7 +404,6 @@
       <!-- 감자 앱 안에서 열었을 때만 보인다 (앱이 알려 주는 정보와 기능) -->
       <div id="appGroup" class="hidden">
         <h3>🥔 감자 앱</h3>
-        <button id="appAddress" class="set-row"><span class="pick-icon">📶</span><span><b>다른 기기에서 접속</b><small>같은 와이파이의 주소와 비밀번호를 보여 줘요</small></span><i>›</i></button>
         <button id="appLogin" class="set-row"><span class="pick-icon">🤖</span><span><b>Claude 로그인 다시 하기</b><small>공식 Claude 로그인 화면을 열어요</small></span><i>›</i></button>
         <button id="appBattery" class="set-row"><span class="pick-icon">🔋</span><span><b>배터리 설정</b><small>화면이 꺼져도 감자알이 계속 돌게 해요</small></span><i>›</i></button>
         <button id="appLicense" class="set-row"><span class="pick-icon">⚖️</span><span><b>오픈소스 라이선스</b><small>감자가 사용하는 오픈소스 목록</small></span><i>›</i></button>
