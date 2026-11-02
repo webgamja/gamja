@@ -660,7 +660,7 @@
   $('madeBtn').onclick = openMade;
   $('madeBack').onclick = () => madeEl.classList.add('hidden');
 
-  // ---------- 👥 크루 고르기 (회사·가게·나만의 비서) ----------
+  // ---------- 👥 크루 고르기 (회사·가게·나만의 크루) ----------
   // 크루 = 프로젝트 + 그 일에 맞는 지침(CLAUDE.md). 고르면 프로젝트가 만들어지고 바로 그 방으로 간다
   const { GROUPS, AGENTS, custom: customInstructions } = window.GAMJA_TEMPLATES;
   const agentEl = $('agentPicker');
@@ -1212,9 +1212,9 @@
   }, 4000);
   function showEmpty() {
     if (!project) {
-      // 홈의 첫 화면: 무엇을 하는 앱인지 + 누구의 비서가 필요한지 고르기
+      // 홈의 첫 화면: 무엇을 하는 앱인지 + 어떤 크루가 필요한지 고르기
       els.messages.innerHTML = '<div class="empty welcome"><div class="welcome-logo">🥔</div>' +
-        '<h2>말하면 만들어 주는,<br>내 폰 속 비서</h2>' +
+        '<h2>말하면 만들어 주는,<br>내 폰 속 AI 크루</h2>' +
         '<p>맥미니도 서버도 필요 없어요.<br>쓰던 폰 한 대면 돼요.</p>' +
         '<p class="welcome-ask">누구의 크루가 필요하세요?</p>' +
         GROUPS.map((g) => `<button class="welcome-btn" data-open-group="${g.id}">${g.icon} ${g.name}</button>`).join('') +

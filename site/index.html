@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GAMJA 감자 · 말하면 만들어 주는, 내 폰 속 AI 크루</title>
+  <meta name="description" content="맥미니도 서버도 필요 없어요. 쓰던 안드로이드 폰 한 대로 말하면 만들어 주는 AI 크루, 감자(GAMJA). 오픈소스, 무료로 시작해요.">
+  <link rel="canonical" href="https://webgamja.com/">
+  <link rel="alternate" hreflang="ko" href="https://webgamja.com/">
+  <link rel="alternate" hreflang="en" href="https://webgamja.com/en/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="GAMJA 감자 · 말하면 만들어 주는, 내 폰 속 AI 크루">
+  <meta property="og:description" content="쓰던 안드로이드 폰 한 대로 말하면 만들어 주는 AI 크루. 오픈소스, 무료로 시작해요.">
+  <meta property="og:url" content="https://webgamja.com/">
+  <meta name="theme-color" content="#ffd500">
+  <link rel="stylesheet" href="style.css">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"GAMJA 감자","operatingSystem":"Android 8+","applicationCategory":"ProductivityApplication","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"license":"https://www.apache.org/licenses/LICENSE-2.0","url":"https://webgamja.com/"}</script>
+</head>
+<body>
+  <header>
+    <div class="wrap bar">
+      <a class="brand" href="./"><i>G</i>GAMJA</a>
+      <nav class="main" id="nav">
+        <a href="#why">소개</a><a href="#crews">크루</a><a href="#start">시작하기</a><a href="#price">요금</a><a href="#faq">자주 묻는 질문</a><a href="#open">오픈소스</a>
+      </nav>
+      <div class="tools">
+        <a class="icon-btn" href="en/" lang="en" aria-label="English">EN</a>
+        <button class="icon-btn" id="theme" aria-label="화면 밝기 바꾸기"><svg class="i"><use href="icons.svg#i-moon"/></svg></button>
+        <a class="pill" href="https://github.com/webgamja/gamja-release/releases/latest/download/gamja.apk">내려받기</a>
+        <button class="icon-btn" id="menuBtn" aria-label="메뉴"><svg class="i"><use href="icons.svg#i-menu"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero wrap">
+      <p class="eyebrow">쓰던 폰으로 만드는 나만의 AI 팀</p>
+      <h1>말하면 만들어 주는,<br><mark>내 폰 속 AI 크루</mark></h1>
+      <p class="sub">맥미니도 서버도 필요 없어요.<br>쓰던 안드로이드 폰 한 대면 돼요.</p>
+      <div class="cta">
+        <a class="pill big" href="https://github.com/webgamja/gamja-release/releases/latest/download/gamja.apk"><svg class="i"><use href="icons.svg#i-dl"/></svg>감자 내려받기 (Android)</a>
+        <a class="pill big line" href="#start">어떻게 쓰나요?</a>
+      </div>
+      <p class="small">무료 · Android 8 이상 · <span id="ver">최신 버전</span></p>
+    </div>
+
+    <div class="slider" aria-label="감자 화면 둘러보기">
+      <div class="shot">
+        <div class="phone">
+          <div class="top">크루</div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-store"/></svg></div><div>우리 가게<small>예약 페이지 만들었어요</small></div></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-doc"/></svg></div><div>회사<small>견적서 초안 준비 중</small></div></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-cal"/></svg></div><div>나만의 크루<small>오늘 할 일 3개</small></div></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-book"/></svg></div><div>공부<small>퀴즈 10문제 만들기</small></div></div>
+        </div>
+        <h3>일마다 크루를 정해요</h3><p>그 일만 잘하는 담당자가 알아서 일해요.</p>
+      </div>
+      <div class="shot">
+        <div class="phone">
+          <div class="top">우리 가게</div>
+          <div class="b me">예약 페이지 만들어 줘</div>
+          <div class="b">네, 메뉴와 영업시간을 알려 주시면 바로 만들게요.</div>
+          <div class="b me">11시~9시, 월요일 휴무</div>
+          <div class="b">완성했어요. 결과물에서 확인해 보세요.</div>
+        </div>
+        <h3>편하게 말하면 돼요</h3><p>카톡하듯 시키면 만들어 드려요.</p>
+      </div>
+      <div class="shot">
+        <div class="phone">
+          <div class="top">결과물</div>
+          <div class="mock"><svg class="i"><use href="icons.svg#i-web"/></svg></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-web"/></svg></div><div>예약 페이지<small>웹 · 방금 전</small></div></div>
+        </div>
+        <h3>만든 것을 바로 봐요</h3><p>웹페이지, 문서, 그림, 영상까지 한 곳에.</p>
+      </div>
+      <div class="shot">
+        <div class="phone" style="align-items:center;justify-content:center">
+          <div class="av" style="width:84px;height:84px;border-radius:50%;font-size:40px"><svg class="i"><use href="icons.svg#i-mic"/></svg></div>
+          <div class="b">"내일 오전 일정 정리해 줘"</div>
+        </div>
+        <h3>말로 시키고 알림으로 받아요</h3><p>이동 중에도, 일이 끝나면 폰으로 알려 드려요.</p>
+      </div>
+      <div class="shot">
+        <div class="phone">
+          <div class="top">도구 상자</div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-doc"/></svg></div><div>문서 도구<small>워드 · PDF · 엑셀</small></div></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-web"/></svg></div><div>그림 도구<small>이미지 만들기</small></div></div>
+          <div class="row"><div class="av"><svg class="i"><use href="icons.svg#i-mic"/></svg></div><div>영상·소리 도구<small>슬라이드 영상 · 음악</small></div></div>
+        </div>
+        <h3>필요한 도구는 눌러서 설치</h3><p>한 번 설치하면 크루가 알아서 써요.</p>
+      </div>
+    </div>
+
+    <section id="why">
+      <div class="wrap">
+        <h2>왜 폰 한 대면 되나요?</h2>
+        <p class="lead">감자가 폰 안에 나만의 작은 서버를 만들어요.</p>
+        <div class="grid3">
+          <a class="card" href="#start"><div class="ic"><svg class="i"><use href="icons.svg#i-phone"/></svg></div><h3>따로 살 게 없어요</h3><p>맥미니도 클라우드 서버도 필요 없어요. 쓰던 폰이 일터가 돼요.</p><span class="more">시작하기<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+          <a class="card" href="#faq"><div class="ic"><svg class="i"><use href="icons.svg#i-lock"/></svg></div><h3>내 이야기는 내 폰에</h3><p>대화와 만든 파일이 내 폰에 있어요. 로그인 정보는 감자를 거치지 않아요.</p><span class="more">개인정보 보호<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+          <a class="card" href="#open"><div class="ic"><svg class="i"><use href="icons.svg#i-sync"/></svg></div><h3>알아서 새로워져요</h3><p>새 기능은 스스로 업데이트돼요. 탈이 나면 이전 버전으로 돌아가요.</p><span class="more">업데이트 소식<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+        </div>
+      </div>
+    </section>
+
+    <section id="crews" class="soft">
+      <div class="wrap">
+        <h2>어떤 크루가 필요하세요?</h2>
+        <p class="lead">일마다 크루를 정해 두면, 그 일에 맞게 알아서 일해요.</p>
+        <div class="crews">
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-web"/></svg></div><div><b>홈페이지</b><span>회사·가게 소개 페이지 만들기</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-chat"/></svg></div><div><b>고객 응대</b><span>문의·후기에 답변 쓰기</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-chart"/></svg></div><div><b>매출·재고 정리</b><span>숫자를 표와 요약으로</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-doc"/></svg></div><div><b>제안서·견적서</b><span>문서 초안을 빠르게</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-store"/></svg></div><div><b>가게 운영</b><span>메뉴판·가격표·인스타 글</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-cal"/></svg></div><div><b>나만의 크루</b><span>할 일과 일정 정리</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-book"/></svg></div><div><b>공부</b><span>요약과 퀴즈 만들기</span></div></div>
+          <div class="crew"><div class="ic"><svg class="i"><use href="icons.svg#i-bag"/></svg></div><div><b>내가 만드는 크루</b><span>원하는 담당자를 직접</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="band">
+          <h2>말로 시키고, 알림으로 받으세요</h2>
+          <p>운전 중에도, 이동 중에도. 말로 시켜 두면 일이 끝났을 때 폰으로 알려 드려요.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="wrap">
+        <h2>시작은 세 단계예요</h2>
+        <p class="lead">처음 한 번만 준비하면 돼요.</p>
+        <div class="steps">
+          <div class="step"><b>감자를 설치해요</b><span>와이파이에 연결하고 충전기를 꽂아 주세요. 10~20분쯤 걸려요.</span></div>
+          <div class="step"><b>내 Claude 계정으로 로그인해요</b><span>공식 로그인 화면이 나와요. 로그인 정보는 감자를 거치지 않고 Anthropic과 직접 주고받아요.</span></div>
+          <div class="step"><b>크루를 고르고 말을 걸어요</b><span>"우리 가게 예약 페이지 만들어 줘"처럼 편하게 말하면 돼요.</span></div>
+        </div>
+        <p class="note">Claude 구독이 필요해요. 감자는 Claude를 대신 팔지 않아요.</p>
+      </div>
+    </section>
+
+    <section id="price" class="soft">
+      <div class="wrap">
+        <h2>요금</h2>
+        <p class="lead">기본은 무료예요. 서버가 필요한 기능만 유료예요.</p>
+        <div class="plans">
+          <div class="plan"><span class="tag">지금 바로</span><h3>GAMJA Free</h3><div class="price">0원</div>
+            <ul><li><svg class="i"><use href="icons.svg#i-check"/></svg>폰 안에서 일하는 AI 크루</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>음성 대화, 완료 알림</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>웹사이트·문서·그림 만들기</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>자동 업데이트</li></ul></div>
+          <div class="plan pro"><span class="tag">준비 중</span><h3>GAMJA Pro</h3><div class="price">출시 때 알려 드려요</div>
+            <ul><li><svg class="i"><use href="icons.svg#i-check"/></svg>어디서나 접속 (외부 접속 주소)</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>내 도메인으로 웹사이트 공개</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>대화·파일 백업</li><li><svg class="i"><use href="icons.svg#i-check"/></svg>예약 작업, Gmail·캘린더 연동</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>자주 묻는 질문</h2>
+        <p class="lead">궁금한 점이 더 있으면 help@webgamja.com으로 보내 주세요.</p>
+        <div class="faq">
+          <details><summary>정말 무료인가요?</summary><p>감자는 오픈소스라서 무료로 쓸 수 있어요. 다만 감자가 쓰는 Claude는 본인의 Claude 구독(Anthropic)이 필요하고, 그 요금은 Anthropic에 내요. 감자가 대신 받거나 팔지 않아요.</p></details>
+          <details><summary>내 대화와 파일은 어디에 저장돼요?</summary><p>모두 내 폰 안에 저장돼요. 감자는 대화 내용을 따로 모으거나 서버로 보내지 않아요. 대화는 Claude(Anthropic)와 주고받으니 Anthropic의 개인정보 방침도 함께 봐 주세요. 이 홈페이지는 방문 통계에 구글 애널리틱스를 쓸 수 있고, 동의한 분만 집계해요(개인정보처리방침 참고).</p></details>
+          <details><summary>어떤 폰에서 되나요?</summary><p>Android 8 이상이고 저장 공간이 넉넉한 폰이면 돼요(리눅스 환경과 도구를 폰 안에 설치해서 몇 GB가 필요해요). 처음에 10~20분 준비하는 동안은 와이파이와 충전기를 연결해 주세요. 계속 켜 두려면 배터리 설정에서 감자를 "제한 없음"으로 바꿔야 해요.</p></details>
+          <details><summary>왜 구글 플레이에 없나요?</summary><p>감자는 폰 안에 리눅스 환경을 만들어 프로그램을 실행해요. 안드로이드 10 이상은 최신 기준으로 만든 앱이 이런 실행을 막아서, 구글 플레이 요건과 맞지 않아요. 그래서 GitHub에서 직접 내려받는 방식으로 배포해요. 나중에 가벼운 앱을 따로 낼 수도 있어요.</p></details>
+          <details><summary>안전한가요?</summary><p>코드가 전부 공개돼 있어서 누구나 확인할 수 있어요. 감자는 로그인한 사람이 그 폰의 파일을 읽고 고칠 수 있는 도구라서, 비밀번호를 길게 정하고 같은 와이파이나 VPN에서만 쓰기를 권해요. 보안 문제는 GitHub의 비공개 제보나 help@webgamja.com으로 알려 주세요.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section id="open" class="soft">
+      <div class="wrap">
+        <h2>오픈소스</h2>
+        <p class="lead">누구나 볼 수 있게 열어 두고 만들어요.</p>
+        <div class="grid3">
+          <a class="card" href="https://github.com/webgamja/gamja-release/releases"><h3>업데이트 소식</h3><p>새로 바뀐 점을 버전별로 볼 수 있어요.</p><span class="more">릴리스 노트<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+          <a class="card" href="https://github.com/webgamja/gamja"><h3>소스 코드</h3><p>Apache-2.0 라이선스로 공개돼 있어요. 버그 제보와 참여를 환영해요.</p><span class="more">GitHub<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+          <a class="card" href="mailto:help@webgamja.com"><h3>문의하기</h3><p>궁금한 점이나 바라는 기능을 알려 주세요.</p><span class="more">help@webgamja.com<svg class="i"><use href="icons.svg#i-arrow"/></svg></span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="flinks"><a href="terms/">이용약관</a><a href="privacy/">개인정보처리방침</a><a href="https://github.com/webgamja/gamja/blob/main/NOTICE">오픈소스 라이선스</a><a href="https://github.com/webgamja/gamja">GitHub</a><a href="#" id="consentReset">방문 통계 설정</a></div>
+      <p>문의: help@webgamja.com</p>
+      <p>© GAMJA. 감자는 Anthropic과 관련 없는 독립 서비스예요. Claude는 Anthropic의 상표입니다. "GAMJA"와 "감자"의 이름과 로고는 <a class="u" href="https://github.com/webgamja/gamja/blob/main/TRADEMARK.md">상표 안내</a>를 따라 주세요.</p>
+      <p>감자는 proot(GPL-2.0 이상, <a class="u" href="https://github.com/proot-me/proot">소스</a>), libtalloc(LGPL-3.0 이상), Termux terminal-view(Apache-2.0), Apache Commons Compress(Apache-2.0)를 사용해요. 자세한 내용은 감자 앱의 더보기 → 오픈소스 라이선스에서 볼 수 있어요.</p>
+    </div>
+  </footer>
+
+  <div id="consent" role="dialog" aria-live="polite">
+    <p>방문 통계를 내려고 구글 애널리틱스를 써도 될까요? 동의하면 어떤 페이지를 봤는지만 익명에 가깝게 집계해요. <a href="privacy/">자세히</a></p>
+    <button class="yes" type="button">동의해요</button><button class="no" type="button">거절해요</button>
+  </div>
+  <script src="site.js"></script>
+</body>
+</html>

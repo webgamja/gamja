@@ -1,8 +1,8 @@
 # GAMJA (감자)
 
-**An assistant in your pocket that makes things when you ask.**
-Turn a spare Android phone into your own [Claude Code](https://claude.com/claude-code) assistant, and talk to it
-from a chat app: websites, documents, images, schedules and more. No Mac mini, no cloud server.
+**Your own AI crew, living in your phone.**
+Turn a spare Android phone into a home for your own [Claude Code](https://claude.com/claude-code) crews, and talk to
+them from a chat app: websites, documents, images, schedules and more. No Mac mini, no cloud server.
 
 [한국어 README](README.ko.md) · [Download](https://github.com/webgamja/gamja-release/releases/latest) ·
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License: Apache-2.0](LICENSE)
@@ -13,7 +13,7 @@ from a chat app: websites, documents, images, schedules and more. No Mac mini, n
 
 ## What it does
 
-- **Crews**: each crew is an assistant with its own project folder and instructions (a `CLAUDE.md` file), such as a
+- **Crews**: each crew is an AI teammate with its own project folder and instructions (a `CLAUDE.md` file), such as a
   homepage maker, a customer-reply writer or a daily planner. Pick one from the recommended list or create your own.
 - **Chat like a messenger**: a crew list, a chat list, chat rooms with your crews, unread badges and notifications
   when a job is finished. Talk by voice and listen to the answers.
