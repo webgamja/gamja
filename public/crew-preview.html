@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>감자 크루 탭 시안</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; background: #e9ecef; color: #191f28; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 18px 14px 60px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2.sec { font-size: 15px; margin: 30px 0 4px; color: #444; }
+  .note { font-size: 13px; color: #6b7684; margin: 0 0 10px; line-height: 1.5; }
+  .tag { font-size: 12px; font-weight: 700; color: #6b7684; margin: 12px 4px 6px; }
+  .phone { position: relative; display: flex; flex-direction: column; height: 640px; border-radius: 26px; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .phone.lt { --ui-bg: #f2f4f6; --ui-card: #fff; --ui-text: #191f28; --ui-sub: #6b7684; --ui-line: #e5e8eb; --me: #fee500; --me-fg: #191919; --gi-a: var(--me); --nav-off: #9aa3ae; }
+  .phone.dk { --ui-bg: #101114; --ui-card: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #2b2d33; --me: #f5d90a; --me-fg: #191919; --gi-a: var(--me); --nav-off: #7c8491; }
+  .top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 18px 6px; }
+  .top h3 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.3px; }
+  .acts { display: flex; gap: 14px; }
+  svg.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .body { flex: 1; overflow: hidden; padding: 4px 14px 0; }
+  .search { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; padding: 10px 14px; border-radius: 14px; background: var(--ui-card); color: var(--ui-sub); font-size: 14px; }
+  .search svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  .sec-t { display: flex; justify-content: space-between; margin: 14px 4px 8px; font-size: 13px; font-weight: 700; color: var(--ui-sub); }
+  .star { color: #f5c400; }
+  .list { background: var(--ui-card); border-radius: 20px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--ui-line); }
+  .row:last-child { border-bottom: 0; }
+  .av { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--ui-bg); font-size: 21px; font-style: normal; }
+  .av .gi-s { width: 25px; height: 25px; }
+  .mid { flex: 1; min-width: 0; }
+  .mid b { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small { display: block; margin-top: 2px; font-size: 13px; color: var(--ui-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grp { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 700; border-bottom: 1px solid var(--ui-line); }
+  .grp small { margin-left: auto; color: var(--ui-sub); font-weight: 600; }
+  .pill { flex: none; padding: 6px 14px; border-radius: 15px; background: var(--ui-bg); font-size: 13px; font-weight: 800; }
+  .pill.y { background: var(--me); color: var(--me-fg); }
+  .shelf { display: flex; gap: 10px; overflow: hidden; }
+  .card { flex: none; width: 150px; padding: 14px 12px; border-radius: 18px; background: var(--ui-card); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+  .card .av { width: 54px; height: 54px; background: var(--ui-bg); }
+  .card .av .gi-s { width: 30px; height: 30px; }
+  .card b { font-size: 14px; }
+  .card small { font-size: 12px; color: var(--ui-sub); min-height: 32px; line-height: 1.3; }
+  .join { margin-top: 10px; padding: 12px 14px; border-radius: 16px; background: var(--ui-card); display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; }
+  .join span { color: var(--ui-sub); font-weight: 600; font-size: 12px; margin-left: auto; }
+  .gnb2 { flex: none; display: flex; padding: 6px 8px 10px; background: var(--ui-card); border-top: 1px solid var(--ui-line); }
+  .gnb2 a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 2px; color: var(--nav-off); font-size: 11px; font-weight: 700; }
+  .gnb2 a.on { color: var(--ui-text); }
+  .gnb2 svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .gnb2 a.on svg .a { fill: var(--gi-a); }
+  /* 프로필 창 */
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; }
+  .sheet { width: 100%; padding: 10px 18px 22px; border-radius: 26px 26px 0 0; background: var(--ui-card); text-align: center; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ui-line); margin: 0 auto 18px; }
+  .sheet .big { width: 84px; height: 84px; margin: 0 auto 10px; border-radius: 50%; background: var(--ui-bg); display: grid; place-items: center; }
+  .sheet .big .gi-s { width: 48px; height: 48px; }
+  .sheet h4 { margin: 0; font-size: 20px; }
+  .sheet p { margin: 6px 0 14px; color: var(--ui-sub); font-size: 14px; line-height: 1.4; }
+  .chips { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
+  .chips span { padding: 4px 10px; border-radius: 12px; background: var(--ui-bg); font-size: 12px; font-weight: 700; color: var(--ui-sub); }
+  .act-main { height: 52px; border-radius: 14px; background: var(--me); color: var(--me-fg); font-size: 17px; font-weight: 800; display: grid; place-items: center; }
+  .act-sub { display: flex; gap: 10px; margin-top: 10px; }
+  .act-sub div { flex: 1; height: 46px; border-radius: 14px; background: var(--ui-bg); font-weight: 700; display: grid; place-items: center; font-size: 15px; }
+  .seg { display: flex; padding: 4px; border-radius: 14px; background: var(--ui-line); margin: 8px 0 6px; }
+  .seg span { flex: 1; text-align: center; padding: 9px 0; border-radius: 11px; font-size: 14px; font-weight: 700; color: var(--ui-sub); }
+  .seg span.on { background: var(--ui-card); color: var(--ui-text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🥔 크루 탭 시안</h1>
+  <p class="note">카톡의 <b>친구 목록</b>처럼 만든 크루 탭이에요. 지금 쓰는 "선택 표시"는 없고, 크루를 누르면 곧바로 채팅하지 않고 <b>프로필 창</b>이 떠요. (그림이라서 눌러도 아무 일도 안 일어나요)</p>
+
+  <h2 class="sec">1. 크루 탭</h2>
+  <p class="note">맨 위 검색과 ＋(크루 추가·코드로 가져오기), ★ 자주 쓰는 크루, 내 크루(묶음별로 접고 펼쳐요), 크루 스토어 추천이 이어져요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>크루</h3><div class="acts">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div></div>
+      <div class="body">
+        <div class="sec-t"><span><span class="star">★</span> 자주 쓰는 크루 2</span></div>
+        <div class="list">
+          <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지 크루</b><small>소개 페이지, 문의 폼, 서비스 안내</small></div></div>
+          <div class="row"><i class="av">🍽️</i><div class="mid"><b>메뉴판·가격표 크루</b><small>메뉴판과 가격표를 예쁘게 만들어 줘요</small></div></div>
+        </div>
+        <div class="sec-t"><span>내 크루 4</span></div>
+        <div class="list">
+          <div class="grp"><i class="av" style="width:30px;height:30px;font-size:15px">🏢</i>회사 크루<small>1 ▾</small></div>
+          <div class="row"><i class="av">📄</i><div class="mid"><b>문서 크루</b><small>보고서, 제안서, 회의록 정리</small></div></div>
+          <div class="grp"><i class="av" style="width:30px;height:30px;font-size:15px">🏪</i>가게 크루<small>1 ▸</small></div>
+          <div class="grp"><i class="av" style="width:30px;height:30px;font-size:15px">🙋</i>개인 크루<small>2 ▸</small></div>
+        </div>
+        <div class="sec-t"><span>크루 스토어 · 추천</span><span>전체 보기 ›</span></div>
+        <div class="shelf">
+          <div class="card"><i class="av">💬</i><b>고객 응대 크루</b><small>문의에 답할 글을 대신 써요</small><span class="pill y">추가</span></div>
+          <div class="card"><i class="av">📊</i><b>매출·재고 정리 크루</b><small>엑셀 없이 매출을 정리해요</small><span class="pill y">추가</span></div>
+        </div>
+      </div>
+      <nav class="gnb2">
+        <a class="on"><svg viewBox="0 0 24 24"><circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a><svg viewBox="0 0 24 24"><path class="a" d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅</a>
+        <a><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+
+  <h2 class="sec">2. 크루를 누르면: 프로필 창</h2>
+  <p class="note">줄마다 늘어놓던 공유·설정·별 아이콘을 여기로 모았어요. <b>채팅하기</b>가 크게 보여서 가장 많이 쓰는 동작이 가장 눈에 띄어요. ★은 오른쪽 위에서 켜고 꺼요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>크루</h3></div>
+      <div class="body">
+        <div class="list">
+          <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지 크루</b><small>소개 페이지, 문의 폼, 서비스 안내</small></div></div>
+          <div class="row"><i class="av">🍽️</i><div class="mid"><b>메뉴판·가격표 크루</b><small>메뉴판과 가격표를 예쁘게</small></div></div>
+        </div>
+      </div>
+      <div class="dim"><div class="sheet">
+        <div class="grab"></div>
+        <i class="av big">🌐</i>
+        <h4>홈페이지 크루</h4>
+        <p>회사 소개 페이지, 문의 폼, 서비스 안내를<br>휴대폰에서 보기 좋게 만들어 줘요.</p>
+        <div class="chips"><span>회사 크루</span><span>★ 자주 쓰는 크루</span></div>
+        <div class="act-main">💬 채팅하기</div>
+        <div class="act-sub"><div>공유</div><div>설정</div></div>
+      </div></div>
+    </div>
+  </template></div>
+
+  <h2 class="sec">3. 크루 스토어 (전체 보기)</h2>
+  <p class="note">지금은 감자에 들어 있는 템플릿 15개를 보여 주고, 이미 가진 크루는 "추가됨"으로 표시해요. 나중에 친구가 올린 크루, 무료 등록소, 유료 크루가 같은 화면에 들어와요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>크루 스토어</h3></div>
+      <div class="body">
+        <div class="seg"><span class="on">전체</span><span>회사</span><span>가게</span><span>개인</span></div>
+        <div class="list">
+          <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지 크루</b><small>소개 페이지, 문의 폼, 서비스 안내</small></div><span class="pill">추가됨</span></div>
+          <div class="row"><i class="av">💬</i><div class="mid"><b>고객 응대 크루</b><small>문의에 답할 글을 대신 써요</small></div><span class="pill y">추가</span></div>
+          <div class="row"><i class="av">🔎</i><div class="mid"><b>조사 크루</b><small>궁금한 걸 찾아서 정리해 줘요</small></div><span class="pill y">추가</span></div>
+          <div class="row"><i class="av">📊</i><div class="mid"><b>보고 크루</b><small>숫자와 내용을 보고서로 만들어요</small></div><span class="pill y">추가</span></div>
+          <div class="row"><i class="av">📅</i><div class="mid"><b>예약·주문 페이지 크루</b><small>손님이 직접 예약하는 페이지</small></div><span class="pill y">추가</span></div>
+        </div>
+        <div class="join">📥 친구가 보낸 크루 코드로 추가<span>붙여넣기 ›</span></div>
+      </div>
+    </div>
+  </template></div>
+</div>
+<script src="icons.js"></script>
+<script>
+  // 각 그림을 밝은 화면과 어두운 화면으로 두 번 그린다
+  document.querySelectorAll('.pair').forEach((pair) => {
+    const tpl = pair.querySelector('template');
+    for (const [cls, name] of [['lt', '☀️ 밝은 화면'], ['dk', '🌙 어두운 화면']]) {
+      const tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = name;
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('.phone').classList.add(cls);
+      pair.append(tag, node);
+    }
+  });
+</script>
+</body>
+</html>

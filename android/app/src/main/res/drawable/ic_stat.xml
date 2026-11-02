@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 알림 표시줄 아이콘 (흰색 실루엣) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,13.5c0,-4.5 3,-7.5 6.5,-7.5s5,2.5 5,5.5c0,4 -3,7 -6.5,7c-3,0 -5,-2 -5,-5z" />
+</vector>

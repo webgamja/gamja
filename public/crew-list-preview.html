@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>감자 크루 탭 시안 2</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; background: #e9ecef; color: #191f28; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 18px 14px 60px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2.sec { font-size: 15px; margin: 30px 0 4px; color: #444; }
+  .note { font-size: 13px; color: #6b7684; margin: 0 0 10px; line-height: 1.5; }
+  .tag { font-size: 12px; font-weight: 700; color: #6b7684; margin: 12px 4px 6px; }
+  .phone { position: relative; display: flex; flex-direction: column; height: 680px; border-radius: 26px; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .phone.lt { --ui-bg: #fff; --ui-soft: #f2f4f6; --ui-text: #191f28; --ui-sub: #6b7684; --ui-line: #eef0f2; --me: #fee500; --me-fg: #191919; --nav-off: #9aa3ae; }
+  .phone.dk { --ui-bg: #101114; --ui-soft: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #23252a; --me: #f5d90a; --me-fg: #191919; --nav-off: #7c8491; }
+  .top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 18px 6px; }
+  .top h3 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.3px; }
+  .acts { display: flex; gap: 14px; }
+  svg.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .body { flex: 1; overflow: hidden; padding: 0 18px; }
+  .seg { display: flex; gap: 8px; margin: 6px 0 12px; }
+  .seg span { padding: 8px 16px; border-radius: 99px; border: 1px solid var(--ui-line); font-size: 14px; font-weight: 700; color: var(--ui-text); }
+  .seg span.on { background: var(--ui-text); color: var(--ui-bg); border-color: var(--ui-text); }
+  .banner { margin: 0 0 6px; padding: 14px 16px; border-radius: 16px; background: var(--ui-soft); display: flex; align-items: center; gap: 10px; }
+  .banner b { display: block; font-size: 14px; } .banner small { color: var(--ui-sub); font-size: 12.5px; }
+  .banner .pill { margin-left: auto; }
+  .hd { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-size: 13px; color: var(--ui-sub); }
+  .hd.first { border-top: 0; }
+  .hd b { color: var(--ui-text); font-weight: 600; } .hd .r { font-size: 12.5px; }
+  .row { display: flex; align-items: center; gap: 13px; padding: 9px 0; }
+  .av { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 17px; background: var(--ui-soft); font-size: 22px; font-style: normal; }
+  .av.me { width: 54px; height: 54px; border-radius: 20px; background: var(--me); color: var(--me-fg); font-size: 26px; }
+  .mid { flex: 1; min-width: 0; }
+  .mid b { display: block; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small { display: block; margin-top: 1px; font-size: 12.5px; color: var(--ui-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rate { color: var(--ui-text); font-weight: 700; } .rate i { color: #f5b400; font-style: normal; }
+  .pill { flex: none; padding: 6px 14px; border-radius: 15px; background: var(--ui-soft); font-size: 13px; font-weight: 800; }
+  .pill.y { background: var(--me); color: var(--me-fg); }
+  .gnb2 { flex: none; display: flex; padding: 6px 8px 10px; background: var(--ui-bg); border-top: 1px solid var(--ui-line); }
+  .gnb2 a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 2px; color: var(--nav-off); font-size: 11px; font-weight: 700; }
+  .gnb2 a.on { color: var(--ui-text); }
+  .gnb2 svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  /* 지금 모양 (문제 보여 주기용) */
+  .old .list { background: #fff; border-radius: 20px; overflow: hidden; }
+  .old .grp { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 700; border-bottom: 1px solid #e5e8eb; background: #f6f7f9; }
+  .old .grp small { margin-left: auto; color: #6b7684; }
+  .old .row { padding: 11px 14px; border-bottom: 1px solid #e5e8eb; }
+  .old .row .av { border-radius: 50%; }
+  .old .cap { color: #e03131; font-size: 12px; font-weight: 700; padding: 6px 14px; background: #fff3f3; }
+  /* 평가 화면 */
+  .stars { font-size: 26px; color: #f5b400; letter-spacing: 3px; text-align: center; margin: 6px 0; }
+  .chip { display: inline-block; margin: 3px 4px 3px 0; padding: 5px 11px; border-radius: 99px; background: var(--ui-soft); font-size: 12.5px; font-weight: 700; color: var(--ui-sub); }
+  .rev { padding: 12px 0; border-top: 1px solid var(--ui-line); font-size: 14px; line-height: 1.5; }
+  .rev small { color: var(--ui-sub); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>크루 탭 시안 2 · 카톡 친구목록 스타일</h1>
+  <p class="note">카드 상자를 없애고, 카톡 친구 목록처럼 <b>흰 바탕 위에 줄만</b> 이어지게 했어요. 묶음(회사·가게·개인)은 "카드 안의 줄"이 아니라 <b>작은 제목 줄</b>이 돼서, 그 아래 크루가 한 단계 아래라는 게 바로 보여요.</p>
+
+  <h2 class="sec">0. 지금 모양 (문제)</h2>
+  <p class="note">"개인"을 펼치면 아래의 "일정·할 일"이 묶음 안의 크루인데, 최상위 항목인 "감자 톡톡"과 똑같은 모양이라 구분이 안 돼요. 묶음 줄도 크루 줄과 모양이 비슷해서 접힘·펼침이 한눈에 안 들어와요.</p>
+  <div class="pair old"><template>
+    <div class="phone" style="height:auto;padding:14px">
+      <div class="list">
+        <div class="row"><i class="av">🥔</i><div class="mid"><b>감자 톡톡</b><small>폴더와 상관없이 무엇이든 물어보는 기본 대화</small></div></div>
+        <div class="grp">🏢 회사<small>2 ▸</small></div>
+        <div class="grp">🏪 가게<small>1 ▸</small></div>
+        <div class="grp">🙋 개인<small>1 ▾</small></div>
+        <div class="row"><i class="av">📅</i><div class="mid"><b>일정·할 일</b><small>오늘 할 일, 일정 정리, 습관</small></div></div>
+        <div class="cap">↑ 이게 "개인" 안의 크루인데 최상위처럼 보여요</div>
+      </div>
+    </div>
+  </template></div>
+
+  <h2 class="sec">1. 새 크루 탭</h2>
+  <p class="note">맨 위 <b>내 감자 톡톡</b>은 카톡의 "내 프로필"처럼 크게. ★ 자주 쓰는 크루, 그다음 묶음별 제목(접고 펼침), 맨 아래 추천 크루예요. 모든 크루 줄은 같은 크기와 모양이에요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>크루</h3><div class="acts">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div></div>
+      <div class="body">
+        <div class="row" style="padding-top:6px"><i class="av me">🥔</i><div class="mid"><b style="font-size:18px">감자 톡톡</b><small>무엇이든 물어보는 기본 대화</small></div></div>
+        <div class="hd"><b>★ 자주 쓰는 크루 1</b></div>
+        <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지</b><small>소개 페이지, 문의 폼, 서비스 안내</small></div></div>
+        <div class="hd"><b>회사 2</b><span class="r">▾</span></div>
+        <div class="row"><i class="av">📄</i><div class="mid"><b>문서</b><small>제안서, 견적서, 계약서 정리</small></div></div>
+        <div class="row"><i class="av">📊</i><div class="mid"><b>보고</b><small>숫자와 내용을 보고서로</small></div></div>
+        <div class="hd"><b>가게 1</b><span class="r">▸</span></div>
+        <div class="hd"><b>개인 1</b><span class="r">▾</span></div>
+        <div class="row"><i class="av">📅</i><div class="mid"><b>일정·할 일</b><small>오늘 할 일, 일정 정리, 습관</small></div></div>
+        <div class="hd"><b>추천 크루</b><span class="r">전체 보기 ›</span></div>
+        <div class="row"><i class="av">💬</i><div class="mid"><b>고객 응대</b><small><span class="rate"><i>★</i> 4.8</span> · 사용 1.2천 · 문의 답변 쓰기</small></div><span class="pill y">추가</span></div>
+      </div>
+      <nav class="gnb2">
+        <a class="on"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a><svg viewBox="0 0 24 24"><path d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅</a>
+        <a><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+
+  <h2 class="sec">2. 추천 크루 (나중에: 별점·사용 후기)</h2>
+  <p class="note">"예시 그림"이에요. 별점과 사용 수는 지금은 없고, 감자알이 아닌 <b>우리 쪽 서버</b>가 있어야 모을 수 있어요(Pro 단계).</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>추천 크루</h3></div>
+      <div class="body">
+        <div class="seg"><span class="on">전체</span><span>회사</span><span>가게</span><span>개인</span></div>
+        <div class="row"><i class="av me" style="background:var(--ui-soft);color:inherit">💬</i><div class="mid"><b style="font-size:18px">고객 응대</b><small>문의·후기에 답할 글을 대신 써요</small></div></div>
+        <div class="stars">★★★★★<small style="font-size:14px;color:var(--ui-text);letter-spacing:0;margin-left:6px"><b>4.8</b></small></div>
+        <div style="text-align:center;font-size:12.5px;color:var(--ui-sub);margin-bottom:8px">후기 214개 · 1.2천 명이 써요</div>
+        <div style="text-align:center"><span class="chip">답변이 정중해요</span><span class="chip">말투를 잘 맞춰요</span><span class="chip">빨라요</span></div>
+        <div class="rev"><b>카페 사장님</b> <small>★★★★★ · 2주 전</small><br>리뷰 답글을 매일 쓰는 게 일이었는데 이제 확인만 해요.</div>
+        <div class="rev"><b>미용실</b> <small>★★★★☆ · 1달 전</small><br>예약 변경 안내 문구가 좋아요. 이모지는 좀 줄여 줬으면.</div>
+        <div class="pill y" style="display:block;text-align:center;margin-top:10px;padding:14px;border-radius:16px;font-size:16px">내 크루에 추가</div>
+      </div>
+    </div>
+  </template></div>
+</div>
+<script src="icons.js"></script>
+<script>
+  document.querySelectorAll('.pair').forEach((pair) => {
+    const tpl = pair.querySelector('template');
+    const modes = pair.classList.contains('old') ? [['lt', '현재 화면(밝게)']] : [['lt', '밝은 화면'], ['dk', '어두운 화면']];
+    for (const [cls, name] of modes) {
+      const tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = name;
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('.phone').classList.add(cls);
+      pair.append(tag, node);
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>다크모드 아이콘 시안</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; background: #0b0c0e; color: #f2f4f6; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 18px 14px 60px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2 { font-size: 15px; margin: 28px 0 4px; }
+  .note { font-size: 13px; color: #9aa1ab; margin: 0 0 10px; line-height: 1.5; }
+  /* 어두운 화면의 같은 바탕 위에서, 아이콘 면(.a)만 방식을 달리 해 본다 */
+  .panel { --ui-bg: #101114; --ui-card: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #2b2d33; --me: #f5d90a; --me-fg: #191919; color: #f2f4f6; }
+  .gi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px 4px; padding: 16px 8px; border-radius: 20px; background: #1c1d22; }
+  .gi figure { margin: 0; text-align: center; font-size: 10px; color: #9aa1ab; }
+  .gi i { display: grid; place-items: center; width: 50px; height: 50px; margin: 0 auto 5px; border-radius: 50%; background: #101114; }
+  .gi svg { width: 28px; height: 28px; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .gi svg .d { fill: #fff; stroke: none; }
+  .A svg .a { fill: #f5d90a; }                         /* 지금: 노란 면 */
+  .B svg .a { fill: none; }                            /* 선만 */
+  .C svg .a { fill: rgba(255,255,255,.16); }           /* 흰빛 면 */
+  .D svg .a { fill: rgba(255,255,255,.16); stroke: #fff; }
+  .D svg, .mini.D .av svg { stroke: #cfd4dc; }          /* 면은 흐리게, 선은 한 단계 낮춰 부드럽게 */
+  .mini.A .av svg .a, .mini.A .nav svg .a { fill: #f5d90a; }
+  .mini.C .av svg .a, .mini.D .av svg .a, .mini.C .nav svg .a, .mini.D .nav svg .a { fill: rgba(255,255,255,.16); }
+  .mini.B .av svg .a, .mini.B .nav svg .a { fill: none; }
+  .tag { margin: 14px 4px 6px; font-size: 12px; font-weight: 700; color: #9aa1ab; }
+  /* 실제 쓰임새 미리보기: 채팅 목록 줄 + 아래 메뉴 */
+  .mini { border-radius: 22px; background: #101114; padding: 12px; }
+  .mini .row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #1c1d22; border-radius: 16px; margin-bottom: 8px; }
+  .mini .av { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #101114; }
+  .mini .av svg { width: 26px; height: 26px; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .mini b { display: block; font-size: 15px; }
+  .mini small { color: #9aa1ab; font-size: 12px; }
+  .nav { display: flex; padding: 8px 4px 2px; background: #1c1d22; border-radius: 16px; }
+  .nav div { flex: 1; text-align: center; font-size: 11px; font-weight: 700; color: #7c8491; }
+  .nav div.on { color: #f2f4f6; }
+  .nav svg { width: 26px; height: 26px; display: block; margin: 0 auto 2px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<div class="wrap panel">
+  <h1>🌙 다크모드 아이콘 시안</h1>
+  <p class="note">어두운 화면에서 노랑이 쨍하다고 하셔서, 노란 면을 빼는 방법 세 가지를 지금(A)과 나란히 놓았어요. 검은 바탕 위에서 같은 아이콘을 비교해 보세요.</p>
+  <div id="out"></div>
+</div>
+<script src="icons.js"></script>
+<script>
+  const NAMES = ['potato', 'chat', 'people', 'globe', 'menu', 'calendar', 'wallet', 'book', 'pencil', 'camera', 'doc', 'company', 'store', 'person', 'folder', 'spark', 'sound', 'lock', 'image', 'music', 'film', 'eye', 'gear', 'bell', 'star'];
+  const LABEL = {
+    A: 'A. 지금 (노란 면)', B: 'B. 선만 (면 없음)', C: 'C. 흰빛 면 (은은하게 채움)', D: 'D. 흰빛 면 + 부드러운 선',
+  };
+  const NOTE = {
+    A: '지금 쓰는 방식이에요.',
+    B: '가장 가볍고 단정해요. 대신 아이콘이 조금 비어 보여요.',
+    C: '선은 흰색, 면은 흰색을 아주 옅게 채워요. 입체감은 있고 눈은 편해요.',
+    D: 'C에서 선도 한 단계 낮춘 가장 차분한 안이에요.',
+  };
+  let html = '';
+  for (const k of ['A', 'B', 'C', 'D']) {
+    html += `<h2>${LABEL[k]}</h2><p class="note">${NOTE[k]}</p><div class="gi ${k}">` +
+      NAMES.map((n) => `<figure><i>${GAMJA_ICONS.svg(n)}</i>${n}</figure>`).join('') + '</div>';
+    html += `<div class="tag">실제 모습 (${k})</div><div class="mini ${k}">` +
+      [['potato', '감자 톡톡', '무엇을 도와드릴까요?'], ['globe', '홈페이지', '소개 페이지를 만들었어요']].map(([n, t, s]) =>
+        `<div class="row"><span class="av">${GAMJA_ICONS.svg(n)}</span><div><b>${t}</b><small>${s}</small></div></div>`).join('') +
+      `<div class="nav"><div>${GAMJA_ICONS.svg('people')}크루</div><div class="on">${GAMJA_ICONS.svg('chat')}채팅</div><div>${GAMJA_ICONS.svg('menu')}더보기</div></div></div>`;
+  }
+  document.getElementById('out').innerHTML = html;
+</script>
+</body>
+</html>

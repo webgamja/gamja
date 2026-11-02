@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>감자 채팅 탭 시안</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; background: #e9ecef; color: #191f28; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 18px 14px 60px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2.sec { font-size: 15px; margin: 30px 0 4px; color: #444; }
+  .note { font-size: 13px; color: #6b7684; margin: 0 0 10px; line-height: 1.5; }
+  .tag { font-size: 12px; font-weight: 700; color: #6b7684; margin: 12px 4px 6px; }
+  .phone { position: relative; display: flex; flex-direction: column; height: 660px; border-radius: 26px; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .phone.lt { --ui-bg: #fff; --ui-soft: #f2f4f6; --ui-text: #191f28; --ui-sub: #6b7684; --ui-line: #eef0f2; --me: #fee500; --me-fg: #191919; --nav-off: #9aa3ae; --run: #b8860b; }
+  .phone.dk { --ui-bg: #101114; --ui-soft: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #23252a; --me: #f5d90a; --me-fg: #191919; --nav-off: #7c8491; --run: #f5d90a; }
+  .top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 18px 6px; }
+  .top h3 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.3px; }
+  .acts { display: flex; gap: 14px; }
+  svg.ic { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .body { flex: 1; overflow: hidden; padding: 0 18px; }
+  .hd { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 2px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-size: 13px; color: var(--ui-sub); }
+  .hd.first { border-top: 0; margin-top: 4px; padding-top: 4px; }
+  .row { display: flex; align-items: center; gap: 13px; padding: 9px 0; }
+  .av { flex: none; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 18px; background: var(--ui-soft); font-size: 23px; font-style: normal; }
+  .mid { flex: 1; min-width: 0; }
+  .mid b { display: block; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small { display: block; margin-top: 2px; font-size: 13.5px; color: var(--ui-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small.run { color: var(--run); font-weight: 700; }
+  .end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; font-size: 11.5px; color: var(--ui-sub); min-height: 38px; }
+  .flags { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+  .badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #e5484d; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--me); box-shadow: 0 0 0 3px color-mix(in srgb, var(--me) 30%, transparent); }
+  .pen { font-size: 14px; color: var(--ui-sub); }
+  .gnb2 { flex: none; display: flex; padding: 6px 8px 10px; background: var(--ui-bg); border-top: 1px solid var(--ui-line); }
+  .gnb2 a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 2px; color: var(--nav-off); font-size: 11px; font-weight: 700; position: relative; }
+  .gnb2 a.on { color: var(--ui-text); }
+  .gnb2 svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .gnb2 .n { position: absolute; top: 2px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: #e5484d; color: #fff; font-size: 11px; display: grid; place-items: center; }
+  .old .list { background: #fff; border-radius: 20px; overflow: hidden; }
+  .old .row { padding: 11px 14px; border-bottom: 1px solid #e5e8eb; }
+  .old .av { border-radius: 50%; }
+  .old h4 { margin: 4px 4px 10px; font-size: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>채팅 탭 시안 · 크루 탭과 같은 스타일</h1>
+  <p class="note">크루 탭과 똑같이 <b>상자 없이 줄만</b>, 아이콘은 둥근 사각형, 제목 줄 위치와 여백도 같아요. 거기에 <b>맨 위 제목 줄(검색 아이콘)</b>과 <b>"고정 / 최근" 제목 줄</b>을 더했어요.</p>
+
+  <h2 class="sec">0. 지금 모양</h2>
+  <div class="pair old"><template>
+    <div class="phone" style="height:auto;padding:14px;background:#f2f4f6">
+      <h4>채팅</h4>
+      <div class="list">
+        <div class="row"><i class="av">🥔</i><div class="mid"><b>감자 톡톡</b><small>네, 알겠어요. 바로 만들게요.</small></div><div class="end">오후 7:21</div></div>
+        <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지</b><small>예약 페이지를 만들었어요</small></div><div class="end">어제</div></div>
+      </div>
+    </div>
+  </template></div>
+
+  <h2 class="sec">1. 새 채팅 탭</h2>
+  <p class="note">고정(★)한 방은 위쪽 "고정" 아래에 모으고, 나머지는 "최근" 아래에 최근 순으로 둬요. 작업 중이면 노란 점, 안 읽은 건 빨간 숫자, 쓰던 글은 연필 표시는 그대로예요. 방이 아직 없으면 "크루 탭에서 말을 걸어 보세요" 안내가 나와요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>채팅</h3><div class="acts">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></div></div>
+      <div class="body">
+        <div class="hd first"><span>★ 고정 1</span></div>
+        <div class="row"><i class="av">🥔</i><div class="mid"><b>감자 톡톡</b><small>네, 알겠어요. 바로 만들게요.</small></div><div class="end"><span>오후 7:21</span><span class="flags"><span class="pen">★</span></span></div></div>
+        <div class="hd"><span>최근 4</span></div>
+        <div class="row"><i class="av">🌐</i><div class="mid"><b>홈페이지</b><small class="run">작업하고 있어요…</small></div><div class="end"><span>오후 7:18</span><span class="flags"><span class="dot"></span></span></div></div>
+        <div class="row"><i class="av">💬</i><div class="mid"><b>고객 응대</b><small>답글 초안 3개를 만들었어요</small></div><div class="end"><span>오후 5:02</span><span class="flags"><span class="badge">2</span></span></div></div>
+        <div class="row"><i class="av">📊</i><div class="mid"><b>매출·재고 정리</b><small>이번 달 매출을 표로 정리했어요</small></div><div class="end"><span>어제</span><span class="flags"><span class="pen">✏️</span></span></div></div>
+        <div class="row"><i class="av">📅</i><div class="mid"><b>일정·할 일</b><small>내일 일정은 3개예요</small></div><div class="end"><span>10월 29일</span></div></div>
+      </div>
+      <nav class="gnb2">
+        <a><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a class="on"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅<span class="n">2</span></a>
+        <a><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+</div>
+<script src="icons.js"></script>
+<script>
+  document.querySelectorAll('.pair').forEach((pair) => {
+    const tpl = pair.querySelector('template');
+    const modes = pair.classList.contains('old') ? [['lt', '현재 화면(밝게)']] : [['lt', '밝은 화면'], ['dk', '어두운 화면']];
+    for (const [cls, name] of modes) {
+      const tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = name;
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('.phone').classList.add(cls);
+      pair.append(tag, node);
+    }
+  });
+</script>
+</body>
+</html>

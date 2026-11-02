@@ -1,0 +1,377 @@
+// 다국어(i18n) 바탕. 화면에 보이는 글은 한국어를 원본(ko)으로 두고, 다른 언어는 따로 적는다.
+//
+// 두 가지 방법을 함께 쓴다.
+//  1) 새로 만드는 화면: 글을 아래 STR에 키로 적고 t('키')로 꺼내 쓴다 (ko·en을 같이 적는다).
+//  2) 기존 화면: 코드에 한국어가 그대로 있는 글은 건드리지 않고, 화면이 영어일 때만 아래 EN_TEXT(한국어 원문 → 영어)로 바꿔서 보여 준다.
+//     글자 하나하나를 바꾸는 큰 공사 없이 화면 전체를 단계적으로 번역할 수 있다. 한국어 화면에서는 아무것도 하지 않는다.
+//     숫자가 들어가는 글은 EN_PATTERN(정규식 → 영어)으로 적는다. 번역이 없는 글은 한국어 그대로 보인다.
+//  채팅 말풍선 안의 대화 내용(사용자와 Claude의 글)과 코드 블록은 절대 바꾸지 않는다.
+(function () {
+  const STR = { ko: {}, en: {} };
+  const LANGS = ['ko', 'en'];
+  const PREF_KEY = 'cc:lang';
+  // 설정: 'auto'(폰의 언어를 따라감) | 'ko' | 'en'
+  let pref = 'auto';
+  try { const saved = localStorage.getItem(PREF_KEY); if (saved) pref = JSON.parse(saved); } catch { pref = 'auto'; }
+  if (pref !== 'auto' && !LANGS.includes(pref)) pref = 'auto';
+  const nav = String(navigator.language || 'ko').slice(0, 2).toLowerCase();
+  let lang = pref === 'auto' ? (nav === 'ko' ? 'ko' : 'en') : pref; // 한국어가 아니면 영어
+  document.documentElement.lang = lang;
+  const locale = lang === 'ko' ? 'ko-KR' : 'en-US'; // 날짜 모양·음성 인식·읽기에 쓰는 지역 코드
+
+  function t(key, vars) {
+    const s = (STR[lang] && STR[lang][key]) ?? STR.ko[key] ?? key;
+    return vars ? String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : vars[k])) : s;
+  }
+  function add(code, dict) { STR[code] = { ...(STR[code] || {}), ...dict }; }
+  function setLang(code) { // 'auto' | 'ko' | 'en'
+    if (code !== 'auto' && !LANGS.includes(code)) return;
+    try { if (code === 'auto') localStorage.removeItem(PREF_KEY); else localStorage.setItem(PREF_KEY, JSON.stringify(code)); } catch { /* 저장소를 못 쓰면 이번만 */ }
+  }
+
+  // ---------- 기존 화면의 글: 한국어 원문 → 영어 ----------
+  const EN_TEXT = new Map(Object.entries({
+    // 아래 메뉴·탭 제목
+    '크루': 'Crew', '채팅': 'Chats', '더보기': 'More', '채팅 목록': 'Chats',
+    // 로그인
+    '비밀번호': 'Password', '로그인': 'Log in',
+    // 채팅방 위쪽·메뉴
+    '결과물': 'Results', '대화 압축': 'Compress chat', '새 대화': 'New chat', '크루 설정': 'Crew settings',
+    '답변 읽어주기: 꺼짐': 'Read replies: off', '답변 읽어주기: 켜짐': 'Read replies: on', '답변 읽어주기': 'Read replies',
+    '맨 아래로': 'Jump to bottom', '메뉴': 'Menu', '닫기': 'Close', '뒤로': 'Back', '돌아가기': 'Back',
+    // 입력창
+    '메시지 입력': 'Type a message', '사진 첨부': 'Attach photos', '받아쓰기': 'Dictate', '전송': 'Send', '중지': 'Stop',
+    '쓰던 글이 있어요': 'Unsent draft', '위에 고정됨': 'Pinned',
+    // 진행 상태
+    '생각 중...': 'Thinking...', '답변 작성 중...': 'Writing a reply...', '파일 읽는 중...': 'Reading a file...',
+    '파일 작성 중...': 'Writing a file...', '명령 실행 중...': 'Running a command...', '할 일 정리 중...': 'Organizing tasks...',
+    '새 코드 검사 중...': 'Checking the new code...', '서버 재시작 중...': 'Restarting...', '서버에 다시 연결하는 중...': 'Reconnecting...',
+    '중지했습니다.': 'Stopped.',
+    // 음성 대화
+    '듣고 있어요': 'Listening', '종료': 'End', '음성 대화': 'Voice chat', '작업 중...': 'Working...',
+    '계속 듣고 있어요 — 다 말했으면 원을 누르세요': 'Still listening — tap the circle when you are done',
+    '곧 보낼게요 — 원을 누르면 취소': 'Sending soon — tap the circle to cancel',
+    '말하는 중 — 원을 누르면 끊고 말할 수 있어요': 'Speaking — tap the circle to interrupt',
+    '쉬는 중 — 원을 누르면 다시 들어요': 'Paused — tap the circle to listen again',
+    '(마이크가 켜졌어요. 말씀해 보세요)': '(The mic is on. Go ahead and speak)', '(소리가 들려요…)': '(I can hear you…)',
+    // 채팅 목록
+    '대화를 시작해 보세요': 'Start a conversation', '감자 톡톡': 'Gamja Talk', '나: ': 'Me: ',
+    '아직 대화가 없어요.': 'No chats yet.', '어제': 'Yesterday',
+    // 크루 탭
+    '자주 쓰는 크루': 'Favorites', '추천 크루': 'Suggested crews', '전체 보기 ›': 'See all ›', '추가': 'Add', '추가됨': 'Added',
+    '회사': 'Company', '가게': 'Shop', '개인': 'Personal', '직접 만든 크루': 'My own crews', '기본 대화': 'Default chat',
+    '찾는 크루가 없어요.': 'No crews found.', '크루 이름·소개 검색': 'Search crews', '검색': 'Search', '크루 추가': 'Add a crew',
+    '폴더와 상관없이 무엇이든 물어보는 기본 대화': 'The default chat — ask anything',
+    // 프로필 창
+    '채팅하기': 'Chat', '공유': 'Share', '설정': 'Settings', '자주 쓰는 크루에 추가': 'Add to favorites',
+    // 결과물
+    '전체': 'All', '웹페이지': 'Web pages', '이미지': 'Images', '문서': 'Documents', '음악': 'Music', '영상': 'Videos',
+    '아직 만든 결과물이 없어요.': 'Nothing has been made yet.',
+    '주소 복사': 'Copy address', '폰의 다른 앱으로 열어요': 'Opening in another app',
+    // 설정 목록
+    '나에 대해': 'About me', '호칭, 답변 스타일': 'Your name and reply style',
+    'AI 설정': 'AI settings', '모델, 생각 깊이, 대화 압축': 'Model, thinking depth, chat compression',
+    '소리·화면': 'Sound & display', '답변 읽어주기, 테마': 'Read replies, theme',
+    '보안': 'Security', '비밀번호, 로그아웃': 'Password, log out',
+    '연결': 'Connections', '외부 접속 주소, GitHub, 다른 폰에 설치': 'External address, GitHub, install on another phone',
+    '언어 설정': 'Language', '화면 언어: 자동, 한국어, English': 'Screen language: Auto, 한국어, English',
+    '도구 상자': 'Toolbox', '크루가 문서·그림·영상·소리를 만드는 도구': 'Tools for making documents, images, videos and sounds',
+    '문서 도구': 'Document tools', 'PDF · 워드 · 파워포인트 · 엑셀 문서 만들기': 'Make PDF, Word, PowerPoint and Excel files',
+    '그림 도구': 'Image tools', '로고 · 도표 · 카드뉴스 같은 그림 파일(PNG) 만들기': 'Make logos, charts and card news as PNG images',
+    '영상·소리 도구': 'Video & sound tools', '사진으로 슬라이드 영상, 간단한 소리 만들기': 'Make slideshow videos from photos and simple sounds',
+    '정보': 'About', '감자 로그인': 'Gamja login', '감자 버전': 'Gamja version', '감자알 버전': 'Gamja Egg version',
+    '자동 업데이트': 'Auto update', '켜짐 (3시간마다 확인)': 'On (checks every 3 hours)', '꺼짐 (개발용)': 'Off (dev build)',
+    '최근 감자알 업데이트': 'Recent Gamja Egg updates', '아직 기록이 없어요.': 'No history yet.',
+    '문제가 생겼을 때': 'If something goes wrong', '이전 버전으로 되돌리기': 'Roll back to the previous version',
+    '방금 바뀐 코드가 문제일 때 바로 이전 안정 버전으로': 'Go back to the last stable version if the newest change causes trouble',
+    '비상 모드': 'Emergency mode', '화면이 망가졌을 때 쓰는 탈출구': 'An escape hatch for when the screen is broken',
+    '✅ 로그인됨 · 이 폰': 'Logged in · this phone', '로그인됨 · 이 폰': 'Logged in · this phone', '로그인됨 · 다른 기기': 'Logged in · another device',
+    '로그인 안 됨': 'Not logged in',
+    // 감자 앱 묶음
+    '감자 앱': 'Gamja app', '다른 기기에서 접속': 'Connect from another device',
+    '같은 와이파이의 주소와 비밀번호를 보여 줘요': 'Shows the Wi-Fi address and password',
+    'Claude 로그인 다시 하기': 'Log in to Claude again', '공식 Claude 로그인 화면을 열어요': 'Opens the official Claude login',
+    '배터리 설정': 'Battery settings', '화면이 꺼져도 감자알이 계속 돌게 해요': 'Keeps Gamja Egg running when the screen is off',
+    '오픈소스 라이선스': 'Open-source licenses', '감자가 사용하는 오픈소스 목록': 'Open-source software Gamja uses',
+    // 소리·화면, 보안
+    '대화 글자 크기': 'Chat text size', '테마': 'Theme', '폰 설정 따르기': 'Follow phone', '밝게': 'Light', '어둡게': 'Dark',
+    '답이 끝나면 소리로 읽어 줘요': 'Read replies aloud when they finish',
+    '로그인 비밀번호': 'Login password', '현재 비밀번호': 'Current password', '새 비밀번호': 'New password',
+    '새 비밀번호 보이기': 'Show new password', '안전한 비밀번호 만들기': 'Generate a safe password', '비밀번호 바꾸기': 'Change password',
+    '로그아웃': 'Log out', '이 기기에서 로그아웃': 'Log out on this device',
+    // 크루 입력 양식·설정
+    '저장했어요': 'Saved', '크루 삭제': 'Delete crew', '이 크루 공유하기': 'Share this crew', '대화 정보': 'Chat info',
+    '이 크루의 모델': 'Model for this crew', '이 크루의 생각 깊이': 'Thinking depth for this crew',
+    '전체 설정 따르기': 'Follow global setting', '빠르게': 'Fast', '보통': 'Normal', '깊게': 'Deep',
+    '모델·생각 깊이는 다음 메시지부터 적용돼요.': 'Model and thinking depth apply from the next message.',
+    // 크루 고르기·가져오기·공유
+    '크루 스토어': 'Suggested crews', '코드로 가져오기': 'Import with a code', '확인하기': 'Check', '취소': 'Cancel',
+    '크루 추가하기': 'Add crew', '복사한 코드 붙여넣기': 'Paste the copied code', '코드 복사': 'Copy code',
+    '공유하기': 'Share', '지침 전체': 'Full instructions', '예시 문장': 'Example prompts',
+    // GitHub·연결
+    'GitHub 연결': 'GitHub', 'GitHub 연결하기': 'Connect GitHub', '연결 끊기': 'Disconnect', '지금 기록하기': 'Back up now',
+    'GitHub에서 보기': 'View on GitHub', '마지막 기록': 'Last backup', '방금 전': 'Just now', '아직 없어요': 'None yet',
+    '외부 접속 주소': 'External address', '다른 폰에 설치': 'Install on another phone', '상태': 'Status', '켜기': 'Turn on',
+    // 공통 알림
+    '이미 최신 버전이에요': 'Already up to date', '새 버전이 있는지 확인하는 중...': 'Checking for updates...',
+    '새 버전을 받았어요. 곧 다시 시작해요': 'Got a new version. Restarting soon',
+    '이 감자알은 개발용이라 자동 업데이트가 꺼져 있어요': 'This is a dev build, so auto-update is off',
+    '감자알이 다시 시작하는 중이에요. 잠시만 기다려 주세요': 'Restarting — please wait a moment',
+    '사진을 읽지 못했어요': 'Could not read the photo', '선택한 사진을 받지 못했어요': 'Could not receive the selected photos',
+    '크루를 추가했어요. 위의 내 크루에서 찾을 수 있어요': 'Crew added. Find it under My crews',
+    '이미 있는 크루예요': 'That crew already exists',
+    '복사했어요': 'Copied', '주소를 복사했어요': 'Address copied',
+    '답변을 읽어 드릴게요': 'Replies will be read aloud', '읽어주기를 껐어요': 'Read-aloud is off',
+    '새로운 대화를 시작했어요': 'Started a new chat',
+  }));
+  // 숫자·이름이 들어가는 글: [정규식, 영어 ($1, $2는 정규식에서 잡은 값)]
+  const EN_PATTERN = [
+    [/^자주 쓰는 크루 (\d+)$/, 'Favorites $1'], [/^내 크루 (\d+)$/, 'My crews $1'], [/^검색 결과 (\d+)$/, 'Results $1'],
+    [/^사진은 (\d+)장까지 첨부할 수 있어요$/, 'You can attach up to $1 photos'],
+    [/^(\d+)분 전$/, '$1 min ago'], [/^(\d+)시간 전$/, '$1 h ago'], [/^(\d+)일 전$/, '$1 d ago'],
+    [/^작업 중… ?(.*)$/, 'Working… $1'],
+    [/^(\d+)초$/, '$1 s'], [/^약 (\d+)MB$/, 'About $1 MB'],
+    [/^(전체|웹페이지|이미지|문서|음악|영상) (\d+)$/, (m, k, n) => `${EN_TEXT.get(k) || k} ${n}`],
+    [/^(.+)의 결과물$/, 'Results of $1'],
+    [/^음성 인식 오류 \((.*)\)$/, 'Voice recognition error ($1)'],
+    [/^감자알 (\d+\.\d+\.\d+)으로 업데이트됐어요$/, 'Gamja Egg updated to $1'],
+  ];
+  function lookupEn(core) {
+    if (EN_TEXT.has(core)) return EN_TEXT.get(core);
+    for (const [re, rep] of EN_PATTERN) if (re.test(core)) return core.replace(re, rep);
+    return null;
+  }
+  const HAS_KO = /[가-힣]/;
+  function trText(s) {
+    if (lang !== 'en') return s;
+    const raw = String(s);
+    if (!HAS_KO.test(raw)) return raw;
+    const lead = raw.match(/^\s*/)[0];
+    const trail = raw.match(/\s*$/)[0];
+    const core = raw.slice(lead.length, raw.length - trail.length);
+    if (!core) return raw;
+    const hit = lookupEn(core);
+    if (hit !== null) return lead + hit + trail;
+    // 앞의 기호(이모지·글머리표)를 떼고 한 번 더: "• 쓰지 않을 때는 꺼 두세요."
+    const m = core.match(/^([^\p{L}\p{N}]+)([\s\S]*)$/u);
+    if (m) { const h2 = lookupEn(m[2]); if (h2 !== null) return lead + m[1] + h2 + trail; }
+    return raw;
+  }
+
+  // ---------- 화면(DOM)의 글을 영어로 바꿔 끼우기 (화면 언어가 영어일 때만) ----------
+  // 대화 말풍선(오류 말풍선 제외), 코드, 입력칸의 글은 건드리지 않는다
+  const SKIP = '.row:not(.error) .bubble, .bubble pre, pre, code, textarea, input, script, style, svg, .crew-pre, .codeblock, [data-no-i18n]';
+  const ATTRS = ['placeholder', 'title', 'aria-label'];
+  function translateTree(root) {
+    if (lang !== 'en' || !root) return;
+    const base = root.nodeType === 1 ? root : root.parentElement;
+    if (!base || (base.closest && base.closest(SKIP))) return;
+    if (root.nodeType === 3) {
+      const v = root.nodeValue; const tv = trText(v);
+      if (tv !== v) root.nodeValue = tv;
+      return;
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const list = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) list.push(n);
+    for (const n of list) {
+      const p = n.parentElement;
+      if (!p || (p.closest && p.closest(SKIP))) continue;
+      const v = n.nodeValue;
+      if (!HAS_KO.test(v)) continue;
+      const tv = trText(v);
+      if (tv !== v) n.nodeValue = tv;
+    }
+    for (const el of [root, ...root.querySelectorAll('[placeholder],[title],[aria-label]')]) {
+      if (!el.getAttribute || (el.closest && el.closest(SKIP) && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) continue;
+      for (const a of ATTRS) {
+        const v = el.getAttribute(a);
+        if (v && HAS_KO.test(v)) { const tv = trText(v); if (tv !== v) el.setAttribute(a, tv); }
+      }
+    }
+  }
+  function startTranslator() {
+    if (lang !== 'en' || !document.body) return;
+    // 알림창·확인창·입력창의 글도 영어로 (alert/confirm/prompt에 한국어 원문을 그대로 넘기는 코드를 고치지 않아도 된다)
+    for (const fn of ['alert', 'confirm', 'prompt']) {
+      const orig = window[fn].bind(window);
+      window[fn] = (msg, ...rest) => orig(trText(String(msg ?? '')), ...rest);
+    }
+    translateTree(document.body);
+    new MutationObserver((list) => {
+      for (const m of list) {
+        if (m.type === 'characterData') translateTree(m.target);
+        else if (m.type === 'attributes') translateTree(m.target);
+        else for (const n of m.addedNodes) translateTree(n);
+      }
+    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+  }
+
+  window.GAMJA_I18N = {
+    t, add, setLang, trText, locale,
+    get lang() { return lang; },
+    get pref() { return pref; },
+    get supported() { return LANGS.slice(); },
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startTranslator); else startTranslator();
+
+  // ---------- 새 화면의 글 (키로 적는 방식) ----------
+  add('ko', {
+    'crew.make': '✏️ 직접 만들기',
+    'crew.makeSub': '이름과 맡길 일 적기 ›',
+    'crew.import': '📥 친구가 보낸 크루 코드로 추가',
+    'crew.importSub': '붙여넣기 ›',
+    'crew.deleteConfirm': "'{name}' 크루를 삭제할까요?\n크루의 폴더와 지침은 휴지통(~/projects/.trash)으로 옮겨져요.\n나눈 대화는 채팅 목록에 '삭제된 크루'로 남아요.\n30일 안에는 복구할 수 있고, 그 뒤에는 완전히 지워져요.",
+    'room.title': '채팅방 설정',
+    'room.name': '채팅방 이름',
+    'room.nameNote': '비워 두면 크루 이름을 써요. 이 폰에만 저장돼요.',
+    'room.members': '참여자',
+    'room.memberNote': '크루를 누르면 크루 설정(지침·모델·공유·삭제)으로 가요.',
+    'room.deleteNote': '채팅방을 지우면 이 방의 대화가 사라지고 채팅 목록에서도 없어져요. 크루는 그대로 남아요.',
+    'room.delete': '🗑 채팅방 삭제',
+    'room.deleteConfirm': "'{name}' 채팅방을 삭제할까요?\n대화가 지워지고 되돌릴 수 없어요. 크루는 그대로 남아요.",
+    'room.saved': '저장했어요',
+    'room.loading': '대화를 불러오는 중이에요',
+    'room.pin': '채팅 목록 맨 위에 고정',
+    'room.memberNoteGone': '삭제된 크루예요. 복구하면 지침과 만든 파일, 대화가 그대로 돌아와요.',
+    'room.deleteNoteGone': '채팅방을 지우면 이 대화가 완전히 사라져요. 되돌릴 수 없어요.',
+    'gone.placeholder': '삭제된 크루라 대화할 수 없어요',
+    'gone.note': '이 크루는 삭제돼서 더 이상 대화할 수 없어요. 다시 대화하려면 30일 안에 크루를 복구하세요.',
+    'gone.rename': "같은 이름('{name}')의 크루가 이미 있어요.\n복구할 크루의 새 이름을 적어 주세요. (영문·숫자·한글·-·_ 로 40자까지)",
+    'newchat.title': '채팅방 만들기',
+    'newchat.note': '참여할 크루를 고르면 새 채팅방이 만들어져요. 두 명 이상 고르면 크루들이 한 방에서 차례로 의견을 내는 그룹 채팅이 돼요.',
+    'newchat.groupNote': '최대 {max}명까지 고를 수 있어요. 그룹 채팅에서는 크루가 의견만 내고 파일은 고치지 않아요. @크루이름으로 부르면 그 크루만 답해요.',
+    'room.groupPh': '메시지 입력 · @이름으로 지목',
+    'room.groupOff': '그룹 채팅은 준비 중이에요',
+    'room.invite': '＋ 참여자 초대',
+    'room.inviteFirst': '첫 방은 초대할 수 없어요',
+    'room.inviteFull': '최대 {max}명이에요',
+    'invite.title': '참여자 초대',
+    'invite.note': '방에 초대할 크루를 고르세요. {slots}명까지 더 초대할 수 있어요. 둘 이상이 되면 그룹 채팅이 돼요.',
+    'invite.go': '초대하기',
+    'invite.none': '초대할 수 있는 크루가 없어요.',
+    'member.open': '크루 설정 열기',
+    'member.kick': '이 방에서 내보내기',
+    'member.kickNote': '내보내도 크루는 지워지지 않고, 이 방의 대화 기록도 그대로 남아요.',
+    'member.kickNoteNo': '참여자가 두 명 이하인 방에서는 내보낼 수 없어요. 방 자체를 지우려면 채팅방 설정의 "채팅방 삭제"를 쓰세요.',
+    'member.kickConfirm': "'{name}'을(를) 이 방에서 내보낼까요?\n크루는 그대로 남아요.",
+    'room.summary': '정리',
+    'newchat.noteSoon': '채팅방 만들기는 준비 중이에요. 이름과 참여자를 고르는 화면만 먼저 보여 드려요.',
+    'newchat.goSoon': '채팅방 만들기 (준비 중)',
+    'newchat.name': '채팅방 이름',
+    'newchat.namePh': '비워 두면 크루 이름과 시각으로 정해요',
+    'newchat.members': '참여자',
+    'newchat.group': '＋ 참여자 더 추가 (그룹 채팅)',
+    'newchat.soon': '준비 중',
+    'newchat.go': '채팅방 만들기',
+    'room.inviteSoon': '＋ 참여자 초대 (그룹 채팅)',
+    'gone.restore': '크루 복구하기',
+    'gone.restoreShort': '복구',
+    'gone.restored': '크루를 복구했어요',
+    'chat.deletedCrew': '삭제된 크루',
+    'chat.goneNote': '삭제된 크루와 나눈 대화예요. 읽기만 할 수 있어요.',
+    'chat.eraseGoneBtn': '이 대화 지우기',
+    'chat.eraseGoneConfirm': '이 대화를 완전히 지울까요? 되돌릴 수 없어요.',
+    'chat.eraseConfirm': "'{name}' 방의 대화를 지울까요?\n크루는 그대로 남아요.",
+    'chat.eraseBusy': '지금 작업 중이에요. 끝난 뒤에 지워 주세요.',
+    'cf.title': '직접 만들기',
+    'cf.intro': '이름과 맡길 일만 적으면 나만의 크루가 만들어져요. 나중에 크루 설정에서 언제든 고칠 수 있어요.',
+    'cf.icon': '아이콘',
+    'cf.name': '이름',
+    'cf.namePh': '예) 우리가게 후기',
+    'cf.blurb': '한 줄 소개 (선택)',
+    'cf.blurbPh': '예) 손님 후기에 답글을 써 줘요',
+    'cf.group': '묶음',
+    'cf.job': '맡길 일',
+    'cf.jobPh': '예) 손님 후기에 정중한 답글을 달아 주는 일',
+    'cf.make': '크루 만들기',
+    'cf.needName': '이름을 적어 주세요',
+    'cf.needJob': '맡길 일을 적어 주세요',
+    'lang.title': '🌐 언어',
+    'tools.intro': '크루가 PDF·워드·그림·영상·소리 같은 파일을 만들 때 쓰는 도구예요. 필요한 것만 설치하세요. 설치한 도구로 만든 파일은 결과물에 모여요.',
+    'tools.install': '설치',
+    'tools.installing': '설치 중…',
+    'tools.installed': '설치됨',
+    'tools.started': '설치를 시작했어요. 몇 분 걸려요',
+    'tools.note': '와이파이에 연결하고 충전기를 꽂은 채로 설치하는 걸 권해요. 설치하는 동안에는 크루에게 일을 시키지 마세요.',
+  });
+  add('en', {
+    'crew.make': '✏️ Create your own',
+    'crew.makeSub': 'Write a name and a job ›',
+    'crew.import': '📥 Add with a code from a friend',
+    'crew.importSub': 'Paste ›',
+    'crew.deleteConfirm': "Delete the crew '{name}'?\nIts folder and instructions move to the trash (~/projects/.trash).\nYour conversation stays in the chat list as a 'Deleted crew'.\nYou can restore it within 30 days; after that it is erased for good.",
+    'room.title': 'Chat room settings',
+    'room.name': 'Chat room name',
+    'room.nameNote': 'Leave it empty to use the crew name. Saved on this phone only.',
+    'room.members': 'Members',
+    'room.memberNote': 'Tap the crew to open the crew settings (instructions, model, share, delete).',
+    'room.deleteNote': 'Deleting the chat room erases its conversation and removes it from the chat list. The crew itself stays.',
+    'room.delete': '🗑 Delete chat room',
+    'room.deleteConfirm': "Delete the chat room '{name}'?\nThe conversation will be erased and cannot be restored. The crew itself stays.",
+    'room.saved': 'Saved',
+    'room.loading': 'Loading the conversation',
+    'room.pin': 'Pin to the top of the chat list',
+    'room.memberNoteGone': 'This crew was deleted. Restore it to get its instructions, files and conversation back.',
+    'room.deleteNoteGone': 'Deleting the chat room erases this conversation for good. It cannot be undone.',
+    'gone.placeholder': 'This crew was deleted, so you cannot chat',
+    'gone.note': 'This crew was deleted, so you cannot chat anymore. Restore the crew within 30 days to chat again.',
+    'gone.rename': "A crew named '{name}' already exists.\nEnter a new name for the restored crew. (letters, numbers, Korean, - and _ up to 40 characters)",
+    'newchat.title': 'Create a chat room',
+    'newchat.note': 'Pick the crew to join and a new chat room is created. Pick two or more for a group chat where the crews give their opinions one after another.',
+    'newchat.groupNote': 'You can pick up to {max} crews. In a group chat the crews only give opinions and do not edit files. Mention a crew with @name to hear only from it.',
+    'room.groupPh': 'Message · @name to ask one',
+    'room.groupOff': 'Group chat is coming soon',
+    'room.invite': '＋ Invite members',
+    'room.inviteFirst': 'Not available in the first room',
+    'room.inviteFull': 'Up to {max} members',
+    'invite.title': 'Invite members',
+    'invite.note': 'Pick the crews to invite. You can invite {slots} more. With two or more it becomes a group chat.',
+    'invite.go': 'Invite',
+    'invite.none': 'There are no crews left to invite.',
+    'member.open': 'Open crew settings',
+    'member.kick': 'Remove from this room',
+    'member.kickNote': 'The crew is not deleted and the conversation in this room stays.',
+    'member.kickNoteNo': 'You cannot remove members from a room with two or fewer. To remove the room itself, use "Delete chat room" in the room settings.',
+    'member.kickConfirm': "Remove '{name}' from this room?\nThe crew itself stays.",
+    'room.summary': 'Summary',
+    'newchat.noteSoon': 'Creating chat rooms is coming soon. For now you can only preview the screen for choosing a name and members.',
+    'newchat.goSoon': 'Create chat room (coming soon)',
+    'newchat.name': 'Chat room name',
+    'newchat.namePh': 'Leave empty to use the crew name and time',
+    'newchat.members': 'Members',
+    'newchat.group': '＋ Add more members (group chat)',
+    'newchat.soon': 'Coming soon',
+    'newchat.go': 'Create chat room',
+    'room.inviteSoon': '＋ Invite members (group chat)',
+    'gone.restore': 'Restore crew',
+    'gone.restoreShort': 'Restore',
+    'gone.restored': 'Crew restored',
+    'chat.deletedCrew': 'Deleted crew',
+    'chat.goneNote': 'This is a conversation with a deleted crew. Read only.',
+    'chat.eraseGoneBtn': 'Delete this conversation',
+    'chat.eraseGoneConfirm': 'Delete this conversation for good? This cannot be undone.',
+    'chat.eraseConfirm': "Delete the conversation in '{name}'?\nThe crew itself stays.",
+    'chat.eraseBusy': 'It is working right now. Please try again when it finishes.',
+    'cf.title': 'Create your own',
+    'cf.intro': 'Just give it a name and a job, and your own crew is ready. You can change it anytime in the crew settings.',
+    'cf.icon': 'Icon',
+    'cf.name': 'Name',
+    'cf.namePh': 'e.g. Shop reviews',
+    'cf.blurb': 'One-line description (optional)',
+    'cf.blurbPh': 'e.g. Writes replies to customer reviews',
+    'cf.group': 'Group',
+    'cf.job': 'Job',
+    'cf.jobPh': 'e.g. Politely reply to customer reviews',
+    'cf.make': 'Create crew',
+    'cf.needName': 'Please enter a name',
+    'cf.needJob': 'Please describe the job',
+    'lang.title': '🌐 Language',
+    'tools.intro': 'Tools your crews use to make files like PDFs, Word documents, images, videos and sounds. Install only what you need. Files made with them appear under Results.',
+    'tools.install': 'Install',
+    'tools.installing': 'Installing…',
+    'tools.installed': 'Installed',
+    'tools.started': 'Installing — this takes a few minutes',
+    'tools.note': 'We recommend installing on Wi-Fi while charging. Please do not give crews tasks while installing.',
+  });
+})();

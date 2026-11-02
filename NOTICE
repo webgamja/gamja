@@ -1,0 +1,53 @@
+GAMJA (감자)
+Copyright 2026 GAMJA contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The names "GAMJA" and "감자" and the GAMJA logo are not covered by that license (see TRADEMARK.md).
+
+------------------------------------------------------------------------------
+Third-party software included in or used by the GAMJA Android app
+------------------------------------------------------------------------------
+
+The GAMJA APK bundles the following components. They are separate programs
+under their own licenses; GAMJA does not modify them.
+
+* proot (and its loader)
+    License: GNU General Public License, version 2 or later
+    Source:  https://github.com/proot-me/proot
+    Packaged by the Termux project: https://github.com/termux/termux-packages
+    The proot program runs as a separate executable. The complete corresponding
+    source code is available at the address above.
+
+* libtalloc
+    License: GNU Lesser General Public License, version 3 or later
+    Source:  https://talloc.samba.org/
+
+* Termux terminal-view and terminal-emulator libraries
+    License: Apache License, Version 2.0
+    Source:  https://github.com/termux/termux-app
+
+* Apache Commons Compress
+    License: Apache License, Version 2.0
+    Source:  https://commons.apache.org/proper/commons-compress/
+
+The web interface (public/) includes:
+
+* Feather icons (the settings gear icon)
+    License: MIT
+    Source:  https://github.com/feathericons/feather
+
+------------------------------------------------------------------------------
+Software downloaded at runtime (not distributed with GAMJA)
+------------------------------------------------------------------------------
+
+On first run, GAMJA downloads the following from their official sources onto
+the user's own device. They are not part of this repository or the APK.
+
+* Ubuntu base image (Canonical and contributors, various licenses)
+* Node.js (OpenJS Foundation, MIT and other licenses)
+* Claude Code (Anthropic, installed with Anthropic's official installer under
+  Anthropic's own terms; the user signs in with their own Anthropic account)
+
+"Claude" and "Anthropic" are trademarks of Anthropic, PBC. GAMJA is an
+independent project and is not affiliated with, endorsed by, or sponsored by
+Anthropic.

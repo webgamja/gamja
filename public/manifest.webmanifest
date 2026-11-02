@@ -1,0 +1,8 @@
+{
+  "name": "GAMJA",
+  "short_name": "GAMJA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1c1e",
+  "theme_color": "#1c1c1e"
+}

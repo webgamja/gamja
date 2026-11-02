@@ -1,0 +1,9 @@
+{
+  "name": "gamja-egg",
+  "version": "0.1.0",
+  "description": "감자알(gamja-egg) — GAMJA 안에서 돌아가는 서버. 휴대폰에서 Claude Code를 채팅으로 쓰는 웹 앱 (의존성 없음)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "Apache-2.0"
+}

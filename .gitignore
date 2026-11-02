@@ -1,0 +1,14 @@
+.env
+node_modules/
+data/
+.gamja-uploads/
+
+# 안드로이드 빌드 산출물 (CI에서 생성)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/bin/
+android/app/src/main/assets/gamja-egg.pack
+android/app/src/main/assets/egg-build.txt
+BUILD

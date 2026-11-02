@@ -1,0 +1,42 @@
+name: Bug report / 버그 제보
+description: Something does not work as expected / 잘 안 되는 게 있어요
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping! 제보해 주셔서 고마워요.
+        **Security problems: please do not post them here.** See SECURITY.md. 보안 문제는 여기에 올리지 말고 SECURITY.md를 봐 주세요.
+        **Never paste passwords, tokens or private conversations. 비밀번호·토큰·개인 대화는 붙이지 말아 주세요.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? / 무슨 일이 있었나요?
+      description: What did you expect, and what happened instead? 기대한 것과 실제로 일어난 일
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 어떻게 하면 다시 생기나요?
+      placeholder: "1. 채팅 탭을 연다\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: GAMJA version / 감자 버전
+      description: More → Information (감자 and 감자알 version) / 더보기 → 정보에서 감자와 감자알 버전
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version / 폰과 안드로이드 버전
+      placeholder: Galaxy S21, Android 14
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else / 스크린샷이나 더 알려 줄 것

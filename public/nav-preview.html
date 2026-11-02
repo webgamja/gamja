@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>감자 아래 메뉴 시안</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: auto; background: #e9ecef; color: #191f28; }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 18px 14px 60px; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  h2.sec { font-size: 15px; margin: 30px 0 4px; color: #444; }
+  .note { font-size: 13px; color: #6b7684; margin: 0 0 10px; line-height: 1.5; }
+  .tag { font-size: 12px; font-weight: 700; color: #6b7684; margin: 12px 4px 6px; }
+
+  /* 폰 모양 틀: 위 제목줄 + 가운데 내용 + 아래 메뉴 */
+  .phone { position: relative; display: flex; flex-direction: column; height: 600px; border-radius: 26px; overflow: hidden; background: var(--ui-bg); color: var(--ui-text); box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  /* 노란색(--me)은 감자 채팅의 말풍선·버튼과 똑같은 값이고, 아이콘의 노란 면(--gi-a)도 그 값을 그대로 쓴다 */
+  .phone.lt { --ui-bg: #f2f4f6; --ui-card: #fff; --ui-text: #191f28; --ui-sub: #6b7684; --ui-line: #e5e8eb; --me: #fee500; --me-fg: #191919; --gi-a: var(--me); --nav-off: #9aa3ae; }
+  .phone.dk { --ui-bg: #101114; --ui-card: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #2b2d33; --me: #f5d90a; --me-fg: #191919; --gi-a: var(--me); --nav-off: #7c8491; }
+  .top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 18px 6px; }
+  .top h3 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.3px; }
+  .top .acts { display: flex; gap: 14px; }
+  .top svg, .row-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .body { flex: 1; overflow: hidden; padding: 6px 14px 0; }
+  .search { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; padding: 10px 14px; border-radius: 14px; background: var(--ui-card); color: var(--ui-sub); font-size: 14px; }
+  .search svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+  /* 채팅 목록 줄 */
+  .list { background: var(--ui-card); border-radius: 20px; overflow: hidden; }
+  .chat-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--ui-line); }
+  .chat-row:last-child { border-bottom: 0; }
+  .av { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--ui-bg); font-size: 22px; font-style: normal; }
+  .av .gi-s { width: 26px; height: 26px; }
+  .me-card .av .gi-s { width: 30px; height: 30px; --gi-a: #fff; }
+  .mid { flex: 1; min-width: 0; }
+  .mid b { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small { display: block; margin-top: 2px; font-size: 13px; color: var(--ui-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mid small.run { color: #b8860b; font-weight: 700; }
+  .phone.dk .mid small.run { color: var(--me); }
+  .end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; font-size: 11px; color: var(--ui-sub); }
+  .badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--me); color: var(--me-fg); font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--me); box-shadow: 0 0 0 3px color-mix(in srgb, var(--me) 30%, transparent); }
+  .sec-t { margin: 14px 4px 8px; font-size: 13px; font-weight: 700; color: var(--ui-sub); }
+  .star { color: #f5c400; }
+
+  /* 크루 목록·더보기 줄 */
+  .crew-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--ui-line); }
+  .crew-row:last-child { border-bottom: 0; }
+  .crew-row .mid small { margin-top: 1px; }
+  .row-ico { flex: none; color: var(--ui-sub); }
+  .add { margin: 12px 0 0; height: 50px; border-radius: 14px; background: var(--me); color: var(--me-fg); font-weight: 800; display: grid; place-items: center; font-size: 16px; }
+  .set { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--ui-line); }
+  .set:last-child { border-bottom: 0; }
+  .set span { flex: 1; font-weight: 600; }
+  .set i { color: var(--ui-sub); font-style: normal; font-size: 20px; }
+  .me-card { display: flex; align-items: center; gap: 12px; padding: 16px 14px; margin-bottom: 10px; background: var(--ui-card); border-radius: 20px; }
+  .me-card .av { width: 52px; height: 52px; font-size: 26px; background: var(--me); }
+
+  /* 아래 메뉴(GNB): 카카오톡처럼 글자 아이콘 3개, 지금 있는 곳은 진하게 + 노란 면 */
+  .gnb { flex: none; display: flex; padding: 6px 8px calc(10px); background: var(--ui-card); border-top: 1px solid var(--ui-line); }
+  .gnb a { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 2px; color: var(--nav-off); font-size: 11px; font-weight: 700; text-decoration: none; }
+  .gnb a.on { color: var(--ui-text); }
+  .gnb svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .gnb a.on svg .a { fill: var(--gi-a); }
+  .gnb .cnt { position: absolute; top: 0; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+  .room-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 18px 14px 10px; background: #bacee0; color: #1e1e1e; font-weight: 700; }
+  .phone.dk .room-top { background: #232326; color: #ececec; }
+  .room-body { flex: 1; background: #bacee0; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .phone.dk .room-body { background: #1c1c1e; }
+  .bub { max-width: 78%; padding: 8px 11px; border-radius: 14px; font-size: 14px; background: #fff; color: #191919; }
+  .bub.me { align-self: flex-end; background: #fee500; border-top-right-radius: 4px; }
+  .phone.dk .bub { background: #2c2c2e; color: #ececec; }
+  .phone.dk .bub.me { background: #f5d90a; color: #191919; }
+  .room-in { flex: none; padding: 8px 12px 14px; background: #fff; }
+  .phone.dk .room-in { background: #232326; }
+  .room-in div { padding: 10px 14px; border-radius: 22px; background: #f2f2f2; color: #999; font-size: 14px; }
+  .phone.dk .room-in div { background: #333336; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🥔 감자 아래 메뉴 시안</h1>
+  <p class="note">카카오톡처럼 맨 아래에 <b>크루 · 채팅 · 더보기</b> 순서로 세 칸을 두는 안이에요. 감자에 접속하면 항상 가운데 <b>채팅</b>으로 먼저 들어가요. (그림이라서 눌러도 아무 일도 안 일어나요)</p>
+
+  <h2 class="sec">1. 채팅 목록 (처음 열면 여기)</h2>
+  <p class="note">최근 대화한 크루가 위로 올라와요. 마지막 말, 시간, 작업 중 표시, 안 읽은 완료 알림 숫자가 보여요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>채팅</h3><div class="acts">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div></div>
+      <div class="body">
+        <div class="list">
+          <div class="chat-row"><i class="av">🌐</i><div class="mid"><b>홈페이지 크루</b><small class="run">작업 중… 소개 페이지를 만들고 있어요</small></div><div class="end"><span>방금</span><span class="dot"></span></div></div>
+          <div class="chat-row"><i class="av">🍽️</i><div class="mid"><b>메뉴판·가격표 크루</b><small>메뉴판을 만들었어요. 결과물에서 확인해 보세요</small></div><div class="end"><span>오전 10:31</span><span class="badge">1</span></div></div>
+          <div class="chat-row"><i class="av">📁</i><div class="mid"><b>gamja</b><small>GitHub에 올렸어요. 지금 CI가 빌드하고 있을 거예요</small></div><div class="end"><span>어제</span></div></div>
+          <div class="chat-row"><i class="av">🏠</i><div class="mid"><b>홈 대화</b><small>무엇을 도와드릴까요?</small></div><div class="end"><span>월요일</span></div></div>
+        </div>
+      </div>
+      <nav class="gnb">
+        <a><svg viewBox="0 0 24 24"><circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a class="on"><span class="cnt">1</span><svg viewBox="0 0 24 24"><path class="a" d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅</a>
+        <a><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+
+  <h2 class="sec">2. 크루 목록</h2>
+  <p class="note">지금의 홈 화면이에요. ★ 자주 쓰는 크루, 공유, 설정, 크루 추가는 여기에서 해요. 크루를 누르면 그 크루의 채팅방이 열려요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>크루</h3><div class="acts"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></div></div>
+      <div class="body">
+        <div class="sec-t"><span class="star">★</span> 자주 쓰는 크루</div>
+        <div class="list">
+          <div class="crew-row"><i class="av">🌐</i><div class="mid"><b>홈페이지 크루</b><small>회사 크루</small></div><span class="row-ico"><svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg></span></div>
+          <div class="crew-row"><i class="av">🍽️</i><div class="mid"><b>메뉴판·가격표 크루</b><small>가게 크루</small></div><span class="row-ico"><svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg></span></div>
+        </div>
+        <div class="sec-t">모든 크루</div>
+        <div class="list">
+          <div class="crew-row"><i class="av">📁</i><div class="mid"><b>gamja</b><small>직접 만든 크루</small></div><span class="row-ico"><svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg></span></div>
+        </div>
+        <div class="add">＋ 크루 추가</div>
+      </div>
+      <nav class="gnb">
+        <a class="on"><svg viewBox="0 0 24 24"><circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a><span class="cnt">1</span><svg viewBox="0 0 24 24"><path class="a" d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅</a>
+        <a><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+
+  <h2 class="sec">3. 더보기</h2>
+  <p class="note">지금의 설정이에요. 내 계정 상태가 맨 위에 보이고, 결과물 모아보기가 새로 들어가요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="top"><h3>더보기</h3></div>
+      <div class="body">
+        <div class="me-card"><i class="av">🥔</i><div class="mid"><b>성호</b><small>Claude 계정 연결됨 · 이 폰</small></div></div>
+        <div class="list">
+          <div class="set"><i class="av" style="width:36px;height:36px;font-size:18px">👀</i><span>결과물 모아보기</span><i>›</i></div>
+          <div class="set"><i class="av" style="width:36px;height:36px;font-size:18px">👤</i><span>나에 대해</span><i>›</i></div>
+          <div class="set"><i class="av" style="width:36px;height:36px;font-size:18px">🤖</i><span>AI 설정</span><i>›</i></div>
+          <div class="set"><i class="av" style="width:36px;height:36px;font-size:18px">🔊</i><span>소리·화면</span><i>›</i></div>
+          <div class="set"><i class="av" style="width:36px;height:36px;font-size:18px">🌐</i><span>연결</span><i>›</i></div>
+        </div>
+      </div>
+      <nav class="gnb">
+        <a><svg viewBox="0 0 24 24"><circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>크루</a>
+        <a><span class="cnt">1</span><svg viewBox="0 0 24 24"><path class="a" d="M4 5h16v11H10l-4 4v-4H4z"/></svg>채팅</a>
+        <a class="on"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</a>
+      </nav>
+    </div>
+  </template></div>
+
+  <h2 class="sec">4. 채팅방 안 (아래 메뉴가 사라져요)</h2>
+  <p class="note">카카오톡처럼 채팅방에 들어가면 아래 메뉴는 숨겨지고, 입력창이 맨 아래에 와요. 왼쪽 위 ←로 목록에 돌아가요. 지금의 "크루 이름 ▾"는 이 ←로 바뀌어요.</p>
+  <div class="pair"><template>
+    <div class="phone">
+      <div class="room-top"><svg viewBox="0 0 24 24" style="width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M15 6l-6 6 6 6"/></svg><span>🌐 홈페이지 크루</span></div>
+      <div class="room-body">
+        <div class="bub me">우리 회사 소개 페이지 만들어 줘</div>
+        <div class="bub">네! 한 장짜리 소개 페이지를 만들었어요. 결과물에서 볼 수 있어요.</div>
+      </div>
+      <div class="room-in"><div>메시지 입력</div></div>
+    </div>
+  </template></div>
+</div>
+<script src="icons.js"></script>
+<script>
+  // 각 그림을 밝은 화면과 어두운 화면으로 두 번 그린다
+  document.querySelectorAll('.pair').forEach((pair) => {
+    const tpl = pair.querySelector('template');
+    for (const [cls, name] of [['lt', '☀️ 밝은 화면'], ['dk', '🌙 어두운 화면']]) {
+      const tag = document.createElement('div'); tag.className = 'tag'; tag.textContent = name;
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('.phone').classList.add(cls);
+      pair.append(tag, node);
+    }
+  });
+</script>
+</body>
+</html>

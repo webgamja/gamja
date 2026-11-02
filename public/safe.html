@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- 비상 모드: app.js/style.css가 망가져도 쓸 수 있도록 이 파일 하나로 동작한다. 함부로 고치지 말 것. -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>감자 비상 모드</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px; font: 15px/1.5 -apple-system, "Noto Sans KR", sans-serif; background: Canvas; color: CanvasText; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; font-size: 13px; opacity: .75; }
+  input, textarea, button { font: inherit; font-size: 16px; width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 10px; border-radius: 8px; border: 1px solid #8886; }
+  button { background: #fee500; color: #191919; border: 0; font-weight: 600; }
+  button.gray { background: #8883; color: inherit; }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #8882; padding: 10px; border-radius: 8px; min-height: 80px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>🛟 감자 비상 모드</h1>
+<p>평소 화면이 망가졌을 때 쓰는 페이지예요. Claude에게 고쳐 달라고 하거나, 이전 버전으로 되돌릴 수 있어요.</p>
+
+<div id="loginBox" hidden>
+  <input id="pw" type="password" placeholder="비밀번호">
+  <button id="loginBtn">로그인</button>
+</div>
+
+<input id="project" value="gamja" placeholder="프로젝트 폴더 이름">
+<textarea id="msg" rows="4" placeholder="예) 화면이 안 떠. 고치고 재시작해 줘"></textarea>
+<button id="sendBtn">Claude에게 보내기</button>
+<div class="row">
+  <button id="restartBtn" class="gray">🔄 재시작</button>
+  <button id="rollbackBtn" class="gray">⏪ 이전 버전으로</button>
+</div>
+<button class="gray" onclick="location.href='/'">← 평소 화면으로</button>
+<pre id="out"></pre>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const out = $('out');
+  const log = (t) => { out.textContent += t; window.scrollTo(0, document.body.scrollHeight); };
+  async function post(path, body) {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.status === 401) { $('loginBox').hidden = false; throw new Error('로그인이 필요해요'); }
+    return r;
+  }
+  fetch('/api/me').then((r) => r.json()).then((d) => { $('loginBox').hidden = !!d.authed; }).catch(() => log('서버에 연결할 수 없어요. 재시작 중이면 잠시 후 새로고침하세요.\n'));
+  $('loginBtn').onclick = async () => {
+    const r = await post('/api/login', { password: $('pw').value }).catch((e) => ({ ok: false, json: async () => ({ error: e.message }) }));
+    if (r.ok) $('loginBox').hidden = true; else log(((await r.json()).error || '로그인 실패') + '\n');
+  };
+  $('sendBtn').onclick = async () => {
+    const message = $('msg').value.trim();
+    if (!message) return;
+    out.textContent = '';
+    try {
+      const r = await post('/api/chat', { message, project: $('project').value.trim() });
+      if (!r.ok) return log(((await r.json().catch(() => ({}))).error || r.statusText) + '\n');
+      $('msg').value = '';
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+          const ev = (chunk.match(/^event: (.*)$/m) || [])[1];
+          const data = (chunk.match(/^data: (.*)$/m) || [])[1];
+          if (!data) continue;
+          const d = JSON.parse(data);
+          if (ev === 'delta') log(d.text);
+          else if (ev === 'tool') log(`\n[${d.text}]\n`);
+          else if (ev === 'status' && d.text.includes('검사')) log(`\n${d.text}\n`);
+          else if (ev === 'error') log(`\n❌ ${d.message}\n`);
+        }
+      }
+      log('\n\n— 끝. 재시작을 요청했다면 몇 초 뒤 "평소 화면으로"를 눌러 결과를 확인하세요.\n');
+    } catch (e) { log(`\n${e.message}\n`); }
+  };
+  async function admin(path, q) {
+    if (!confirm(q)) return;
+    try {
+      const r = await post(path, { project: $('project').value.trim() });
+      const d = await r.json().catch(() => ({}));
+      log(r.ok ? (d.ok === false ? '검사에 실패해서 재시작하지 않았어요. 평소 화면의 알림을 확인하세요.\n' : '진행 중이에요. 몇 초 뒤 평소 화면으로 돌아가 보세요.\n') : (d.error || r.statusText) + '\n');
+    } catch (e) { log(e.message + '\n'); }
+  }
+  $('restartBtn').onclick = () => admin('/api/admin/restart', '검사 후 서버를 재시작할까요?');
+  $('rollbackBtn').onclick = () => admin('/api/admin/rollback', '이전 안정 버전으로 되돌리고 재시작할까요?');
+</script>
+</body>
+</html>

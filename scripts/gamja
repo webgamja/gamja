@@ -1,0 +1,51 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# 감자 관리 명령 (Termux 쪽). scripts/install.sh가 $PREFIX/bin/gamja 로 설치한다.
+SESSION=gamja
+DISTRO="${GAMJA_DISTRO:-ubuntu}"
+IN_UBUNTU=(proot-distro login "$DISTRO" --)
+
+running() { tmux has-session -t "$SESSION" 2>/dev/null; }
+
+start() {
+  if running; then echo "이미 실행 중이에요."; return; fi
+  termux-wake-lock 2>/dev/null || true  # 화면이 꺼져도 멈추지 않게
+  # Ubuntu 안에서 start.sh의 감시 루프를 실행 (채팅에서 요청한 재시작·자동 복구를 이 루프가 처리)
+  tmux new-session -d -s "$SESSION" "proot-distro login $DISTRO -- bash -lc 'cd ~/projects/gamja && exec ./start.sh run'"
+  echo "감자를 시작했어요."
+}
+
+stop() {
+  tmux kill-session -t "$SESSION" 2>/dev/null && echo "감자를 멈췄어요." || echo "실행 중이 아니에요."
+  termux-wake-unlock 2>/dev/null || true
+}
+
+status() {
+  if running; then echo "상태: 실행 중 ✅"; else echo "상태: 멈춤 ⛔ (gamja start)"; fi
+  local port pw ips
+  port=$("${IN_UBUNTU[@]}" bash -c 'grep -E "^PORT=" ~/projects/gamja/.env 2>/dev/null | cut -d= -f2')
+  pw=$("${IN_UBUNTU[@]}" bash -c 'grep -E "^APP_PASSWORD=" ~/projects/gamja/.env 2>/dev/null | cut -d= -f2-')
+  ips=$(ifconfig 2>/dev/null | grep -oE 'inet (192\.168|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|100\.)[0-9.]+' | awk '{print $2}')
+  echo "접속 주소:"
+  for ip in $ips; do echo "  http://$ip:${port:-3000}"; done
+  [ -z "$ips" ] && echo "  (와이파이 IP를 찾지 못했어요) http://<이 폰 IP>:${port:-3000}"
+  echo "비밀번호: ${pw:-(.env 없음)}"
+}
+
+case "${1:-help}" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop >/dev/null; sleep 1; start ;;
+  status) status ;;
+  logs) tmux attach -t "$SESSION" ;;  # 빠져나오기: Ctrl+b 다음 d
+  login) "${IN_UBUNTU[@]}" bash -lc 'claude' ;;  # Claude 구독 로그인 (/login → /exit)
+  shell) proot-distro login "$DISTRO" ;;
+  *)
+    cat <<EOF
+사용법: gamja <명령>
+  start    감자 시작          stop     감자 멈춤
+  restart  다시 시작          status   상태 · 접속 주소 · 비밀번호
+  logs     서버 로그 보기     login    Claude 로그인
+  shell    Ubuntu 셸 열기
+EOF
+    ;;
+esac

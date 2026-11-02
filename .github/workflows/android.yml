@@ -1,0 +1,191 @@
+name: 감자 APK 빌드
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "앱이 안 바뀌었어도 APK를 새로 빌드할까요?"
+        type: boolean
+        default: false
+
+env:
+  GAMJA_BUILD: ${{ github.run_number }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 앱 번호를 계산하려면 전체 기록이 필요하다
+
+      # 앱 번호: 앱 코드(android/)를 마지막으로 고친 날짜(한국 시간) + 그날 앱 코드를 몇 번째 고쳤는지.
+      # 앱이 바뀌지 않은 빌드(감자알만 바뀜, 빈 빌드)는 번호가 그대로라서 앱 업데이트 안내가 가지 않는다.
+      - name: 앱 번호 계산
+        run: |
+          export TZ=Asia/Seoul
+          day=$(git log -1 --format=%cd --date=format-local:%Y%m%d -- android)
+          n=$(git log --format=%cd --date=format-local:%Y%m%d -- android | grep -c "^$day$")
+          [ "$n" -gt 99 ] && n=99
+          code=$(printf '%s%02d' "$day" "$n")
+          name="${code:0:3}.${code:3:2}.${code:5}"
+          echo "GAMJA_APP_CODE=$code" >> "$GITHUB_ENV"
+          echo "GAMJA_APP_NAME=$name" >> "$GITHUB_ENV"
+          echo "앱 번호: $name ($code)"
+
+      # 지금 올라가 있는 최신 버전의 앱 번호와 같으면 앱(android/)이 안 바뀐 것이다.
+      # 그때는 몇 분 걸리는 APK 빌드를 건너뛰고, 감자알 묶음만 새로 만들어 올린다 (APK는 지금 것을 그대로 다시 붙인다).
+      # 이전 버전을 못 읽거나, 번호가 다르거나, 직접 "full"을 고르면 예전처럼 전체를 빌드한다.
+      - name: 앱이 바뀌었는지 확인
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          prev=$(curl -fsSL "https://github.com/webgamja/gamja-release/releases/latest/download/latest.json" || true)
+          prev_code=$(echo "$prev" | sed -n 's/.*"appCode":\([0-9]*\).*/\1/p')
+          prev_sha=$(echo "$prev" | sed -n 's/.*"apkSha256":"\([0-9a-f]*\)".*/\1/p')
+          if [ "$FULL" != "true" ] && [ -n "$prev_code" ] && [ -n "$prev_sha" ] && [ "$prev_code" = "$GAMJA_APP_CODE" ]; then
+            echo "APP_CHANGED=false" >> "$GITHUB_ENV"
+            echo "PREV_APK_SHA=$prev_sha" >> "$GITHUB_ENV"
+            echo "앱은 그대로예요 ($prev_code). APK 빌드를 건너뛰고 감자알만 올려요."
+          else
+            echo "APP_CHANGED=true" >> "$GITHUB_ENV"
+            echo "앱이 바뀌었거나 이전 버전을 확인할 수 없어서 APK까지 전부 빌드해요. (이전 앱 번호: ${prev_code:-없음})"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: env.APP_CHANGED == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # 안드로이드 SDK는 GitHub 빌드 서버에 이미 설치돼 있다 (ANDROID_HOME).
+      # setup-android@v3는 없어진 'tools' 패키지를 설치하려다 실패해서 쓰지 않는다.
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: env.APP_CHANGED == 'true'
+        with:
+          gradle-version: "8.9"
+
+      # 같은 서명 키를 유지해야 새 APK를 지우지 않고 덮어 설치할 수 있다 (지우면 Ubuntu를 다시 받아야 함).
+      # 키는 GitHub Secrets의 GAMJA_KEYSTORE에 보관한다 (처음 한 번 '서명 키 만들기' 작업으로 만듦)
+      - name: 서명 키 준비
+        if: env.APP_CHANGED == 'true'
+        env:
+          GAMJA_KEYSTORE: ${{ secrets.GAMJA_KEYSTORE }}
+          GAMJA_KEYSTORE_PASSWORD: ${{ secrets.GAMJA_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$GAMJA_KEYSTORE" ] && [ -z "$GAMJA_KEYSTORE_PASSWORD" ]; then
+            echo "## ⛔ 서명 키 비밀번호(GAMJA_KEYSTORE_PASSWORD)가 없어요" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ -z "$GAMJA_KEYSTORE" ]; then
+            echo "## ⚠️ 서명 키(GAMJA_KEYSTORE)가 없어요" >> "$GITHUB_STEP_SUMMARY"
+            echo "임시 키로 서명했어요. 이 APK는 다음 빌드 위에 덮어 설치할 수 없어요." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "$GAMJA_KEYSTORE" | base64 -d > "$RUNNER_TEMP/gamja.keystore"
+          echo "GAMJA_KEYSTORE_FILE=$RUNNER_TEMP/gamja.keystore" >> "$GITHUB_ENV"
+
+      - name: proot 가져오기
+        if: env.APP_CHANGED == 'true'
+        run: bash android/scripts/fetch-proot.sh
+
+      # 감자알 묶음은 앱이 바뀌었든 아니든 매번 새로 만든다 (APK에도, 감자알 업데이트에도 쓰인다)
+      - name: 감자알(gamja-egg) 묶기
+        run: bash android/scripts/bundle-egg.sh
+
+      - name: APK 빌드
+        if: env.APP_CHANGED == 'true'
+        working-directory: android
+        env:
+          GAMJA_KEYSTORE_PASSWORD: ${{ secrets.GAMJA_KEYSTORE_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon 2>&1 | tee build.log
+
+      # 만든 APK 안에 꼭 필요한 파일이 실제로 들어 있는지 확인 (폰에 설치한 뒤에야 알게 되는 일 방지)
+      - name: APK 내용 검사
+        if: env.APP_CHANGED == 'true'
+        run: |
+          apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          missing=""
+          for f in assets/gamja-egg.pack assets/egg-build.txt assets/bin/proot assets/bin/loader assets/bin/libtalloc.so.2 assets/bin/libandroid-shmem.so; do
+            unzip -l "$apk" | grep -q " $f\$" || missing+="$f "
+          done
+          if [ -n "$missing" ]; then
+            printf '## ❌ APK에 빠진 파일\n```\n%s\n```\n' "$missing" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✅ APK 내용 확인 완료"; unzip -l "$apk" | grep assets/
+
+      # 실패하면 로그에서 원인 줄만 골라 실행 화면 맨 위(Summary)에 보여 준다 (휴대폰에서 긴 로그를 뒤지지 않도록)
+      - name: 실패 원인 요약
+        if: failure() && env.APP_CHANGED == 'true'
+        working-directory: android
+        run: |
+          {
+            echo "## ❌ 빌드 실패 원인"
+            echo '```'
+            if [ -f build.log ]; then
+              grep -E "^e: " build.log | head -40 || true
+              grep -A 12 "What went wrong" build.log | head -60 || true
+              echo "---- 마지막 25줄 ----"
+              tail -25 build.log
+            else
+              echo "APK 빌드 전 단계에서 실패했어요. 빨간 ✗ 단계의 로그를 확인해 주세요."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: env.APP_CHANGED == 'true'
+        with:
+          name: gamja-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+
+      # 공개 저장소(gamja-release)에 새 버전을 올린다. 감자·감자알이 여기서 최신 버전을 확인해 업데이트한다.
+      # 서명 키가 없는 임시 빌드는 올리지 않는다 (덮어 설치할 수 없는 APK가 배포되면 안 됨)
+      - name: 새 버전 올리기
+        if: github.ref == 'refs/heads/main' && env.APP_CHANGED == 'true' && env.GAMJA_KEYSTORE_FILE != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "RELEASE_TOKEN이 없어 올리지 않았어요"; exit 0; }
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/*.apk release/gamja.apk
+          cp android/app/src/main/assets/gamja-egg.pack release/gamja-egg.pack
+          apk_sha=$(sha256sum release/gamja.apk | cut -d' ' -f1)
+          pack_sha=$(sha256sum release/gamja-egg.pack | cut -d' ' -f1)
+          cat > release/latest.json <<EOF
+          {"build":$GAMJA_BUILD,"version":"0.1.$GAMJA_BUILD","appCode":$GAMJA_APP_CODE,"appName":"$GAMJA_APP_NAME","apkSha256":"$apk_sha","packSha256":"$pack_sha"}
+          EOF
+          sed -i 's/^ *//' release/latest.json
+          cat release/latest.json
+          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
+            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD"
+          echo "## ✅ 새 버전 0.1.$GAMJA_BUILD 을 gamja-release에 올렸어요" >> "$GITHUB_STEP_SUMMARY"
+
+      # 앱이 안 바뀐 경우: 새 감자알 묶음만 올린다. 감자 앱이 내려받는 주소(latest/download/gamja.apk)가 끊기지 않도록
+      # 지금 올라가 있는 APK를 내려받아 체크섬을 확인한 뒤 같은 버전으로 다시 붙인다.
+      - name: 감자알만 올리기 (앱은 그대로)
+        if: github.ref == 'refs/heads/main' && env.APP_CHANGED == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "RELEASE_TOKEN이 없어 올리지 않았어요"; exit 0; }
+          mkdir -p release
+          curl -fsSL -o release/gamja.apk "https://github.com/webgamja/gamja-release/releases/latest/download/gamja.apk"
+          apk_sha=$(sha256sum release/gamja.apk | cut -d' ' -f1)
+          [ "$apk_sha" = "$PREV_APK_SHA" ] || { echo "이전 APK의 체크섬이 달라서 올리지 않았어요"; exit 1; }
+          cp android/app/src/main/assets/gamja-egg.pack release/gamja-egg.pack
+          pack_sha=$(sha256sum release/gamja-egg.pack | cut -d' ' -f1)
+          cat > release/latest.json <<EOF
+          {"build":$GAMJA_BUILD,"version":"0.1.$GAMJA_BUILD","appCode":$GAMJA_APP_CODE,"appName":"$GAMJA_APP_NAME","apkSha256":"$apk_sha","packSha256":"$pack_sha"}
+          EOF
+          sed -i 's/^ *//' release/latest.json
+          cat release/latest.json
+          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
+            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD (감자알만 업데이트, 앱은 그대로)"
+          echo "## ✅ 감자알 0.1.$GAMJA_BUILD 만 gamja-release에 올렸어요 (앱 빌드 건너뜀)" >> "$GITHUB_STEP_SUMMARY"

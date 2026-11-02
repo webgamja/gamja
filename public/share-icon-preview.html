@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- 크루 공유 버튼 아이콘 시안. 사용자가 고르면 이 파일은 지운다 -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>크루 공유 버튼 시안</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px 12px 32px; background: #e8e8ea; color: #191919; font-family: -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p { font-size: 13px; color: #55606b; margin: 0 0 16px; }
+    h2 { font-size: 15px; margin: 22px 0 8px; }
+    .theme { padding: 10px; border-radius: 16px; margin-bottom: 8px; }
+    .light { background: #f2f2f2; --composer: #fff; --fg: #191919; --muted: #55606b; --border: rgba(0,0,0,.08); }
+    .dark { background: #1b1b1d; --composer: #232326; --fg: #eee; --muted: #9a9aa0; --border: rgba(255,255,255,.1); }
+    .home-row { display: flex; align-items: stretch; gap: 8px; background: var(--composer); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .home-main { flex: 1; min-width: 0; padding: 15px 14px; color: var(--fg); font-size: 16px; font-weight: 600; }
+    .home-gear { flex: none; width: 56px; display: grid; place-items: center; border-left: 1px solid var(--border); color: var(--muted); font-size: 20px; }
+    .home-gear svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</head>
+<body>
+  <h1>크루 공유 버튼 시안</h1>
+  <p>맨 위가 지금 모습이에요. 각 시안은 밝은 화면과 어두운 화면으로 보여 드려요.</p>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <g id="nodes"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></g>
+      <g id="tray"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></g>
+      <g id="plane"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></g>
+    </defs>
+  </svg>
+
+  <h2>지금</h2>
+  <div class="theme light"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear">📤</div><div class="home-gear">⚙️</div></div></div>
+
+  <h2>A. 점 3개 연결 (안드로이드 표준)</h2>
+  <div class="theme light"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#nodes"/></svg></div><div class="home-gear">⚙️</div></div></div>
+  <div class="theme dark"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#nodes"/></svg></div><div class="home-gear">⚙️</div></div></div>
+
+  <h2>B. 위로 나가는 화살표 (아이폰 느낌)</h2>
+  <div class="theme light"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#tray"/></svg></div><div class="home-gear">⚙️</div></div></div>
+  <div class="theme dark"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#tray"/></svg></div><div class="home-gear">⚙️</div></div></div>
+
+  <h2>C. 종이비행기 (메시지 보내기 느낌)</h2>
+  <div class="theme light"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#plane"/></svg></div><div class="home-gear">⚙️</div></div></div>
+  <div class="theme dark"><div class="home-row"><div class="home-main">여행 크루</div><div class="home-gear"><svg viewBox="0 0 24 24"><use href="#plane"/></svg></div><div class="home-gear">⚙️</div></div></div>
+</body>
+</html>
