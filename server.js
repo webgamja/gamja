@@ -2188,10 +2188,17 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: r.status === 'restart' });
       }
       if (p === '/api/admin/rollback' && req.method === 'POST') {
-        const { project = 'gamja' } = await readBody(req);
+        const { project = 'gamja', force = false } = await readBody(req);
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
-        if (projectRuns.size) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 다시 해 주세요.' });
         if (!SUPERVISED) return send(res, 400, { error: 'start.sh로 실행된 서버에서만 되돌릴 수 있어요.' });
+        if (projectRuns.size) {
+          // 평소에는 답변이 끝난 뒤에만 되돌린다 (되돌리면 감자알이 다시 켜져서 답변이 끊기므로). 비상일 때는 사용자가 고르면 진행 중인 답변을 모두 멈추고 되돌린다
+          if (!force) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 다시 해 주세요.' });
+          for (const child of running.values()) { child.stoppedByUser = true; try { child.kill('SIGINT'); } catch {} }
+          for (let i = 0; i < 40 && projectRuns.size; i++) await new Promise((r) => setTimeout(r, 100)); // 멈추고 지금까지의 글이 기록에 저장되길 잠깐 기다린다
+          for (const child of running.values()) { try { child.kill('SIGKILL'); } catch {} }
+          for (let i = 0; i < 20 && projectRuns.size; i++) await new Promise((r) => setTimeout(r, 100));
+        }
         if (!rollback(project)) return send(res, 400, { error: '되돌릴 이전 버전이 아직 없어요.' });
         return send(res, 200, { ok: true });
       }

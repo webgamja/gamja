@@ -9,6 +9,15 @@
   <meta name="mobile-web-app-capable" content="yes">
   <title>GAMJA</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <script>
+    // 켜지는 동안 화면이 비쳐 보이지 않게: 저장해 둔 테마(밝게·어둡게)와, 탭 화면(채팅 목록·크루·더보기)으로 시작하는지를 처음부터 알려 둔다.
+    // 탭 화면으로 시작하면 하늘색 채팅방 바탕이 아니라 탭 화면의 회색 바탕으로 켜진다 (알림을 눌러 채팅방으로 열릴 때는 제외)
+    try {
+      var th = JSON.parse(localStorage.getItem('cc:theme'));
+      if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
+      if (sessionStorage.getItem('cc:tab') !== 'room' && location.search.indexOf('project=') < 0) document.documentElement.classList.add('pre-tab');
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>

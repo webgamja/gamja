@@ -214,6 +214,41 @@
   let theme = store.get('cc:theme', 'auto');
   applyTheme(theme);
 
+  // ---------- 바텀시트: 확인·알림 공통 (브라우저 기본 alert/confirm 대신) ----------
+  // 가볍게 알릴 일은 toast, 결정하거나 되돌릴 수 없는 일은 시트. gSheet(...)는 true(확인)/false(취소·바깥을 누름·뒤로 가기)를 돌려준다
+  //   gSheet({ title, message, ok, cancel, danger }) / gAlert(message, title) — 확인 버튼 하나만 있는 알림
+  let gsOpen = null; // 지금 열려 있는 시트 { bg, close }
+  function gSheet({ title = '', message = '', ok = '', cancel = '', danger = false, alertOnly = false } = {}) {
+    const T = window.GAMJA_I18N.t;
+    return new Promise((resolve) => {
+      if (gsOpen) gsOpen.close(false);
+      const bg = document.createElement('div');
+      bg.className = 'gs-bg';
+      bg.innerHTML = '<div class="gs" role="dialog" aria-modal="true">' + (title ? '<h2></h2>' : '') + (message ? '<p></p>' : '') +
+        `<div class="gs-btns"><button class="gs-ok${danger ? ' danger' : ''}" type="button"></button>${alertOnly ? '' : '<button class="gs-cancel" type="button"></button>'}</div></div>`;
+      if (title) bg.querySelector('h2').textContent = title;
+      if (message) bg.querySelector('p').textContent = message;
+      bg.querySelector('.gs-ok').textContent = ok || T('sheet.ok');
+      const cancelBtn = bg.querySelector('.gs-cancel');
+      if (cancelBtn) cancelBtn.textContent = cancel || T('sheet.cancel');
+      const close = (v) => {
+        if (!bg.isConnected || bg.classList.contains('out')) return;
+        bg.classList.add('out');
+        setTimeout(() => bg.remove(), 160);
+        if (gsOpen && gsOpen.bg === bg) gsOpen = null;
+        resolve(v);
+      };
+      bg.addEventListener('click', (e) => {
+        if (e.target === bg) close(false);
+        else if (e.target.closest('.gs-ok')) close(true);
+        else if (e.target.closest('.gs-cancel')) close(false);
+      });
+      document.body.appendChild(bg);
+      gsOpen = { bg, close };
+    });
+  }
+  const gAlert = (message, title = '') => gSheet({ title, message, alertOnly: true });
+
   // ---------- API ----------
   async function api(path, body) {
     const r = await fetch(path, {
@@ -239,6 +274,10 @@
   let firstOpen = true;
   let deepLink = linked !== null; // 알림을 눌러 특정 크루로 열렸는지 (한 번만)
   async function showApp() {
+    // 새로고침·첫 접속이 탭 화면(채팅 목록·크루·더보기)으로 시작할 때는, 불러오는 동안 뒤에 있는 채팅방이 잠깐 보이지 않게 가려 둔다
+    let startTab = null;
+    try { startTab = sessionStorage.getItem('cc:tab'); } catch { /* 저장소를 못 쓰면 채팅 목록 */ }
+    if (firstOpen && !deepLink && startTab !== 'room') document.body.classList.add('in-tab');
     els.login.classList.add('hidden');
     els.app.classList.remove('hidden');
     await loadProjects();
@@ -438,6 +477,8 @@
   }
   function hideTabs() {
     tab = null;
+    document.body.classList.remove('in-tab');
+    document.documentElement.classList.remove('pre-tab');
     clearInterval(chatTimer);
     homeEl.classList.add('hidden');
     chatEl.classList.add('hidden');
@@ -452,6 +493,8 @@
     moreLoading = false;
     els.menu.classList.add('hidden');
     tab = name;
+    document.body.classList.toggle('in-tab', name !== null); // 탭 화면이 덮고 있는 동안 뒤의 채팅방은 보이지 않게 (불러오는 사이 비쳐 보이던 깜빡임 방지)
+    document.documentElement.classList.toggle('pre-tab', name !== null);
     try { sessionStorage.setItem('cc:tab', name || 'room'); } catch { /* 새로고침해도 있던 곳으로 돌아오기 위한 것 */ }
     if (name === 'more' && keepPanel) { keepPanel.classList.remove('hidden'); moreLoading = true; }
     if (name === null) { markSeen(); return; }
@@ -550,6 +593,7 @@
     const last = (c) => Math.max(c.ts || 0, opened[c.name] || 0);
     // 채팅방 설정에서 📌 고정한 방은 목록 맨 위에 둔다 (크루 탭의 ★ 자주 쓰는 크루와는 별개). 고정끼리, 나머지끼리는 각각 최근 순. 고정한 방은 대화 전에도 보인다
     const pinned = new Set(Object.keys(getRoomPins()));
+    // 감자 톡톡(기본 대화방)은 지울 수 없는 방이라 처음 접속한 이용자에게도 늘 보인다. 다른 크루는 대화가 있거나 방을 열었거나 고정했을 때만 보인다
     const rooms = chats.filter((c) => c.archive || c.extra || c.name === '' || c.ts || opened[c.name] || pinned.has(c.name))
       .filter((c) => GROUP_CHAT_ENABLED || !(c.members && c.members.length > 1)); // 그룹 채팅을 막아 둔 동안은 그룹방을 목록에서 숨긴다
     const rowOf = (c) => {
@@ -863,15 +907,17 @@
     }
     agentBody.scrollTop = 0;
   }
-  function openAgents(group = null) {
+  let agentDirect = false; // 감자 톡톡 첫 화면의 분야 버튼으로 바로 연 분야 목록인지 (뒤로 가면 추천 크루 화면이 아니라 채팅방으로 바로 돌아간다)
+  function openAgents(group = null, direct = false) {
     els.menu.classList.add('hidden');
     agentView = group;
+    agentDirect = !!group && direct;
     renderAgents();
     agentEl.classList.remove('hidden');
     if (!group) peekClipboard();
   }
   $('agentBack').onclick = () => {
-    if (agentView) { agentView = null; renderAgents(); } else agentEl.classList.add('hidden');
+    if (agentView && !agentDirect) { agentView = null; renderAgents(); } else { agentDirect = false; agentView = null; agentEl.classList.add('hidden'); }
   };
   // go: 만든 뒤 그 크루 방으로 갈지 (스토어 추천의 "추가"는 가지 않고 크루 탭에 머문다)
   async function createAgent({ folder, instructions, tpl, meta, go = true }) {
@@ -1102,7 +1148,7 @@
   // 홈 첫 화면의 분야 버튼, 크루 방의 예시 문장
   els.messages.addEventListener('click', (e) => {
     const g = e.target.closest('[data-open-group]');
-    if (g) return openAgents(g.dataset.openGroup);
+    if (g) return openAgents(g.dataset.openGroup, true);
     const ex = e.target.closest('[data-example]');
     if (ex) {
       els.input.value = ex.dataset.example;
@@ -1359,7 +1405,7 @@
   els.newBtn.onclick = async () => {
     els.menu.classList.add('hidden');
     if (runId || remoteRunId) return alert('응답 중에는 대화를 지울 수 없어요. 먼저 중지하세요.');
-    if (history.length && !confirm(window.GAMJA_I18N.t('room.newConfirm'))) return;
+    if (history.length && !(await gSheet({ title: window.GAMJA_I18N.t('room.new'), message: window.GAMJA_I18N.t('room.newConfirm'), ok: window.GAMJA_I18N.t('room.new'), danger: true }))) return;
     stopSpeaking();
     try { await api('/api/history/reset', { project }); } catch (err) { return alert(err.message); }
     roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫고 새 대화를 보여 준다
@@ -1378,12 +1424,27 @@
     loadConversation();
   };
   // 서버 재시작 / 이전 버전으로 되돌리기 (결과는 채팅 알림으로 표시)
-  async function adminAction(path, question) {
-    if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
-    if (!confirm(question)) return;
+  async function adminAction(path, title, message, okLabel) {
+    const T = window.GAMJA_I18N.t;
+    if (!(await gSheet({ title, message, ok: okLabel, danger: true }))) return;
     els.menu.classList.add('hidden');
     setStatus('🔍 확인 중...');
-    try { await api(path, { project }); } catch (err) { setStatus(''); return alert(err.message); }
+    let body = { project };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await api(path, body); break; }
+      catch (err) {
+        // 되돌리기는 답변 중에는 막혀 있다. 하지만 화면이 망가졌을 때가 바로 되돌릴 때라서, 사용자가 고르면 답변을 멈추고 되돌린다
+        if (attempt === 0 && path === '/api/admin/rollback' && /응답이 진행 중/.test(err.message)) {
+          setStatus('');
+          if (!(await gSheet({ title: T('admin.stopTitle'), message: T('admin.stopMsg'), ok: T('admin.stopOk'), danger: true }))) return;
+          setStatus('🔍 확인 중...');
+          body = { project, force: true };
+          continue;
+        }
+        setStatus('');
+        return gAlert(err.message);
+      }
+    }
     loadConversation();
   }
   // ---------- 설정 (호칭·답변 스타일·모델·사용량) ----------
@@ -1502,6 +1563,10 @@
     $('projChatInfo').classList.toggle('hidden', gone);
     $('roomDeleteNote').textContent = T(gone ? 'room.deleteNoteGone' : 'room.deleteNote');
     $('roomDelete').textContent = T('room.delete');
+    // 감자 톡톡(기본 대화방)은 지울 수 없다: 처음 접속한 이용자에게 늘 있어야 하는 방이라 삭제 버튼과 설명을 숨긴다 (대화만 지우려면 "대화 모두 지우기")
+    const rootRoom = project === '';
+    $('roomDelete').classList.toggle('hidden', rootRoom);
+    $('roomDeleteNote').classList.toggle('hidden', rootRoom);
     roomEl.classList.remove('hidden');
   }
   $('settingsBtn').onclick = openRoomSettings;
@@ -1703,7 +1768,7 @@
     const T = window.GAMJA_I18N.t;
     if (e.target.closest('#memberOpen')) return openProjectSettings(memberTarget);
     if (!e.target.closest('#memberKick') || e.target.closest('#memberKick').disabled) return;
-    if (!confirm(T('member.kickConfirm', { name: crewParts(memberTarget).text }))) return;
+    if (!(await gSheet({ title: T('member.kick'), message: T('member.kickConfirm', { name: crewParts(memberTarget).text }), ok: T('member.kick'), danger: true }))) return;
     try { await api('/api/rooms/members', { room: project, remove: memberTarget, names: namesOf(roomMembers(project)) }); } catch (err) { return alert(err.message); }
     await refreshChats();
     memberEl.classList.add('hidden');
@@ -1780,7 +1845,7 @@
   });
   $('roomDelete').onclick = async () => {
     const T = window.GAMJA_I18N.t;
-    if (!confirm(T('room.deleteConfirm', { name: roomText(project) }))) return;
+    if (!(await gSheet({ title: T('room.deleteTitle'), message: T('room.deleteConfirm', { name: roomText(project) }), ok: T('room.deleteOk'), danger: true }))) return;
     if (runId || remoteRunId) return alert(T('chat.eraseBusy'));
     const name = project;
     try {
@@ -1809,6 +1874,7 @@
   }
   // 감자 앱의 뒤로 가기 버튼: 열려 있는 창부터 하나씩 닫는다 (닫았으면 true). 위에 있는 창부터 확인
   window.gamjaBack = () => {
+    if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
     for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {
@@ -2154,7 +2220,7 @@
     projEl.classList.add('hidden');
   };
   $('projDelete').onclick = async () => {
-    if (!confirm(window.GAMJA_I18N.t('crew.deleteConfirm', { name: projTarget }))) return;
+    if (!(await gSheet({ title: window.GAMJA_I18N.t('crew.deleteTitle'), message: window.GAMJA_I18N.t('crew.deleteConfirm', { name: projTarget }), ok: window.GAMJA_I18N.t('room.deleteOk'), danger: true }))) return;
     try { await api('/api/projects/delete', { project: projTarget }); } catch (err) { return alert(err.message); }
     const wasCurrent = projTarget === crewOf(project);
     projEl.classList.add('hidden');
@@ -2196,7 +2262,7 @@
     const next = pwNew.value;
     if ((!pwLocal && !current) || !next) return toast(pwLocal ? '새 비밀번호를 적어 주세요' : '현재 비밀번호와 새 비밀번호를 모두 적어 주세요');
     if (!PW_RE.test(next)) return alert('새 비밀번호는 8~64자이고, 영문·숫자와 . _ - @ # % + = : , / ^ ! 만 쓸 수 있어요.');
-    if (!confirm('비밀번호를 바꾸면 모든 기기가 로그아웃돼요.\n새 비밀번호를 적어 두셨나요? 계속할까요?')) return;
+    if (!(await gSheet({ title: window.GAMJA_I18N.t('pw.confirmTitle'), message: window.GAMJA_I18N.t('pw.confirmMsg'), ok: window.GAMJA_I18N.t('pw.confirmOk'), danger: true }))) return;
     let r;
     try { r = await api('/api/password', { current, next }); } catch (err) { return alert(err.message); }
     settingsEl.classList.add('hidden');
@@ -2219,7 +2285,7 @@
     try { await navigator.clipboard.writeText(command); copied = true; } catch {}
     prompt(`${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`, command);
   };
-  $('rollbackBtn').onclick =() => adminAction('/api/admin/rollback', '바로 이전의 안정 버전으로 코드를 되돌리고 재시작할까요?');
+  $('rollbackBtn').onclick = () => adminAction('/api/admin/rollback', window.GAMJA_I18N.t('admin.rollbackTitle'), window.GAMJA_I18N.t('admin.rollbackMsg'), window.GAMJA_I18N.t('admin.rollbackOk'));
   // ---------- 화면비율 (⋯ 메뉴): 크롬의 확대·축소 줄처럼 [−] 100% [＋] ----------
   function renderZoomRow() {
     const T = window.GAMJA_I18N.t;
@@ -3233,6 +3299,70 @@
   }
   $('voiceOrb').onclick = () => { if (voiceTap) voiceTap(); };
   $('voiceEnd').onclick = stopVoice;
+
+  // ---------- 당겨서 새로고침: 채팅방(#app)을 뺀 모든 화면에서, 맨 위에 있을 때 위에서 아래로 끌어내리면 새로고침 ----------
+  // 채팅방은 위로 올려 지난 대화를 읽는 곳이라 일부러 뺐다. 입력칸·가로로 밀리는 줄·결과물 창(iframe)에서 시작한 끌기도 무시한다
+  (function pullToRefresh() {
+    const PULL = 84; // 이만큼(손가락 이동 기준) 끌어내리면 새로고침
+    const MAX = 120;
+    const ind = document.createElement('div');
+    ind.className = 'ptr';
+    ind.setAttribute('aria-hidden', 'true');
+    ind.innerHTML = window.GAMJA_ICONS ? window.GAMJA_ICONS.svg('refresh') : '↻';
+    document.body.appendChild(ind);
+    let startX = 0, startY = 0, tracking = false, pulling = false, scroller = null, dist = 0;
+    const scrollParent = (el) => { // 눌린 곳에서 위로 올라가며 세로로 스크롤되는 상자를 찾는다
+      for (let n = el; n && n !== document.body; n = n.parentElement) {
+        const oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+      }
+      return null;
+    };
+    const show = (d, ready) => {
+      ind.style.setProperty('--pull', `${d}px`);
+      ind.style.opacity = d > 4 ? String(Math.min(1, d / 50)) : '0';
+      ind.classList.toggle('ready', !!ready);
+      ind.firstElementChild.style.transform = `rotate(${Math.round(d * 3)}deg)`;
+    };
+    const reset = () => { tracking = false; pulling = false; dist = 0; ind.classList.remove('drag'); show(0, false); };
+    document.addEventListener('touchstart', (e) => {
+      tracking = false; pulling = false;
+      if (e.touches.length !== 1) return;
+      const t = e.target;
+      if (!t.closest || t.closest('#app, #voice, input, textarea, select, iframe, .fr-shelf, .made-tabs, pre, .codeblock')) return;
+      scroller = scrollParent(t);
+      if (scroller && scroller.scrollTop > 0) return; // 맨 위에 있을 때만
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      tracking = true;
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!tracking) return;
+      const dy = e.touches[0].clientY - startY, dx = e.touches[0].clientX - startX;
+      if (!pulling) {
+        if (Math.abs(dx) > Math.abs(dy) || dy < -6) { tracking = false; return; } // 옆으로 밀거나 위로 올리는 건 새로고침이 아니다
+        if (dy < 10) return;
+        if (scroller && scroller.scrollTop > 0) { tracking = false; return; }
+        pulling = true;
+        ind.classList.add('drag');
+      }
+      dist = Math.min(MAX, dy * 0.6);
+      show(dist, dy >= PULL);
+      if (e.cancelable) e.preventDefault(); // 끌어내리는 동안 화면이 같이 끌려 내려가지 않게
+    }, { passive: false });
+    const end = () => {
+      if (!tracking && !pulling) return;
+      const go = pulling && dist >= PULL * 0.6;
+      if (!go) return reset();
+      const T = window.GAMJA_I18N.t;
+      if (pending.length || Object.values(draftImages).some((l) => l && l.length)) { toast(T('ptr.keep')); return reset(); } // 붙여 둔 사진은 새로고침하면 사라진다
+      ind.classList.remove('drag');
+      ind.classList.add('spin');
+      show(60, true);
+      setTimeout(() => { if (!requestReload()) { ind.classList.remove('spin'); reset(); } }, 250);
+    };
+    document.addEventListener('touchend', end, { passive: true });
+    document.addEventListener('touchcancel', reset, { passive: true });
+  })();
 
   // ---------- 연결 상태: 감자알이 다시 켜지거나 접속이 끊기면 위쪽에 안내줄을 보여 준다 ----------
   // 5초마다 /api/me로 확인한다. 실패가 이어지면 "확인하는 중", 30초가 넘으면 "연결할 수 없어요"+다시 시도,
