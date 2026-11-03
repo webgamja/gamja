@@ -4,7 +4,9 @@
     .t{fill:#191919}.s{fill:#55606b}.b{font-weight:700}
   </style>
   <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <defs><clipPath id="scr"><rect x="8" y="8" width="344" height="724" rx="30"/></clipPath></defs>
   <rect x="8" y="8" width="344" height="724" rx="30" fill="#bacee0"/>
+  <g clip-path="url(#scr)">
 
   <!-- 위쪽 줄: 크루 이름 · 결과물 · ⋯ -->
   <path d="M8 38a30 30 0 0 1 30-30h284a30 30 0 0 1 30 30v44H8z" fill="#a9bdce"/>
@@ -55,4 +57,5 @@
   <text x="62" y="684" font-size="15" class="s">메시지 입력</text>
   <text x="270" y="686" font-size="18" text-anchor="middle">🎤</text>
   <circle cx="316" cy="679" r="18" fill="#fee500"/><text x="316" y="685" font-size="16" text-anchor="middle" fill="#191919">➤</text>
+  </g>
 </svg>

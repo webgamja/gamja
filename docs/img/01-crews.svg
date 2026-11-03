@@ -4,7 +4,9 @@
     .t{fill:#191f28}.s{fill:#6b7684}.b{font-weight:700}.x{font-weight:800}
   </style>
   <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <defs><clipPath id="scr"><rect x="8" y="8" width="344" height="724" rx="30"/></clipPath></defs>
   <rect x="8" y="8" width="344" height="724" rx="30" fill="#f2f4f6"/>
+  <g clip-path="url(#scr)">
   <text x="28" y="34" font-size="11" class="s b">9:41</text>
 
   <text x="24" y="82" font-size="26" class="t x">크루</text>
@@ -59,5 +61,6 @@
     <text x="180" y="716" stroke="none" fill="#9aa3ae">채팅</text>
     <g transform="translate(283 676)" stroke="#9aa3ae"><path d="M5 7h14M5 12h14M5 17h14"/></g>
     <text x="296" y="716" stroke="none" fill="#9aa3ae">더보기</text>
+  </g>
   </g>
 </svg>
