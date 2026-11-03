@@ -308,6 +308,14 @@ const EFFORTS = ['', 'low', 'medium', 'high']; // 생각 깊이 (--effort). '' =
 // lanAccess: 같은 와이파이의 다른 기기(PC·아이폰 등)에서 접속하는 것을 허용할지. 기본은 꺼짐 (이 폰 안의 감자 앱·브라우저만)
 let settings = { nickname: '', style: '', model: '', autocompact: '', effort: '', lanAccess: false };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch {}
+// 읽음 기록: { 방 이름: 마지막으로 읽은 답변 시각 }. 모든 기기가 같이 쓴다 (한 기기에서 읽으면 다른 기기의 안 읽음 숫자도 줄어든다)
+const SEEN_FILE = path.join(DATA_DIR, 'seen.json');
+let seenMap = {};
+try { seenMap = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')) || {}; } catch {}
+function saveSeen() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SEEN_FILE, JSON.stringify(seenMap));
+}
 function saveSettings() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
@@ -1591,7 +1599,18 @@ const server = http.createServer(async (req, res) => {
             });
           }
         } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
-        return send(res, 200, { chats });
+        return send(res, 200, { chats, seen: seenMap });
+      }
+      // 읽음 기록 공유: 방마다 "마지막으로 읽은 답의 시각"을 모든 기기가 같이 쓴다 (더 늦은 시각만 남긴다)
+      if (p === '/api/seen' && req.method === 'POST') {
+        const b = await readBody(req);
+        let changed = false;
+        for (const [room, ts] of Object.entries(b.seen && typeof b.seen === 'object' ? b.seen : {}).slice(0, 200)) {
+          if (typeof ts !== 'number' || !Number.isFinite(ts) || room.length > 200) continue;
+          if (ts > (seenMap[room] || 0)) { seenMap[room] = ts; changed = true; }
+        }
+        if (changed) saveSeen();
+        return send(res, 200, { seen: seenMap });
       }
       if ((p === '/api/archive/delete' || p === '/api/archive/restore') && req.method === 'POST') {
         const readBodyOnce = await readBody(req);

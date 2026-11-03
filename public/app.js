@@ -366,8 +366,10 @@
     const lastBot = [...history].reverse().find((m) => m.role === 'bot' && m.ts);
     if (!lastBot) return;
     const seen = store.get('cc:seen', {});
+    if (seen[project] === lastBot.ts) return; // 이미 읽은 걸로 알려 둔 답이면 다시 알리지 않는다
     seen[project] = lastBot.ts;
     store.set('cc:seen', seen);
+    api('/api/seen', { seen: { [project]: lastBot.ts } }).catch(() => {}); // 감자알에도 알려서 다른 기기의 안 읽음 숫자도 줄어들게 한다
   }
   // 삭제된 크루의 방은 이름이 "~보관이름" 꼴이다 (크루 폴더 이름에는 ~를 쓸 수 없어 겹치지 않는다)
   const isGone = (n) => typeof n === 'string' && n.startsWith('~');
@@ -400,9 +402,15 @@
     try { d = await api('/api/chats'); } catch { return; }
     chats = d.chats || [];
     // 처음 보는 크루는 지금까지의 답을 모두 읽은 것으로 시작한다 (처음부터 안 읽음이 쌓여 보이지 않게)
+    // 읽음 기록은 감자알과 모든 기기가 같이 쓴다: 감자알의 기록과 이 기기의 기록 중 더 늦은 시각을 따른다
     const seen = store.get('cc:seen', {});
+    const shared = d.seen || {};
     let changed = false;
-    for (const c of chats) if (!(c.name in seen)) { seen[c.name] = Math.max(0, ...c.botTs); changed = true; }
+    for (const [room, ts] of Object.entries(shared)) if (ts > (seen[room] || 0)) { seen[room] = ts; changed = true; }
+    for (const c of chats) if (!(c.name in seen)) { seen[c.name] = Math.max(0, ...c.botTs); changed = true; } // 처음 보는 크루
+    const up = {}; // 이 기기가 더 늦게 읽은 방은 감자알에 올린다 (처음 한 번 기존 기록을 합치는 것도 같은 길)
+    for (const [room, ts] of Object.entries(seen)) if (ts > (shared[room] || 0)) up[room] = ts;
+    if (Object.keys(up).length) api('/api/seen', { seen: up }).catch(() => {});
     if (changed) store.set('cc:seen', seen);
     const total = chats.reduce((n, c) => n + unreadOf(c, seen), 0);
     const cnt = $('gnbCnt');
