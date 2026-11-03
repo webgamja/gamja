@@ -117,6 +117,7 @@
     });
     if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('unauthorized'); }
     const data = await r.json().catch(() => ({}));
+    if (data.code === 'lan-off') connPing(); // 폰에서 외부 접속을 껐다 → 안내줄을 바로 보여 준다
     if (!r.ok) throw new Error(data.error || r.statusText);
     return data;
   }
@@ -1710,9 +1711,21 @@
     try { d = await api('/api/lan'); } catch { return; }
     $('lanToggle').checked = d.enabled;
     $('lanInfo').classList.toggle('hidden', !d.enabled);
-    $('lanAddrs').textContent = d.addresses.length ? T('ext.lanAddrs', { addrs: d.addresses.join(', ') }) : T('ext.lanNone');
+    // 첫 주소로 QR을 만들어 보여 준다 (다른 폰의 카메라로 찍으면 바로 열려요)
+    lanAddr = d.addresses[0] || '';
+    const qr = lanAddr && window.GAMJA_QR ? window.GAMJA_QR.svg(lanAddr) : '';
+    $('lanQr').innerHTML = qr;
+    $('lanQr').classList.toggle('hidden', !qr);
+    $('lanQrHint').classList.toggle('hidden', !qr);
+    $('lanAddrs').textContent = d.addresses.length ? d.addresses.join('\n') : T('ext.lanNone');
+    $('lanCopy').classList.toggle('hidden', !lanAddr);
     $('lanShowApp').classList.toggle('hidden', !window.GamjaApp);
   }
+  let lanAddr = '';
+  $('lanCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText(lanAddr); toast(window.GAMJA_I18N.t('ext.copied')); }
+    catch { prompt(window.GAMJA_I18N.t('ext.copy'), lanAddr); }
+  };
   $('lanToggle').onchange = async () => {
     try { await api('/api/lan', { on: $('lanToggle').checked }); } catch (err) { alert(err.message); }
     refreshLan();
@@ -1723,7 +1736,7 @@
   $('tunnelBtn').onclick = () => {
     const T = window.GAMJA_I18N.t;
     for (const [id, key] of [['extTitle', 'ext.title'], ['lanH', 'ext.lanH'], ['lanLabel', 'ext.lanLabel'], ['lanNote', 'ext.lanNote'],
-      ['lanShowApp', 'ext.lanShowApp'], ['lanPwNote', 'ext.lanPwNote'], ['proH', 'ext.proH'], ['proLockedTitle', 'ext.proTitle'], ['proLockedNote', 'ext.proNote']]) $(id).textContent = T(key);
+      ['lanShowApp', 'ext.lanShowApp'], ['lanPwNote', 'ext.lanPwNote'], ['lanQrHint', 'ext.qrHint'], ['lanCopy', 'ext.copy'], ['proH', 'ext.proH'], ['proLockedTitle', 'ext.proTitle'], ['proLockedNote', 'ext.proNote']]) $(id).textContent = T(key);
     els.menu.classList.add('hidden');
     tunnelEl.classList.remove('hidden');
     refreshLan();
@@ -2062,6 +2075,7 @@
   function imageUrl(name) {
     return `/api/uploads?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`;
   }
+  const INSTALL_MARK = /\s*\[\[gamja-install:\w+\]\]\s*/g;
   function paint(view, m, streaming) {
     if (m.role === 'user' && (m.images || m.localImages)) {
       // 첨부 이미지 + 글 (보내는 중에는 미리보기 주소, 저장 후에는 서버 주소)
@@ -2081,7 +2095,9 @@
       if (m.text) view.bubble.appendChild(document.createTextNode(m.text));
     } else if (m.role === 'user' || m.role === 'error') view.bubble.textContent = m.text;
     else {
-      view.bubble.innerHTML = m.text ? window.renderMarkdown(m.text) : '';
+      // 크루가 "도구 설치가 필요해요"라고 붙인 표시 줄은 글에서 숨긴다 (쓰는 중인 반쪽짜리 표시도 함께)
+      const shown = m.text ? m.text.replace(INSTALL_MARK, '\n').replace(/\s*\[\[gamja[^\]]*$/, '').trim() : '';
+      view.bubble.innerHTML = shown ? window.renderMarkdown(shown) : '';
       view.bubble.classList.toggle('cursor', !!streaming);
     }
     if (!view.extra) return;
@@ -2095,12 +2111,48 @@
       html += `<details class="tools"${view.toolsOpen ? ' open' : ''}><summary>🔧 도구 ${m.tools.length}회 사용</summary>` +
         m.tools.map((t) => `<div>${escapeHtml(t)}</div>`).join('') + '</details>';
     }
+    // 설치 안 된 도구가 필요할 때: 누르면 설치하고 하던 일을 이어서 하는 카드
+    if (m.install && m.install.length) {
+      const T = window.GAMJA_I18N.t;
+      html += m.install.map((k) => `<div class="install-card"><b>${escapeHtml(T('tool.need', { name: k.name }))}</b><small>${escapeHtml(T('tool.sub', { size: k.size }))}</small>` +
+        `<button class="install-go" type="button" data-kit="${escapeHtml(k.id)}">${escapeHtml(T('tool.go'))}</button></div>`).join('');
+    }
     if (m.meta) html += `<div class="meta">${escapeHtml(m.meta)}</div>`;
     if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>`;
     view.extra.innerHTML = html;
     const sb = view.extra.querySelector('.speak-btn');
     if (sb) sb.onclick = () => speak(m.text, true);
   }
+
+  // 도구 설치 카드: 설치 → 끝나면 하던 일을 이어서 해 달라고 자동으로 보낸다
+  els.messages.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.install-go');
+    if (!btn) return;
+    const T = window.GAMJA_I18N.t;
+    const kit = btn.dataset.kit;
+    const room = project;
+    btn.disabled = true;
+    btn.textContent = T('tool.going');
+    try {
+      await api('/api/tools/install', { kit });
+      for (;;) { // 설치가 끝날 때까지 3초마다 확인 (몇 분 걸려요)
+        await new Promise((r) => setTimeout(r, 3000));
+        const s = await api('/api/tools');
+        if (s.installing) continue;
+        if ((s.kits.find((k) => k.id === kit) || {}).installed) break;
+        throw new Error(s.error || T('tool.fail'));
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = T('tool.go');
+      return alert(err.message);
+    }
+    const card = btn.closest('.install-card');
+    if (card) card.innerHTML = `<b>${escapeHtml(T('tool.done'))}</b>`;
+    if (room !== project) return toast(T('tool.doneElsewhere'));
+    els.input.value = T('tool.resume');
+    sendMessage();
+  });
 
   // 코드 복사
   els.messages.addEventListener('click', async (e) => {
@@ -2268,6 +2320,7 @@
               finished = true;
               if (d.sessionId) { sessionId = d.sessionId; updateSessionInfo(); }
               bot.meta = d.meta || ''; // 서버가 만든 "시간 · 토큰" 표시
+              if (d.install) bot.install = d.install;
               if (d.denials && d.denials.length) {
                 bot.text += `\n\n> ⚠️ 권한이 거부된 도구: ${[...new Set(d.denials)].map((x) => '`' + x + '`').join(', ')}`;
               }
@@ -2867,6 +2920,70 @@
   }
   $('voiceOrb').onclick = () => { if (voiceTap) voiceTap(); };
   $('voiceEnd').onclick = stopVoice;
+
+  // ---------- 연결 상태: 감자알이 다시 켜지거나 접속이 끊기면 위쪽에 안내줄을 보여 준다 ----------
+  // 5초마다 /api/me로 확인한다. 실패가 이어지면 "확인하는 중", 30초가 넘으면 "연결할 수 없어요"+다시 시도,
+  // 폰에서 외부 접속을 껐으면 "접속이 끊겼어요". 다시 연결되면 잠깐 알리고, 감자알이 다시 켜졌거나 접속이 꺼져 있었다면 화면을 새로고침한다
+  const connBar = $('connBar');
+  let connState = 'ok'; // ok | down | off
+  let connFails = 0;
+  let connDownSince = 0;
+  let connBoot = null;
+  let connTimer = 0;
+  let connBusy = false;
+  function connShow(kind, text, retry) {
+    connBar.className = `conn-bar ${kind}`;
+    $('connText').textContent = text;
+    $('connRetry').textContent = window.GAMJA_I18N.t('conn.retry');
+    $('connRetry').classList.toggle('hidden', !retry);
+  }
+  async function connPing() {
+    if (connBusy) return;
+    connBusy = true;
+    clearTimeout(connTimer);
+    const T = window.GAMJA_I18N.t;
+    let next = 5000;
+    try {
+      if (document.hidden) return; // 화면이 꺼져 있을 때는 확인하지 않는다 (다시 켜지면 바로 확인)
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 4000);
+      let r;
+      try { r = await fetch('/api/me', { cache: 'no-store', credentials: 'same-origin', signal: ctl.signal }); } finally { clearTimeout(to); }
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 403 && d.code === 'lan-off') {
+        connState = 'off';
+        connFails = 0;
+        connShow('off', T('conn.off'), true);
+        next = 4000;
+      } else if (r.ok) {
+        connFails = 0;
+        const restarted = !!(connBoot && d.boot && d.boot !== connBoot);
+        if (d.boot) connBoot = d.boot;
+        const was = connState;
+        connState = 'ok';
+        if (was !== 'ok') connShow('ok', T('conn.back'), false);
+        if (restarted || was === 'off') { if (requestReload()) return; } // 새 코드나 새 로그인이 필요하다
+        if (was === 'down') { setTimeout(() => { if (connState === 'ok') connBar.className = 'conn-bar hidden'; }, 2000); if (!runId) loadConversation(); }
+        else if (was === 'off') setTimeout(() => { if (connState === 'ok') connBar.className = 'conn-bar hidden'; }, 2000);
+      } else throw new Error('status ' + r.status);
+    } catch (err) {
+      if (connBar.className.includes('off') && connState === 'off') return;
+      connFails++;
+      next = 3000;
+      if (connFails >= 2) { // 한 번 실패한 건 흔들림일 수 있어서 두 번째부터 알린다
+        if (connState !== 'down') { connState = 'down'; connDownSince = Date.now(); }
+        const long = Date.now() - connDownSince > 30000;
+        connShow('down', long ? T('conn.lost') : T('conn.checking'), long);
+      }
+    } finally {
+      connBusy = false;
+      connTimer = setTimeout(connPing, next);
+    }
+  }
+  $('connRetry').onclick = () => { connFails = Math.max(connFails, 1); connPing(); };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) connPing(); });
+  window.addEventListener('online', connPing);
+  connPing();
 
   // ---------- 시작 ----------
   updateSendState();

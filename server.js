@@ -57,8 +57,19 @@ function parseCookies(req) {
   }
   return out;
 }
+// 이 폰 안에서 직접 온 요청인지 (감자 앱, 이 폰의 브라우저). 같은 와이파이나 터널을 거친 요청은 아니다
+function isLocalReq(req) {
+  const s = req.socket.remoteAddress || '';
+  return (s === '127.0.0.1' || s === '::1' || s === '::ffff:127.0.0.1') && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'];
+}
 function isAuthed(req) {
-  return verifyToken(parseCookies(req)[COOKIE]);
+  const token = parseCookies(req)[COOKIE];
+  if (!verifyToken(token)) return false;
+  // 같은 와이파이 접속을 끈 시각 이전에 로그인한 다른 기기는 로그인이 풀린다 (이 폰 안의 화면은 그대로).
+  // 로그인한 시각 = 만료 시각 - 로그인 유지 기간
+  const revoked = settings.remoteRevokedAt || 0;
+  if (revoked && !isLocalReq(req) && Number(token.split('.')[0]) - SESSION_DAYS * 86400e3 <= revoked) return false;
+  return true;
 }
 
 // 로그인 무차별 대입 방지: IP당 15분에 10회 (로그인 실패와 비밀번호 바꾸기 실패는 따로 센다)
@@ -849,7 +860,7 @@ function handleChat(req, res, body, opts = {}) {
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
   // 도구 상자에서 설치한 도구는 gamja-make 한 가지 명령으로만 허용한다 (.env의 ALLOWED_TOOLS가 있으면 함께)
-  const allowed = [ALLOWED_TOOLS, anyKit() ? `Bash(${MAKE_CMD}:*)` : ''].filter(Boolean).join(' ');
+  const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`].filter(Boolean).join(' ');
   if (allowed) args.push('--allowedTools', allowed);
 
   res.writeHead(200, {
@@ -982,6 +993,13 @@ function handleChat(req, res, body, opts = {}) {
         // 대화 길이: 압축했으면 0(다음 메시지 때 다시 잼), 아니면 마지막으로 잰 값
         if (opts.compact) conv.context = 0;
         else if (lastCtx) conv.context = lastCtx;
+        // 크루가 "설치 안 된 도구가 필요해요"라고 표시했으면 글에서 표시를 빼고, 화면이 설치 버튼을 그릴 수 있게 남긴다
+        const needKits = [...bot.text.matchAll(INSTALL_MARK)].map((m) => m[1]);
+        if (needKits.length) {
+          bot.text = bot.text.replace(INSTALL_MARK, '\n').trim();
+          bot.install = [...new Set(needKits)].filter((id) => !kitInstalled(id)).map((id) => ({ id, name: TOOLKITS[id].name, size: TOOLKITS[id].size }));
+          live.text = bot.text;
+        }
         if (denials.length) {
           bot.text += `\n\n> ⚠️ 권한이 거부된 도구: ${[...new Set(denials)].map((x) => '`' + x + '`').join(', ')}`;
         }
@@ -994,6 +1012,7 @@ function handleChat(req, res, body, opts = {}) {
           durationMs: ev.duration_ms,
           numTurns: ev.num_turns,
           denials,
+          install: bot.install,
           errorText: ev.is_error ? ev.result : undefined,
         });
         break;
@@ -1020,7 +1039,7 @@ function handleChat(req, res, body, opts = {}) {
     finished = true;
     clearInterval(heartbeat);
     running.delete(runId);
-    if (bot.text || bot.tools.length) conv.messages.push(bot);
+    if (bot.text || bot.tools.length) { bot.ts = Date.now(); conv.messages.push(bot); } // 말풍선 시각 = 답변이 끝난 시각 (시작 시각이 아니라)
     if (errorText) conv.messages.push({ role: 'error', text: errorText, ts: Date.now() });
     saveConv(project);
     projectRuns.delete(project);
@@ -1399,8 +1418,9 @@ const kitInstalled = (id) => TOOLKITS[id].need.every(hasCmd);
 const anyKit = () => Object.keys(TOOLKITS).some(kitInstalled);
 const toolInstall = { kit: null, startedAt: 0, log: [], error: '' };
 function toolLog(line) { toolInstall.log.push(String(line).slice(0, 300)); toolInstall.log = toolInstall.log.slice(-40); }
-function installKit(id) {
+function installKit(id, done) {
   const kit = TOOLKITS[id];
+  const finishKit = () => { if (done) done(!toolInstall.error); };
   toolInstall.kit = id; toolInstall.startedAt = Date.now(); toolInstall.log = []; toolInstall.error = '';
   const env = { ...process.env, DEBIAN_FRONTEND: 'noninteractive' };
   const run = (args, next) => {
@@ -1408,25 +1428,58 @@ function installKit(id) {
     const p = spawn('apt-get', args, { env });
     const feed = (b) => String(b).split('\n').filter(Boolean).forEach(toolLog);
     p.stdout.on('data', feed); p.stderr.on('data', feed);
-    p.on('error', (e) => { toolInstall.error = `apt-get을 실행하지 못했어요 (${e.code || e.message})`; toolInstall.kit = null; });
+    p.on('error', (e) => { toolInstall.error = `apt-get을 실행하지 못했어요 (${e.code || e.message})`; toolInstall.kit = null; finishKit(); });
     p.on('close', (code) => {
-      if (code !== 0) { toolInstall.error = `설치가 끝까지 되지 않았어요 (종료 코드 ${code}). 인터넷 연결과 저장 공간을 확인한 뒤 다시 눌러 주세요.`; toolInstall.kit = null; return; }
+      if (code !== 0) { toolInstall.error = `설치가 끝까지 되지 않았어요 (종료 코드 ${code}). 인터넷 연결과 저장 공간을 확인한 뒤 다시 눌러 주세요.`; toolInstall.kit = null; finishKit(); return; }
       next();
     });
   };
-  run(['update'], () => run(['install', '-y', '--no-install-recommends', ...kit.apt], () => { toolLog('✅ 설치가 끝났어요'); toolInstall.kit = null; }));
+  run(['update'], () => run(['install', '-y', '--no-install-recommends', ...kit.apt], () => { toolLog('✅ 설치가 끝났어요'); toolInstall.kit = null; finishKit(); }));
+}
+// 기본 도구 자동 준비: 그림·문서 도구가 없으면 답변이 없는 틈에 조용히 설치한다 (영상·소리 도구는 필요할 때 설치 버튼으로).
+// 폰 안의 우분투(root)에서만 하고, 실패하면 하루 동안은 다시 시도하지 않는다. 끄려면 data/no-auto-tools 파일을 만든다
+const AUTO_KITS = ['image', 'docs'];
+const AUTO_TOOLS_FILE = path.join(DATA_DIR, 'tools-auto.json');
+function autoToolsOff() {
+  if (fs.existsSync(path.join(DATA_DIR, 'no-auto-tools'))) return true;
+  if (!(process.getuid && process.getuid() === 0) || !hasCmd('apt-get')) return true;
+  try { if (Date.now() - JSON.parse(fs.readFileSync(AUTO_TOOLS_FILE, 'utf8')).failedAt < 24 * 3600 * 1000) return true; } catch { /* 기록이 없으면 시도 */ }
+  return false;
+}
+function prepareDefaultKits() {
+  if (toolInstall.kit || projectRuns.size || autoToolsOff()) return;
+  const id = AUTO_KITS.find((k) => !kitInstalled(k));
+  if (!id) return;
+  toolLog(`처음 준비: ${TOOLKITS[id].name}를 설치해요`);
+  installKit(id, (ok) => {
+    if (!ok) { try { fs.writeFileSync(AUTO_TOOLS_FILE, JSON.stringify({ failedAt: Date.now() })); } catch { /* 기록 실패는 무시 */ } return; }
+    setTimeout(prepareDefaultKits, 2000); // 다음 도구
+  });
 }
 // 크루에게 알려 줄 사용법 (도구를 하나라도 설치했을 때만 덧붙인다)
 function toolsPrompt() {
-  if (!anyKit()) return '';
-  const lines = ['이 폰에는 파일을 만드는 도구가 설치돼 있어요. 프로그램을 직접 실행할 수는 없고, 아래 한 가지 명령만 쓸 수 있어요.',
+  const lines = ['이 폰에서는 파일을 만드는 프로그램을 직접 실행할 수 없고, 아래 한 가지 명령만 쓸 수 있어요.',
     `먼저 재료 파일(마크다운·CSV·SVG·JSON)을 이 폴더에 쓴 뒤 "${MAKE_CMD} <종류> <인자…>"를 실행하세요. 자세한 사용법은 "${MAKE_CMD} help"로 볼 수 있어요.`];
-  if (kitInstalled('docs')) lines.push('- 문서: doc 글.md 결과.docx|pdf|html|pptx / sheet 표.csv 결과.xlsx');
-  if (kitInstalled('image')) lines.push('- 그림: image 그림.svg 결과.png [가로픽셀]');
-  if (kitInstalled('media')) lines.push('- 영상: video 결과.mp4 한장당초 소리파일또는- 사진1 사진2 … / 소리: audio 악보.json 결과.wav');
-  lines.push('만든 파일은 이 크루의 "결과물"에 자동으로 보여요. 설치돼 있지 않은 도구는 쓰지 말고, 필요하면 사용자에게 설정 → 도구 상자에서 설치해 달라고 안내하세요.');
+  const missing = [];
+  const kit = (id, usage) => { if (kitInstalled(id)) lines.push(usage); else missing.push(id); };
+  kit('docs', '- 문서: doc 글.md 결과.docx|pdf|html|pptx / sheet 표.csv 결과.xlsx');
+  kit('image', '- 그림: image 그림.svg 결과.png [가로픽셀]');
+  kit('media', '- 영상: video 결과.mp4 한장당초 소리파일또는- 사진1 사진2 … / 소리: audio 악보.json 결과.wav');
+  lines.push('만든 파일은 이 크루의 "결과물"에 자동으로 보여요.');
+  if (missing.length) {
+    lines.push(`아직 설치되지 않은 도구: ${missing.map((id) => `${TOOLKITS[id].name}(${id})`).join(', ')}. 이 중 하나가 꼭 필요한 일이면 쓰려고 하지 말고, 답변 맨 끝에 정확히 [[gamja-install:도구id]] 한 줄만 쓰세요. 예: [[gamja-install:image]]. 그러면 화면에 "설치하고 이어서 하기" 버튼이 나와요. 사용자에게는 "이 일에는 OO 도구가 필요해요. 아래 버튼을 누르면 설치하고 이어서 할게요"라고 쉬운 말로 한 문장만 설명하세요.`);
+  }
   return lines.join('\n');
 }
+const INSTALL_MARK = /\s*\[\[gamja-install:(docs|image|media)\]\]\s*/g;
+
+// 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
+const LAN_OFF_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GAMJA</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f2f4f6;color:#191f28;font-family:system-ui,sans-serif;text-align:center}
+main{padding:28px;max-width:360px}h1{font-size:22px;margin:0 0 10px}p{margin:0 0 18px;line-height:1.6;color:#6b7684}
+button{border:0;border-radius:14px;padding:14px 26px;background:#fee500;color:#191919;font-size:16px;font-weight:800}</style></head>
+<body><main><h1 id="t">접속이 꺼져 있어요</h1><p id="d">이 폰의 감자에서 같은 와이파이 접속을 껐거나 아직 켜지 않았어요. 폰에서 더보기 → 연결 → 외부 접속을 켠 뒤 다시 시도해 주세요.</p><button id="b" onclick="location.reload()">다시 시도</button></main>
+<script>if(!/^ko/i.test(navigator.language)){t.textContent='Access is off';d.textContent='Same-Wi-Fi access is turned off on the phone. Turn it on in the GAMJA app (More > Connections > External access) and try again.';b.textContent='Try again'}</script></body></html>`;
 
 // ---------- 라우팅 ----------
 const server = http.createServer(async (req, res) => {
@@ -1444,8 +1497,9 @@ const server = http.createServer(async (req, res) => {
   // 새 폰 설치 주소(/install/…)는 30분짜리 토큰이 따로 지켜서 예외로 둔다
   if (!fromLocal && !settings.lanAccess && !p.startsWith('/install/')) {
     const msg = '같은 와이파이 접속이 꺼져 있어요. 이 폰의 감자 앱에서 더보기 → 연결 → 외부 접속에서 켜 주세요. (Same-Wi-Fi access is off. Turn it on in the GAMJA app: More > Connections > External access.)';
-    if (p.startsWith('/api/')) return send(res, 403, { error: msg });
-    return send(res, 403, msg);
+    // code: 열려 있는 화면이 "접속이 끊겼어요"를 보여 주는 데 쓴다
+    if (p.startsWith('/api/')) return send(res, 403, { error: msg, code: 'lan-off' });
+    return send(res, 403, LAN_OFF_PAGE, { 'Content-Type': 'text/html; charset=utf-8' });
   }
 
   try {
@@ -1647,9 +1701,11 @@ const server = http.createServer(async (req, res) => {
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
         const conv = loadConv(project);
         const run = projectRuns.get(project);
+        // 이미 설치된 도구의 "설치" 버튼은 보여 주지 않는다
+        const messages = conv.messages.map((m) => (m.install ? { ...m, install: m.install.filter((k) => TOOLKITS[k.id] && !kitInstalled(k.id)) } : m));
         return send(res, 200, {
           sessionId: conv.sessionId,
-          messages: conv.messages,
+          messages,
           running: !!run,
           runId: run ? run.runId : null,
           live: run ? run.live : null,
@@ -1786,7 +1842,9 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/api/lan' && req.method === 'POST') {
         if (!isLocal && !settings.lanAccess) return send(res, 403, { error: '이 폰에서만 바꿀 수 있어요.' });
-        settings = { ...settings, lanAccess: !!(await readBody(req)).on };
+        const turnOn = !!(await readBody(req)).on;
+        settings = { ...settings, lanAccess: turnOn };
+        if (!turnOn) settings.remoteRevokedAt = Date.now(); // 끄는 순간 다른 기기의 로그인은 모두 풀린다 (다시 켜면 비밀번호를 새로 입력)
         saveSettings();
         return send(res, 200, { enabled: settings.lanAccess, addresses: lanOrigins() });
       }
@@ -1849,6 +1907,8 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/tools/install' && req.method === 'POST') {
         const { kit } = await readBody(req);
         if (!TOOLKITS[kit]) return send(res, 400, { error: '알 수 없는 도구예요' });
+        if (kitInstalled(kit)) return send(res, 200, { ok: true, already: 'installed' });
+        if (toolInstall.kit === kit) return send(res, 200, { ok: true, already: 'installing' });
         if (toolInstall.kit) return send(res, 409, { error: '다른 도구를 설치하는 중이에요. 끝난 뒤에 눌러 주세요.' });
         if (projectRuns.size) return send(res, 409, { error: '답변이 진행 중이에요. 끝난 뒤에 설치해 주세요.' });
         installKit(kit);
@@ -2037,6 +2097,8 @@ server.listen(PORT, HOST, () => {
   }
   setTimeout(saveStableVersion, 30000).unref();
   startAutoUpdate();
+  setTimeout(prepareDefaultKits, 90 * 1000).unref(); // 시작하고 1분 반쯤 뒤, 그리고 답변이 없을 때마다 조용히 확인
+  setInterval(prepareDefaultKits, 15 * 60 * 1000).unref();
   readClaudeInfo();
   loadProjectConf();
   loadTunnelState(); // 재시작 전에 켜 둔 터널이 아직 살아 있으면 그 주소를 그대로 쓴다

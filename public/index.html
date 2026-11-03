@@ -125,11 +125,16 @@
     </header>
     <div class="settings-body">
       <h3 id="lanH"></h3>
-      <label class="settings-row"><span id="lanLabel"></span><input id="lanToggle" type="checkbox"></label>
+      <label class="share-check"><span id="lanLabel"></span><input id="lanToggle" type="checkbox"></label>
       <p id="lanNote" class="settings-note"></p>
       <div id="lanInfo" class="hidden">
-        <p id="lanAddrs" class="settings-note"></p>
-        <button id="lanShowApp" class="settings-save hidden" type="button"></button>
+        <div class="lan-card">
+          <div id="lanQr" class="lan-qr hidden"></div>
+          <p id="lanQrHint" class="lan-hint"></p>
+          <p id="lanAddrs" class="lan-addr"></p>
+          <button id="lanCopy" class="settings-ghost" type="button"></button>
+          <button id="lanShowApp" class="settings-save hidden" type="button"></button>
+        </div>
         <p id="lanPwNote" class="settings-note"></p>
       </div>
 
@@ -451,9 +456,13 @@
     <button type="button" data-tab="more"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>더보기</button>
   </nav>
 
+  <!-- 연결 상태 안내줄: 감자알이 다시 켜지는 중이거나 접속이 끊겼을 때만 위쪽에 나타난다 -->
+  <div id="connBar" class="conn-bar hidden" role="status" aria-live="polite"><span id="connText"></span><button id="connRetry" class="hidden" type="button"></button></div>
+
   <script src="voice-app.js"></script>
   <script src="icons.js"></script>
   <script src="i18n.js"></script>
+  <script src="qr.js"></script>
   <script src="markdown.js"></script>
   <script src="templates.js"></script>
   <script src="app.js"></script>
