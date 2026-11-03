@@ -34,8 +34,13 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
   when a job is finished. Talk by voice and listen to the answers.
 - **Results screen**: web pages, images, documents, music and video that a crew made open in a separate, sandboxed
   screen.
-- **Toolbox**: install document, image and media tools with one tap, so crews can make Word/PDF/Excel files,
-  PNG images and slideshow videos.
+- **Toolbox**: document and image tools install themselves in the background, so crews can make Word/PDF/Excel
+  files and PNG images. If a crew needs another tool (for example video), it asks with an "Install and continue" card.
+- **You stay in control**: when a crew needs a command that is not allowed yet, a card asks you to allow it once,
+  always allow it, or refuse. Dangerous commands can never be allowed. Review what you allowed in
+  More → Allowed commands.
+- **Use it from other devices**: turn on same-Wi-Fi access and open the address, or scan the QR code, from an
+  iPhone, another Android phone or a PC. Crew names, pins and read marks are shared across your devices.
 - **Runs on your phone**: the app sets up a small Ubuntu environment (using proot) with Node.js and Claude Code.
   Your conversations and files stay on your phone.
 - **Self-updating and safe**: new versions arrive automatically, new code is syntax-checked and test-started before

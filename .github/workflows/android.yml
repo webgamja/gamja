@@ -181,8 +181,9 @@ jobs:
           EOF
           sed -i 's/^ *//' release/latest.json
           cat release/latest.json
+          summary=$(git log -1 --pretty=%s | head -c 240)
           gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
-            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD"
+            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD"$'\n\n'"변경: $summary"
           echo "## ✅ 새 버전 0.1.$GAMJA_BUILD 을 gamja-release에 올렸어요" >> "$GITHUB_STEP_SUMMARY"
 
       # 앱이 안 바뀐 경우: 새 감자알 묶음만 올린다. 감자 앱이 내려받는 주소(latest/download/gamja.apk)가 끊기지 않도록
@@ -204,6 +205,7 @@ jobs:
           EOF
           sed -i 's/^ *//' release/latest.json
           cat release/latest.json
+          summary=$(git log -1 --pretty=%s | head -c 240)
           gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
-            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD (감자알만 업데이트, 앱은 그대로)"
+            --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD (감자알만 업데이트, 앱은 그대로)"$'\n\n'"변경: $summary"
           echo "## ✅ 감자알 0.1.$GAMJA_BUILD 만 gamja-release에 올렸어요 (앱 빌드 건너뜀)" >> "$GITHUB_STEP_SUMMARY"
