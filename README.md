@@ -8,11 +8,11 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License: Apache-2.0](LICENSE)
 
 <p>
-  <img src="docs/img/01-crews.svg" width="19%" alt="Crew tab">
-  <img src="docs/img/02-chat.svg" width="19%" alt="Chat room">
-  <img src="docs/img/03-result.svg" width="19%" alt="Results list">
-  <img src="docs/img/05-view.svg" width="19%" alt="A web page made by a crew">
-  <img src="docs/img/04-access.svg" width="19%" alt="External access settings">
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/01-crews.svg"><img src="docs/img/01-crews.svg" width="19%" alt="Crew tab"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/02-chat.svg"><img src="docs/img/02-chat.svg" width="19%" alt="Chat room"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/03-result.svg"><img src="docs/img/03-result.svg" width="19%" alt="Results list"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/05-view.svg"><img src="docs/img/05-view.svg" width="19%" alt="A web page made by a crew"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/04-access.svg"><img src="docs/img/04-access.svg" width="19%" alt="External access settings"></a>
 </p>
 
 <sub>Screens are illustrations drawn from the real app design; real screenshots will replace them.</sub>

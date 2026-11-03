@@ -8,11 +8,11 @@
 [참여하기](CONTRIBUTING.md) · [보안](SECURITY.md) · [라이선스: Apache-2.0](LICENSE)
 
 <p>
-  <img src="docs/img/01-crews.svg" width="19%" alt="크루 탭">
-  <img src="docs/img/02-chat.svg" width="19%" alt="채팅방">
-  <img src="docs/img/03-result.svg" width="19%" alt="결과물 목록">
-  <img src="docs/img/05-view.svg" width="19%" alt="크루가 만든 웹페이지">
-  <img src="docs/img/04-access.svg" width="19%" alt="외부 접속 설정">
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/01-crews.svg"><img src="docs/img/01-crews.svg" width="19%" alt="크루 탭"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/02-chat.svg"><img src="docs/img/02-chat.svg" width="19%" alt="채팅방"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/03-result.svg"><img src="docs/img/03-result.svg" width="19%" alt="결과물 목록"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/05-view.svg"><img src="docs/img/05-view.svg" width="19%" alt="크루가 만든 웹페이지"></a>
+  <a href="https://raw.githubusercontent.com/webgamja/gamja/main/docs/img/04-access.svg"><img src="docs/img/04-access.svg" width="19%" alt="외부 접속 설정"></a>
 </p>
 
 <sub>화면은 실제 앱 디자인을 따라 그린 예시예요. 실제 캡처로 바꿀 예정이에요.</sub>
