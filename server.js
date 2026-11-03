@@ -411,14 +411,29 @@ function saveStableVersion() {
 }
 
 // 새 코드 검사: 문법 검사 + 임시 포트에 실제로 띄워서 응답하는지 확인
-function checkNewCode() {
-  return new Promise((resolve) => {
-    const { execFileSync } = require('child_process');
-    const jsFiles = ['server.js', ...fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.js')).map((f) => 'public/' + f)];
-    for (const f of jsFiles) {
-      try { execFileSync(process.execPath, ['--check', f], { cwd: __dirname, stdio: 'pipe' }); }
-      catch (e) { return resolve({ ok: false, error: `${f} 문법 오류:\n${String(e.stderr || e.message).trim().slice(0, 1500)}` }); }
+// 문법 검사는 감자알을 멈추지 않게 따로 띄운 프로그램으로 (한 번에 3개씩). 예전에는 하나씩 기다리며 돌려서, 폰에서는 검사하는 내내
+// 감자알이 아무 요청에도 답하지 못하고 화면이 멈춘 것처럼 보였다
+async function checkSyntax(files) {
+  const { execFile } = require('child_process');
+  const checkOne = (f) => new Promise((ok) => {
+    execFile(process.execPath, ['--check', f], { cwd: __dirname }, (err, stdout, stderr) => ok(err ? { f, error: String(stderr || err.message).trim().slice(0, 1500) } : null));
+  });
+  const queue = files.slice();
+  let bad = null;
+  const worker = async () => {
+    while (queue.length && !bad) {
+      const e = await checkOne(queue.shift());
+      if (e && !bad) bad = e;
     }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return bad;
+}
+async function checkNewCode() {
+  const jsFiles = ['server.js', ...fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.js')).map((f) => 'public/' + f)];
+  const bad = await checkSyntax(jsFiles);
+  if (bad) return { ok: false, error: `${bad.f} 문법 오류:\n${bad.error}` };
+  return new Promise((resolve) => {
     const port = 40000 + Math.floor(Math.random() * 20000);
     const tmpData = fs.mkdtempSync(path.join(os.tmpdir(), 'gamja-check-'));
     const child = spawn(process.execPath, ['server.js'], {
@@ -863,12 +878,12 @@ function handleChat(req, res, body, opts = {}) {
   // 생각 깊이: 음성 대화는 빨리 답해야 하므로 항상 low. 그 외에는 프로젝트 설정 → 전체 설정 순
   const effort = body.voice === true && !opts.label ? 'low' : (projectConf[crewOf(project)]?.effort || settings.effort);
   if (effort) args.push('--effort', effort);
-  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt()].filter(Boolean).join('\n');
+  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
   // 도구 상자에서 설치한 도구는 gamja-make 한 가지 명령으로만 허용한다 (.env의 ALLOWED_TOOLS가 있으면 함께)
-  const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`].filter(Boolean).join(' ');
+  const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`, ...permRulesFor(crewOf(project))].filter(Boolean).join(' ');
   if (allowed) args.push('--allowedTools', allowed);
 
   res.writeHead(200, {
@@ -984,7 +999,11 @@ function handleChat(req, res, body, opts = {}) {
       }
       case 'result': {
         gotResult = true;
-        const denials = (ev.permission_denials || []).map((d) => d.tool_name + (d.tool_input && d.tool_input.command ? `: ${d.tool_input.command}` : ''));
+        // 막힌 Bash 명령은 허용 카드로 물어보고, 그 밖의 도구(웹 가져오기 등)는 예전처럼 글로만 알린다
+        const cards = deniedCards(ev.permission_denials);
+        if (cards.length) bot.denied = cards;
+        const denials = (ev.permission_denials || []).filter((d) => d.tool_name !== 'Bash')
+          .map((d) => d.tool_name + (d.tool_input && d.tool_input.command ? `: ${d.tool_input.command}` : ''));
         if (ev.session_id) conv.sessionId = ev.session_id;
         const parts = [];
         if (ev.duration_ms) parts.push(`${(ev.duration_ms / 1000).toFixed(1)}초`);
@@ -1020,6 +1039,7 @@ function handleChat(req, res, body, opts = {}) {
           durationMs: ev.duration_ms,
           numTurns: ev.num_turns,
           denials,
+          denied: bot.denied,
           install: bot.install,
           errorText: ev.is_error ? ev.result : undefined,
         });
@@ -1481,6 +1501,73 @@ function toolsPrompt() {
 }
 const INSTALL_MARK = /\s*\[\[gamja-install:(docs|image|media)\]\]\s*/g;
 
+// ---------- 🔐 막힌 명령 허용 ----------
+// 크루가 허용 목록에 없는 Bash 명령을 쓰려다 막히면 화면에 카드를 보여 주고, 사용자가 이번만/항상/허용 안 함을 고른다.
+// - 허용 목록은 크루 폴더가 아니라 data/permissions.json에 둔다 (크루가 자기 폴더의 설정을 고쳐 스스로 권한을 올리지 못하게)
+// - 화면은 명령 글자를 보내지 않고 카드 번호(id)만 보낸다. 감자알이 기록해 둔 막힌 명령에서만 허용할 수 있다
+// - 위험한 명령, 여러 명령이 이어진 명령, 비밀 파일을 건드리는 명령은 어디서든 허용할 수 없다
+const PERM_FILE = path.join(DATA_DIR, 'permissions.json');
+let perms = {}; // { 크루: [{ rule, cmd, ts }] }
+try { perms = JSON.parse(fs.readFileSync(PERM_FILE, 'utf8')) || {}; } catch {}
+function savePerms() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(PERM_FILE, JSON.stringify(perms, null, 2));
+}
+const permOnce = new Map(); // 크루 -> { rules, until } 이번만 허용: 다음 한 번의 실행에만 쓰고 지운다
+const PERM_MAX_RULES = 100;
+const PERM_CRITICAL = new Set(['sudo', 'su', 'doas', 'dd', 'mkfs', 'fdisk', 'mount', 'umount', 'chown', 'chgrp', 'shutdown', 'reboot', 'halt', 'poweroff',
+  'kill', 'pkill', 'killall', 'systemctl', 'service', 'crontab', 'passwd', 'useradd', 'userdel', 'iptables', 'nc', 'ncat', 'netcat', 'socat', 'telnet',
+  'eval', 'exec', 'source', '.', 'ssh', 'scp', 'sftp', 'rsync', 'mkfifo', 'nohup', 'setsid', 'disown', 'screen', 'tmux', 'chroot', 'insmod', 'modprobe']);
+const PERM_SECRET = /(^|[\s/=])\.env\b|\.ssh\b|id_rsa|id_ed25519|gamja_public_deploy|data\/ssh|permissions\.json|restart-request|start\.sh|\/proc\/|\/etc\/|\/sys\/|\/dev\/(?!null\b)/;
+const PERM_NET = new Set(['apt', 'apt-get', 'dpkg', 'npm', 'npx', 'pnpm', 'yarn', 'pip', 'pip3', 'pipx', 'curl', 'wget']);
+// 아무 코드나 돌릴 수 있는 프로그램: "항상 허용"도 그 명령 그대로만 (인자가 달라지면 다시 묻는다)
+const PERM_EXACT = new Set(['node', 'nodejs', 'python', 'python3', 'bash', 'sh', 'zsh', 'perl', 'ruby', 'php', 'deno', 'bun', 'awk', 'gawk', 'find', 'xargs', 'env', 'time', 'timeout', 'watch', 'script', 'docker', 'make', 'sed', 'tar', 'unzip']);
+const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
+const PERM_READ = new Set(['ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'wc', 'du', 'df', 'pwd', 'echo', 'printf', 'date', 'which', 'whereis', 'file', 'stat', 'tree', 'sort', 'uniq', 'diff', 'cmp', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'id', 'whoami', 'uname', 'hostname', 'true', 'false', 'test']);
+const PERM_WRITE = new Set(['mkdir', 'touch', 'cp', 'mv', 'chmod', 'rm', 'rmdir', 'tee', 'truncate', 'install', 'ln', 'zip', 'gzip', 'gunzip', 'bzip2', '7z', 'sed', 'tar', 'unzip']);
+// 명령 하나를 살펴서 { risk, once, always, rule }을 돌려준다. risk: read | write | run | net | critical | complex
+function classifyCommand(cmd) {
+  const text = String(cmd || '').trim();
+  const none = { risk: 'complex', once: false, always: false, rule: '', onceRule: '', prog: '' };
+  if (!text || text.length > 400) return none;
+  if (/[;&|`<>\n\r()*]|\$[({]/.test(text)) return none; // 이어진 명령·치환·글롭은 한 번에 허용할 수 없다 (규칙으로 정확히 표현할 수 없어서)
+  const tok = text.split(/\s+/);
+  const prog = tok[0].replace(/^.*\//, '');
+  const base = { ...none, prog };
+  if (PERM_SECRET.test(text) || PERM_CRITICAL.has(prog)) return { ...base, risk: 'critical' };
+  if (prog === 'rm' && /(^|\s)(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive|--no-preserve-root)(\s|$)/.test(text)) return { ...base, risk: 'critical' };
+  if (prog === 'chmod' && /(\s-[a-zA-Z]*R|777|a\+rwx)/.test(text)) return { ...base, risk: 'critical' };
+  const exactOnly = PERM_EXACT.has(prog);
+  const sub = PERM_SUBCMD.has(prog) && tok[1] && !tok[1].startsWith('-') ? ` ${tok[1]}` : '';
+  const rule = exactOnly ? `Bash(${text})` : `Bash(${tok[0]}${sub}:*)`; // 항상 허용에 쓰는 규칙 (좁게)
+  const onceRule = `Bash(${text})`; // 이번만 허용은 이 명령 그대로만
+  const b2 = { ...base, rule, onceRule };
+  if (PERM_NET.has(prog)) return { ...b2, risk: 'net', once: true };
+  if (PERM_READ.has(prog)) return { ...b2, risk: 'read', once: true, always: !exactOnly };
+  if (PERM_WRITE.has(prog)) return { ...b2, risk: 'write', once: true, always: !exactOnly && prog !== 'rm' && prog !== 'chmod' };
+  return { ...b2, risk: 'run', once: true, always: true };
+}
+// 막힌 Bash 명령 → 화면에 보여 줄 카드 (최대 3개, 같은 명령은 한 번만)
+function deniedCards(denials) {
+  const out = [];
+  for (const d of denials || []) {
+    if (d.tool_name !== 'Bash' || !d.tool_input || !d.tool_input.command) continue;
+    const cmd = String(d.tool_input.command).trim().slice(0, 401);
+    if (out.some((x) => x.cmd === cmd)) continue;
+    const c = classifyCommand(cmd);
+    out.push({ id: crypto.randomBytes(6).toString('hex'), cmd, risk: c.risk, once: c.once, always: c.always });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+// 이번 실행에 더할 허용 규칙: 이 크루가 "항상 허용"한 것 + (있으면) "이번만 허용"한 것 한 번
+function permRulesFor(crew) {
+  const once = permOnce.get(crew);
+  permOnce.delete(crew);
+  return [...(perms[crew] || []).map((x) => x.rule), ...(once && once.until > Date.now() ? once.rules : [])];
+}
+const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요.';
+
 // 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
 const LAN_OFF_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GAMJA</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f2f4f6;color:#191f28;font-family:system-ui,sans-serif;text-align:center}
@@ -1600,6 +1687,50 @@ const server = http.createServer(async (req, res) => {
           }
         } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
         return send(res, 200, { chats, seen: seenMap });
+      }
+      // 🔐 막힌 명령 허용 (카드의 버튼): 감자알이 기록해 둔 막힌 명령의 id로만 허용할 수 있다
+      if (p === '/api/perm/answer' && req.method === 'POST') {
+        const b = await readBody(req);
+        const project = String(b.project || '');
+        if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
+        const mode = String(b.mode || '');
+        if (!['once', 'always', 'no'].includes(mode)) return send(res, 400, { error: '알 수 없는 선택이에요.' });
+        const conv = loadConv(project);
+        let entry = null;
+        for (const m of conv.messages.slice(-60).reverse()) {
+          entry = (m.denied || []).find((d) => d.id === String(b.id || ''));
+          if (entry) break;
+        }
+        if (!entry) return send(res, 404, { error: '그 요청을 찾을 수 없어요. (이미 처리했거나 오래된 요청이에요)' });
+        if (mode !== 'no') {
+          const c = classifyCommand(entry.cmd); // 허용하는 순간에 한 번 더 살핀다
+          if (mode === 'once' ? !c.once : !c.always) return send(res, 403, { error: '이 명령은 이 방식으로 허용할 수 없어요.' });
+          const crew = crewOf(project);
+          if (mode === 'always') {
+            const list = perms[crew] || (perms[crew] = []);
+            if (!list.some((x) => x.rule === c.rule)) {
+              if (list.length >= PERM_MAX_RULES) return send(res, 400, { error: '허용한 명령이 너무 많아요. 더보기 → 허용한 명령에서 안 쓰는 것을 지워 주세요.' });
+              list.push({ rule: c.rule, cmd: entry.cmd, ts: Date.now() });
+              savePerms();
+            }
+          } else permOnce.set(crew, { rules: [c.onceRule], until: Date.now() + 10 * 60e3 });
+        }
+        entry.answered = mode;
+        saveConv(project);
+        return send(res, 200, { ok: true });
+      }
+      if (p === '/api/perm' && req.method === 'GET') {
+        return send(res, 200, { rules: Object.entries(perms).flatMap(([crew, list]) => list.map((x) => ({ crew, rule: x.rule, cmd: x.cmd, ts: x.ts }))) });
+      }
+      if (p === '/api/perm/remove' && req.method === 'POST') {
+        const b = await readBody(req);
+        const crew = String(b.crew ?? '');
+        if (perms[crew]) {
+          perms[crew] = perms[crew].filter((x) => x.rule !== String(b.rule || ''));
+          if (!perms[crew].length) delete perms[crew];
+          savePerms();
+        }
+        return send(res, 200, { ok: true });
       }
       // 읽음 기록 공유: 방마다 "마지막으로 읽은 답의 시각"을 모든 기기가 같이 쓴다 (더 늦은 시각만 남긴다)
       if (p === '/api/seen' && req.method === 'POST') {

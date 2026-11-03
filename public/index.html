@@ -296,6 +296,7 @@
         <button class="set-row" data-page="lang"><span class="pick-icon">🌐</span><span><b>언어 설정</b><small>화면 언어: 자동, 한국어, English</small></span><i>›</i></button>
         <button class="set-row" data-page="security"><span class="pick-icon">🔒</span><span><b>보안</b><small>비밀번호, 로그아웃</small></span><i>›</i></button>
         <button class="set-row" data-page="connect"><span class="pick-icon">🌐</span><span><b>연결</b><small>외부 접속 주소, GitHub, 다른 폰에 설치</small></span><i>›</i></button>
+        <button class="set-row" data-page="perm"><span class="pick-icon">🔐</span><span><b id="permRowTitle">허용한 명령</b><small id="permRowSub">크루가 묻지 않고 실행해도 되는 명령</small></span><i>›</i></button>
         <button class="set-row" data-page="tools"><span class="pick-icon">🛠</span><span><b>도구 상자</b><small>크루가 문서·그림·영상·소리를 만드는 도구</small></span><i>›</i></button>
       </div>
 
@@ -377,6 +378,11 @@
       <!-- 도구 상자: 크루가 문서·그림·영상·소리를 만들 때 쓰는 도구를 설치한다 (app.js의 renderTools가 그린다) -->
       <div id="page-tools" class="set-page hidden" data-title="🛠 도구 상자">
         <div id="toolsBody"></div>
+      </div>
+
+      <!-- 허용한 명령: 허용 카드에서 "항상 허용"한 명령 목록 (app.js의 renderPerm이 그린다) -->
+      <div id="page-perm" class="set-page hidden" data-title="🔐 허용한 명령">
+        <div id="permBody"></div>
       </div>
 
       <div id="page-security" class="set-page hidden" data-title="🔒 보안">

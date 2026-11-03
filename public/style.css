@@ -809,6 +809,18 @@ html, body { touch-action: pan-x pan-y; }
 .composer-box.off { opacity: .45; pointer-events: none; }
 .gone-note { margin: 18px 12px 8px; padding: 16px; border-radius: 16px; background: color-mix(in srgb, var(--muted, #888) 14%, transparent); text-align: center; font-size: 14px; line-height: 1.5; color: var(--muted, #888); }
 .gone-note p { margin: 0 0 12px; }
+/* 허용 카드 (채팅 말풍선 아래) */
+.perm-card { margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: var(--bot); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; }
+.perm-card b { font-size: 14px; }
+.perm-card code { display: block; padding: 8px 10px; border-radius: 10px; background: var(--code-bg); color: var(--code-fg); font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; white-space: pre-wrap; }
+.perm-card small { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.perm-card.blocked { border-color: #e5484d; }
+.perm-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.perm-btn { flex: 1 1 auto; border: 0; border-radius: 12px; padding: 10px 12px; background: var(--input-bg); color: var(--bot-fg); font: inherit; font-size: 13px; font-weight: 800; }
+.perm-btn.main { background: var(--me); color: var(--me-fg); }
+.perm-btn.ghost { background: transparent; color: var(--muted); }
+.perm-btn:disabled { opacity: .5; }
+.perm-note { opacity: .85; }
 /* 연결 상태 안내줄 (맨 위) */
 .conn-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 90; display: flex; align-items: center; justify-content: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 14px 8px; background: #191f28; color: #fff; font-size: 13px; font-weight: 700; text-align: center; }
 .conn-bar.off { background: #e5484d; }

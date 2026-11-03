@@ -1294,6 +1294,8 @@
     $('infoAppRow').classList.toggle('hidden', !window.GamjaApp);
     // 감자알 로그는 일반 사용자에게 필요 없어서 숨겨 둔다. 나중에 프로(개발자) 모드를 켰을 때만 보여 준다 (앱에서만)
     $('appLog').classList.toggle('hidden', !(window.GamjaApp && d.info.pro));
+    $('permRowTitle').textContent = window.GAMJA_I18N.t('perm.rowTitle');
+    $('permRowSub').textContent = window.GAMJA_I18N.t('perm.rowSub');
     $('extRowTitle').textContent = window.GAMJA_I18N.t('ext.rowTitle');
     $('extRowSub').textContent = window.GAMJA_I18N.t('ext.rowSub');
     if (window.GamjaApp) $('infoApp').textContent = window.GamjaApp.appVersion();
@@ -1593,6 +1595,31 @@
   // 설정 목록 → 하위 화면 (뒤로 가기는 목록으로, 목록에서는 닫기)
   // ---------- 🛠 도구 상자: 크루가 문서·그림·영상·소리를 만들 때 쓰는 도구를 설치한다 ----------
   let toolsTimer = 0;
+  // 더보기 → 허용한 명령: 크루별로 "항상 허용"한 명령 목록과 지우기
+  async function renderPerm() {
+    const T = window.GAMJA_I18N.t;
+    $('page-perm').dataset.title = T('perm.pageTitle');
+    $('settingsTitle').textContent = T('perm.pageTitle');
+    $('settingsHead').textContent = T('perm.pageTitle');
+    let d;
+    try { d = await api('/api/perm'); } catch { return; }
+    const byCrew = {};
+    for (const r of d.rules) (byCrew[r.crew] = byCrew[r.crew] || []).push(r);
+    const groups = Object.entries(byCrew).map(([crew, rules]) =>
+      `<h3>${escapeHtml(crewParts(crew).icon)} ${escapeHtml(crewParts(crew).text)}</h3>` +
+      rules.map((r) => `<div class="tool-card"><div class="tool-mid"><b data-no-i18n>${escapeHtml(r.rule.replace(/^Bash\(|\)$/g, ''))}</b>` +
+        `<small data-no-i18n>${escapeHtml(r.cmd)}</small></div>` +
+        `<button class="tool-btn" type="button" data-crew="${escapeHtml(crew)}" data-rule="${escapeHtml(r.rule)}">${escapeHtml(T('perm.remove'))}</button></div>`).join('')).join('');
+    $('permBody').innerHTML = `<p class="settings-note">${escapeHtml(T('perm.intro'))}</p>` +
+      (groups || `<p class="settings-note">${escapeHtml(T('perm.empty'))}</p>`);
+  }
+  $('permBody').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-rule]');
+    if (!b) return;
+    b.disabled = true;
+    try { await api('/api/perm/remove', { crew: b.dataset.crew, rule: b.dataset.rule }); } catch (err) { toast(err.message); }
+    renderPerm();
+  });
   async function renderTools() {
     let d;
     try { d = await api('/api/tools'); } catch { return; }
@@ -1619,6 +1646,7 @@
   });
   function showSettingsPage(page) {
     if (page === 'tools') renderTools();
+    if (page === 'perm') renderPerm();
     $('setList').classList.toggle('hidden', !!page);
     $('setInfo').classList.toggle('hidden', !!page);
     for (const el of settingsEl.querySelectorAll('.set-page')) el.classList.toggle('hidden', el.id !== `page-${page}`);
@@ -2084,6 +2112,18 @@
     return `/api/uploads?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`;
   }
   const INSTALL_MARK = /\s*\[\[gamja-install:\w+\]\]\s*/g;
+  function permCardHtml(d) {
+    const T = window.GAMJA_I18N.t;
+    const blocked = !d.once; // 위험하거나 이어진 명령: 허용 버튼 없이 안내만
+    const btn = (mode, label, cls = '') => `<button class="perm-btn ${cls}" type="button" data-mode="${mode}">${escapeHtml(label)}</button>`;
+    return `<div class="perm-card${blocked ? ' blocked' : ''}" data-id="${escapeHtml(d.id)}"><b>${escapeHtml(T('perm.title'))}</b>` +
+      `<code data-no-i18n>${escapeHtml(d.cmd)}</code>` +
+      (blocked ? '' : `<small>👍 ${escapeHtml(T('perm.good.' + d.risk))}</small>`) +
+      `<small>⚠️ ${escapeHtml(T('perm.warn.' + d.risk))}</small>` +
+      `<div class="perm-btns">${blocked ? btn('no', T('perm.ok'))
+        : btn('once', T('perm.once'), 'main') + (d.always ? btn('always', T('perm.always')) : '') + btn('no', T('perm.no'), 'ghost')}</div>` +
+      (d.always ? `<small class="perm-note">${escapeHtml(T('perm.alwaysNote'))}</small>` : '') + '</div>';
+  }
   function paint(view, m, streaming) {
     if (m.role === 'user' && (m.images || m.localImages)) {
       // 첨부 이미지 + 글 (보내는 중에는 미리보기 주소, 저장 후에는 서버 주소)
@@ -2125,12 +2165,33 @@
       html += m.install.map((k) => `<div class="install-card"><b>${escapeHtml(T('tool.need', { name: k.name }))}</b><small>${escapeHtml(T('tool.sub', { size: k.size }))}</small>` +
         `<button class="install-go" type="button" data-kit="${escapeHtml(k.id)}">${escapeHtml(T('tool.go'))}</button></div>`).join('');
     }
+    // 막힌 명령: 허용 여부를 묻는 카드 (이번만 / 항상 / 허용 안 함)
+    for (const d of (m.denied || []).filter((x) => !x.answered)) html += permCardHtml(d);
     if (m.meta) html += `<div class="meta">${escapeHtml(m.meta)}</div>`;
     if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>`;
     view.extra.innerHTML = html;
     const sb = view.extra.querySelector('.speak-btn');
     if (sb) sb.onclick = () => speak(m.text, true);
   }
+
+  // 허용 카드: 고른 뒤 허용했으면 하던 일을 이어서 해 달라고 자동으로 보낸다
+  els.messages.addEventListener('click', async (e) => {
+    const b = e.target.closest('.perm-btn');
+    if (!b) return;
+    const T = window.GAMJA_I18N.t;
+    const card = b.closest('.perm-card');
+    const mode = b.dataset.mode;
+    const room = project;
+    const buttons = card.querySelectorAll('button');
+    buttons.forEach((x) => { x.disabled = true; });
+    try { await api('/api/perm/answer', { project: room, id: card.dataset.id, mode }); }
+    catch (err) { buttons.forEach((x) => { x.disabled = false; }); return alert(err.message); }
+    card.remove();
+    if (mode === 'no') return card.classList.contains('blocked') ? null : toast(T('perm.noted'));
+    if (room !== project || runId || remoteRunId) return toast(T('perm.allowedElsewhere'));
+    els.input.value = T('perm.resume');
+    sendMessage();
+  });
 
   // 도구 설치 카드: 설치 → 끝나면 하던 일을 이어서 해 달라고 자동으로 보낸다
   els.messages.addEventListener('click', async (e) => {
@@ -2317,7 +2378,10 @@
               setStatus('✍️ 답변 작성 중...');
               repaint();
               break;
-            case 'status': setStatus(d.text); break;
+            case 'status':
+              if (/새 코드 검사|재시작/.test(d.text)) restartHint = Date.now();
+              setStatus(d.text);
+              break;
             case 'tool':
               lastWasTool = true;
               bot.tools.push(d.text);
@@ -2329,6 +2393,7 @@
               if (d.sessionId) { sessionId = d.sessionId; updateSessionInfo(); }
               bot.meta = d.meta || ''; // 서버가 만든 "시간 · 토큰" 표시
               if (d.install) bot.install = d.install;
+              if (d.denied) bot.denied = d.denied;
               if (d.denials && d.denials.length) {
                 bot.text += `\n\n> ⚠️ 권한이 거부된 도구: ${[...new Set(d.denials)].map((x) => '`' + x + '`').join(', ')}`;
               }
@@ -2939,10 +3004,12 @@
   let connBoot = null;
   let connTimer = 0;
   let connBusy = false;
+  let restartHint = 0; // 감자알이 "새 코드 검사·재시작 중"이라고 알린 시각 (이때는 연결이 한참 끊겨도 정상이라 안내를 다르게 한다)
   function connShow(kind, text, retry) {
     connBar.className = `conn-bar ${kind}`;
     $('connText').textContent = text;
     $('connRetry').textContent = window.GAMJA_I18N.t('conn.retry');
+    $('connRetry').disabled = false;
     $('connRetry').classList.toggle('hidden', !retry);
   }
   async function connPing() {
@@ -2980,15 +3047,26 @@
       next = 3000;
       if (connFails >= 2) { // 한 번 실패한 건 흔들림일 수 있어서 두 번째부터 알린다
         if (connState !== 'down') { connState = 'down'; connDownSince = Date.now(); }
-        const long = Date.now() - connDownSince > 30000;
-        connShow('down', long ? T('conn.lost') : T('conn.checking'), long);
+        // 재시작 중이면 1분 넘게 걸릴 수 있어서 "연결할 수 없어요"는 90초가 지난 뒤에, 그 전에는 "다시 켜는 중"이라고 알린다
+        const restarting = awaitingRestart || Date.now() - restartHint < 180000;
+        const long = Date.now() - connDownSince > (restarting ? 90000 : 30000);
+        connShow('down', long ? T('conn.lost') : T(restarting ? 'conn.restarting' : 'conn.checking'), long);
       }
     } finally {
       connBusy = false;
       connTimer = setTimeout(connPing, next);
     }
   }
-  $('connRetry').onclick = () => { connFails = Math.max(connFails, 1); connPing(); };
+  $('connRetry').onclick = async () => {
+    const b = $('connRetry');
+    b.disabled = true; // 눌렀다는 게 보이게: 확인하는 동안 "확인 중…"
+    b.textContent = window.GAMJA_I18N.t('conn.checkingBtn');
+    connFails = Math.max(connFails, 1);
+    for (let i = 0; connBusy && i < 50; i++) await new Promise((r) => setTimeout(r, 100)); // 이미 확인 중이면 끝나길 잠깐 기다린다
+    await connPing();
+    b.disabled = false;
+    b.textContent = window.GAMJA_I18N.t('conn.retry');
+  };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) connPing(); });
   window.addEventListener('online', connPing);
   connPing();
