@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="740" viewBox="0 0 360 740" role="img" aria-label="GAMJA external access settings">
+  <style>
+    text{font-family:"Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+    .t{fill:#191f28}.s{fill:#6b7684}.b{font-weight:700}.x{font-weight:800}
+  </style>
+  <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <rect x="8" y="8" width="344" height="724" rx="30" fill="#f2f4f6"/>
+  <text x="28" y="34" font-size="11" class="s b">9:41</text>
+  <text x="24" y="76" font-size="22" class="t">←</text>
+  <text x="180" y="76" font-size="17" text-anchor="middle" class="t b">🌐 외부 접속</text>
+
+  <text x="20" y="116" font-size="13" class="s b">같은 와이파이 접속</text>
+  <rect x="16" y="126" width="328" height="60" rx="14" fill="#fff"/>
+  <text x="32" y="162" font-size="15" class="t" font-weight="600">다른 기기에서 접속 허용</text>
+  <rect x="280" y="141" width="50" height="30" rx="15" fill="#fee500"/><circle cx="315" cy="156" r="12" fill="#fff"/>
+
+  <text x="20" y="212" font-size="13" class="s">켜면 같은 와이파이에 있는 아이폰·안드로이드·PC의</text>
+  <text x="20" y="232" font-size="13" class="s">브라우저로 이 폰의 감자에 접속할 수 있어요.</text>
+  <text x="20" y="252" font-size="13" class="s">꺼 두면 이 폰에서만 열려요.</text>
+
+  <text x="20" y="284" font-size="13" class="s">접속 주소: http://10.0.0.5:3000</text>
+  <rect x="16" y="298" width="328" height="54" rx="14" fill="#fee500"/>
+  <text x="180" y="331" font-size="17" text-anchor="middle" fill="#191919" class="x">주소와 비밀번호 보기</text>
+  <text x="20" y="378" font-size="13" class="s">접속할 때는 감자 비밀번호가 필요해요. 모르는 사람이</text>
+  <text x="20" y="398" font-size="13" class="s">있는 와이파이에서는 꺼 두세요.</text>
+
+  <text x="20" y="444" font-size="13" class="s b">외부 접속 주소 (와이파이 밖)</text>
+  <text x="20" y="472" font-size="13" class="t b">🔒 Pro 준비 중</text>
+  <text x="20" y="494" font-size="13" class="s">와이파이 밖(LTE)에서도 접속하고 아이폰 Safari에서</text>
+  <text x="20" y="514" font-size="13" class="s">음성 대화까지 쓰는 안전한 https 주소는 Pro에서</text>
+  <text x="20" y="534" font-size="13" class="s">제공할 예정이에요.</text>
+</svg>

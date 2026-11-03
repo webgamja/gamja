@@ -4,8 +4,23 @@
 Turn a spare Android phone into a home for your own [Claude Code](https://claude.com/claude-code) crews, and talk to
 them from a chat app: websites, documents, images, schedules and more. No Mac mini, no cloud server.
 
-[한국어 README](README.ko.md) · [Download](https://github.com/webgamja/gamja-release/releases/latest) ·
+[Website](https://webgamja.com/en/) · [한국어 README](README.ko.md) · [Download](https://github.com/webgamja/gamja-release/releases/latest) ·
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License: Apache-2.0](LICENSE)
+
+<p>
+  <img src="docs/img/01-crews.svg" width="19%" alt="Crew tab">
+  <img src="docs/img/02-chat.svg" width="19%" alt="Chat room">
+  <img src="docs/img/03-result.svg" width="19%" alt="Results list">
+  <img src="docs/img/05-view.svg" width="19%" alt="A web page made by a crew">
+  <img src="docs/img/04-access.svg" width="19%" alt="External access settings">
+</p>
+
+<sub>Screens are illustrations drawn from the real app design; real screenshots will replace them.</sub>
+
+**Why you can trust it**
+- Your conversations and files **stay on your own phone**. The GAMJA operator does not collect or see them.
+- The code is **open source** (Apache-2.0), so anyone can check what it does.
+- You sign in on Anthropic's official screen with **your own Claude account**. GAMJA never sees your login.
 
 > **Status: early (v0.x).** GAMJA is young and changes quickly. It updates itself, and a broken update rolls back
 > automatically, but please expect rough edges. GAMJA is an independent project and is **not affiliated with
@@ -27,6 +42,12 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
   it replaces the old one, and the last stable version is restored automatically if the new one keeps crashing.
 - **Two languages**: Korean and English.
 
+## What you need
+
+- An Android phone (Android 8 or newer) that you can leave plugged in. A spare phone works well.
+- Your own **Claude subscription**.
+- About 10 to 20 minutes for the first start (one time, on Wi-Fi).
+
 ## Install
 
 1. Download `gamja.apk` from the [latest release](https://github.com/webgamja/gamja-release/releases/latest)
@@ -39,6 +60,22 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
 GAMJA is distributed from GitHub, not from Google Play. See
 [android/README.md](android/README.md) for why (it runs programs inside the app, which Android 10+ restricts for
 apps that target newer Android versions).
+
+## Open it from another device
+
+On the phone: **More → Connect → External access**. Turn on "Allow access from other devices" (it is off by default)
+and an iPhone, another Android phone or a PC on the **same Wi-Fi** can open the address in a browser. You need the
+GAMJA password. An address that works outside Wi-Fi (mobile data) is planned for GAMJA Pro.
+
+GAMJA Free is everything that runs on your own phone. Features that need our own servers will come in GAMJA Pro.
+
+## FAQ
+
+- **Is it free?** Yes. GAMJA is free and open source. You pay for your own Claude subscription.
+- **Where is my data?** On your phone. Messages you send are processed by Claude (Anthropic) under Anthropic's terms.
+- **Does it work on iPhone?** The app runs on Android. An iPhone can open it in a browser over the same Wi-Fi.
+- **Why not Google Play?** See [android/README.md](android/README.md).
+- **Is it from Anthropic?** No. GAMJA is an independent project.
 
 ## How it works
 
