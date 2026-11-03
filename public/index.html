@@ -209,6 +209,19 @@
     </div>
   </section>
 
+  <!-- 👥 새 채팅의 참여자 고르기 (내 크루 · 추천 크루 중 한 명) -->
+  <section id="ncPick" class="settings ui ui-big hidden">
+    <header class="settings-bar">
+      <button id="ncPickBack" class="icon-btn" title="닫기">←</button>
+      <h2>크루 고르기</h2>
+    </header>
+    <div class="settings-body">
+      <h1 id="ncPickH" class="ui-title"></h1>
+      <div class="fr-search"><input id="ncSearch" type="search" autocomplete="off" spellcheck="false"></div>
+      <div id="ncListBox"></div>
+    </div>
+  </section>
+
   <!-- 👤 참여자 정보 (채팅방 설정에서 참여자를 누르면): 크루 설정 열기 · 이 방에서 내보내기 -->
   <section id="memberInfo" class="settings ui ui-big hidden">
     <header class="settings-bar">
@@ -251,10 +264,10 @@
       </div>
       <div id="roomActions">
         <h3 id="roomManageH"></h3>
-        <button id="newBtn" class="settings-ghost" type="button"></button>
-        <p id="roomNewNote" class="settings-note"></p>
         <button id="compactBtn" class="settings-ghost" type="button"></button>
         <p id="roomCompactNote" class="settings-note"></p>
+        <button id="newBtn" class="settings-danger" type="button"></button>
+        <p id="roomNewNote" class="settings-note"></p>
       </div>
       <p id="roomDeleteNote" class="settings-note"></p>
       <button id="roomDelete" class="settings-danger" type="button"></button>

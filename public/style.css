@@ -770,14 +770,21 @@ html, body { touch-action: pan-x pan-y; }
 .cl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--me); box-shadow: 0 0 0 3px color-mix(in srgb, var(--me) 30%, transparent); }
 
 /* 크루 탭: 카톡 친구 목록처럼 상자 없이 줄만 이어지게 (묶음은 작은 제목 줄) */
-#crewListBox .fr-list { border-radius: 0; background: transparent; }
-#crewListBox .fr-row { padding: 9px 4px; border-bottom: 0; }
-#crewListBox .fr-av { border-radius: 17px; background: var(--ui-card); }
-#crewListBox .fr-row.me .fr-av { width: 54px; height: 54px; border-radius: 20px; background: var(--me); color: var(--me-fg); font-size: 26px; --gi-line: currentColor; --gi-a-line: currentColor; }
-#crewListBox .fr-row.me .fr-mid b { font-size: 18px; }
-#crewListBox .fr-grp { margin-top: 10px; padding: 14px 4px 4px; border-bottom: 0; border-top: 1px solid var(--ui-line); background: transparent; font-size: 13px; font-weight: 600; color: var(--ui-sub); }
-#crewListBox .fr-grp small { font-size: 13px; }
-#crewListBox .fr-sec { margin: 14px 4px 2px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-weight: 600; }
+/* 새 채팅 시작 화면(#ncListBox)도 같은 모양: 크루 탭의 줄 + 추천 크루 카드 */
+#crewListBox .fr-list, #ncListBox .fr-list { border-radius: 0; background: transparent; }
+#crewListBox .fr-row, #ncListBox .fr-row { padding: 9px 4px; border-bottom: 0; }
+#crewListBox .fr-av, #ncListBox .fr-av { border-radius: 17px; background: var(--ui-card); }
+#crewListBox .fr-row.me .fr-av, #ncListBox .fr-row.me .fr-av { width: 54px; height: 54px; border-radius: 20px; background: var(--me); color: var(--me-fg); font-size: 26px; --gi-line: currentColor; --gi-a-line: currentColor; }
+#crewListBox .fr-row.me .fr-mid b, #ncListBox .fr-row.me .fr-mid b { font-size: 18px; }
+#crewListBox .fr-grp, #ncListBox .fr-grp { margin-top: 10px; padding: 14px 4px 4px; border-bottom: 0; border-top: 1px solid var(--ui-line); background: transparent; font-size: 13px; font-weight: 600; color: var(--ui-sub); }
+#crewListBox .fr-grp small, #ncListBox .fr-grp small { font-size: 13px; }
+#crewListBox .fr-sec, #ncListBox .fr-sec { margin: 14px 4px 2px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-weight: 600; }
+.nc-go { flex: none; padding-right: 4px; color: var(--ui-sub); font-size: 22px; line-height: 1; }
+#ncPick .fr-search { margin: 4px 0 14px; }
+#ncPick { z-index: 32; }
+/* 새 채팅 시작: 아래 큰 버튼은 스크롤해도 화면 아래에 붙어 있다 */
+#newChat #newChatGo { position: sticky; bottom: 14px; margin-top: 18px; }
+#newChatForm .fr-pill { margin-right: 6px; }
 
 /* 채팅 탭: 크루 탭과 같은 모양 (상자 없이 줄만, 둥근 사각형 아이콘, 작은 제목 줄) */
 .cl-list { border-radius: 0; background: transparent; }

@@ -308,6 +308,16 @@ const EFFORTS = ['', 'low', 'medium', 'high']; // 생각 깊이 (--effort). '' =
 // lanAccess: 같은 와이파이의 다른 기기(PC·아이폰 등)에서 접속하는 것을 허용할지. 기본은 꺼짐 (이 폰 안의 감자 앱·브라우저만)
 let settings = { nickname: '', style: '', model: '', autocompact: '', effort: '', lanAccess: false };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch {}
+// 기기 간에 같이 쓰는 화면 정보: 크루 이름·아이콘·묶음(crew), 템플릿(tpl), ★ 자주 쓰는 크루(favs), 채팅방 이름(roomTitle),
+// 📌 고정(roomPin), 방 만든 시각(roomMade). 항목마다 { v, ts }로 두고 더 늦은 ts가 이긴다 (v가 null이면 지운 것)
+const UI_FILE = path.join(DATA_DIR, 'ui-state.json');
+const UI_MAPS = new Set(['crew', 'tpl', 'favs', 'roomTitle', 'roomPin', 'roomMade']);
+let uiState = {};
+try { uiState = JSON.parse(fs.readFileSync(UI_FILE, 'utf8')) || {}; } catch {}
+function saveUi() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(UI_FILE, JSON.stringify(uiState));
+}
 // 읽음 기록: { 방 이름: 마지막으로 읽은 답변 시각 }. 모든 기기가 같이 쓴다 (한 기기에서 읽으면 다른 기기의 안 읽음 숫자도 줄어든다)
 const SEEN_FILE = path.join(DATA_DIR, 'seen.json');
 let seenMap = {};
@@ -1686,7 +1696,20 @@ const server = http.createServer(async (req, res) => {
             });
           }
         } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
-        return send(res, 200, { chats, seen: seenMap });
+        return send(res, 200, { chats, seen: seenMap, ui: uiState });
+      }
+      // 기기 간 공유 화면 정보 올리기: 항목마다 더 늦은 시각이 이긴다
+      if (p === '/api/ui-state' && req.method === 'POST') {
+        const b = await readBody(req);
+        let changed = false;
+        for (const c of (Array.isArray(b.changes) ? b.changes : []).slice(0, 300)) {
+          if (!c || !UI_MAPS.has(c.map) || typeof c.key !== 'string' || c.key.length > 200 || typeof c.ts !== 'number' || !Number.isFinite(c.ts)) continue;
+          if (c.v !== null && JSON.stringify(c.v === undefined ? null : c.v).length > 8000) continue; // 너무 큰 값은 받지 않는다
+          const m = uiState[c.map] || (uiState[c.map] = {});
+          if (c.ts > ((m[c.key] && m[c.key].ts) || 0)) { m[c.key] = { v: c.v === undefined ? null : c.v, ts: c.ts }; changed = true; }
+        }
+        if (changed) saveUi();
+        return send(res, 200, { ui: uiState });
       }
       // 🔐 막힌 명령 허용 (카드의 버튼): 감자알이 기록해 둔 막힌 명령의 id로만 허용할 수 있다
       if (p === '/api/perm/answer' && req.method === 'POST') {

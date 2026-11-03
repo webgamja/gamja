@@ -21,11 +21,118 @@
   els.input.addEventListener('blur', () => setTimeout(fitViewport, 150));
 
   // ---------- 저장소 (localStorage 실패해도 동작) ----------
+  // ---------- 기기 간에 같이 쓰는 화면 정보 ----------
+  // 크루 이름·아이콘·묶음(cc:crew:·cc:tpl:), ★ 자주 쓰는 크루(cc:favs), 채팅방 이름·📌 고정·방 만든 시각(cc:roomTitle·cc:roomPin·cc:roomMade)은
+  // 바뀔 때 감자알에 올리고, 채팅 목록을 불러올 때 다른 기기의 변경을 받아 온다. 항목마다 더 늦은 시각이 이긴다. 그 밖의 값(쓰던 글·글자 크기·테마)은 기기마다 따로 둔다
+  const UI_MAP_KEYS = { 'cc:roomTitle': 'roomTitle', 'cc:roomPin': 'roomPin', 'cc:roomMade': 'roomMade' };
+  const uiTarget = (k) => { // 로컬 키 → 공유 대상 (공유하지 않는 키는 null)
+    if (UI_MAP_KEYS[k]) return { whole: UI_MAP_KEYS[k] };
+    if (k === 'cc:favs') return { whole: 'favs', list: true };
+    if (k.startsWith('cc:crew:')) return { map: 'crew', key: k.slice(8) };
+    if (k.startsWith('cc:tpl:')) return { map: 'tpl', key: k.slice(7) };
+    return null;
+  };
+  let uiApplying = false; // 감자알에서 받은 값을 넣는 중에는 다시 올리지 않는다
+  let uiOut = [];
+  let uiTimer = 0;
+  let uiLastTs = 0;
+  function uiDiff(t, old, nv) { // 바뀐 항목만 골라 { map, key, v } 목록으로 (v가 null이면 지운 것)
+    const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+    if (t.list) {
+      const o = new Set(old || []), n = new Set(nv || []);
+      return [...n].filter((x) => !o.has(x)).map((key) => ({ map: t.whole, key, v: true })).concat([...o].filter((x) => !n.has(x)).map((key) => ({ map: t.whole, key, v: null })));
+    }
+    if (t.whole) {
+      const o = old || {}, n = nv || {};
+      return Object.keys(n).filter((k) => !same(n[k], o[k])).map((key) => ({ map: t.whole, key, v: n[key] }))
+        .concat(Object.keys(o).filter((k) => !(k in n)).map((key) => ({ map: t.whole, key, v: null })));
+    }
+    return same(old, nv) ? [] : [{ map: t.map, key: t.key, v: nv === undefined ? null : nv }];
+  }
+  function uiPush(changes) {
+    if (!changes.length) return;
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem('cc:uiTs') || '{}'); } catch {}
+    for (const c of changes) { uiLastTs = Math.max(Date.now(), uiLastTs + 1); c.ts = uiLastTs; seen[`${c.map}|${c.key}`] = c.ts; }
+    try { localStorage.setItem('cc:uiTs', JSON.stringify(seen)); } catch {}
+    uiOut.push(...changes);
+    clearTimeout(uiTimer);
+    uiTimer = setTimeout(uiFlush, 400);
+  }
+  async function uiFlush() {
+    if (!uiOut.length) return;
+    const batch = uiOut;
+    uiOut = [];
+    try { await api('/api/ui-state', { changes: batch }); } catch { uiOut = batch.concat(uiOut); } // 못 올렸으면 다음에 다시 올린다
+  }
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-    del(k) { try { localStorage.removeItem(k); } catch {} },
+    set(k, v) {
+      const t = uiApplying ? null : uiTarget(k);
+      const old = t ? this.get(k, null) : null;
+      try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+      if (t) uiPush(uiDiff(t, old, v));
+    },
+    del(k) {
+      const t = uiApplying ? null : uiTarget(k);
+      const old = t ? this.get(k, null) : null;
+      try { localStorage.removeItem(k); } catch {}
+      if (t) uiPush(uiDiff(t, old, null));
+    },
   };
+  function uiApplyOne(map, key, v) { // 감자알에서 받은 항목 하나를 이 기기에 넣는다
+    if (map === 'crew' || map === 'tpl') { const k = `cc:${map}:${key}`; if (v === null) store.del(k); else store.set(k, v); return; }
+    if (map === 'favs') {
+      const l = store.get('cc:favs', []);
+      if (v === null && l.includes(key)) store.set('cc:favs', l.filter((x) => x !== key));
+      else if (v !== null && !l.includes(key)) store.set('cc:favs', [...l, key]);
+      return;
+    }
+    const lk = `cc:${map}`;
+    const m = store.get(lk, {});
+    if (v === null) delete m[key]; else m[key] = v;
+    store.set(lk, m);
+  }
+  // 반환: 이 기기에 바뀐 게 있는지
+  function uiApply(ui) {
+    if (!ui) return false;
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem('cc:uiTs') || '{}'); } catch {}
+    let changed = false;
+    uiApplying = true;
+    try {
+      for (const [map, entries] of Object.entries(ui)) {
+        for (const [key, e] of Object.entries(entries || {})) {
+          const id = `${map}|${key}`;
+          if (!e || typeof e.ts !== 'number' || e.ts <= (seen[id] || 0)) continue;
+          seen[id] = e.ts;
+          uiApplyOne(map, key, e.v === undefined ? null : e.v);
+          changed = true;
+        }
+      }
+    } finally { uiApplying = false; }
+    if (changed) { try { localStorage.setItem('cc:uiTs', JSON.stringify(seen)); } catch {} }
+    return changed;
+  }
+  // 이 기기에만 있던 정보는 처음 한 번 감자알에 올려서 합친다 (이미 감자알에 있는 항목은 감자알 것을 따른다)
+  function uiMigrate(ui) {
+    let done = false;
+    try { done = localStorage.getItem('cc:uiMig') === '1'; } catch { done = true; }
+    if (done) return;
+    const has = (map, key) => !!(ui && ui[map] && ui[map][key]);
+    const ch = [];
+    for (const [lk, map] of Object.entries(UI_MAP_KEYS)) for (const [k, v] of Object.entries(store.get(lk, {}))) if (!has(map, k)) ch.push({ map, key: k, v });
+    for (const n of store.get('cc:favs', [])) if (!has('favs', n)) ch.push({ map: 'favs', key: n, v: true });
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const t = k && uiTarget(k);
+        if (t && t.map && !has(t.map, t.key)) { const v = store.get(k, null); if (v !== null) ch.push({ map: t.map, key: t.key, v }); }
+      }
+      localStorage.setItem('cc:uiMig', '1');
+    } catch {}
+    uiPush(ch);
+  }
   // 🔔 완료 알림을 누르면 ?project=이름 으로 열린다 → 그 프로젝트로 시작
   const linked = new URLSearchParams(location.search).get('project');
   if (linked !== null) { store.set('cc:project', linked); window.history.replaceState(null, '', location.pathname); }
@@ -375,7 +482,8 @@
   const isGone = (n) => typeof n === 'string' && n.startsWith('~');
   const goneName = (n) => { const id = n.slice(1); try { return decodeURIComponent(id.slice(id.indexOf('__') + 2)); } catch { return id; } };
   const crewParts = (n) => {
-    const label = n === '' ? ROOT_NAME : crewLabel(isGone(n) ? goneName(n) : n);
+    // 감자 톡톡의 다른 채팅방("@번호")도 감자 톡톡으로 보인다 (예전에는 이름 없이 폴더 아이콘만 나왔다)
+    const label = !isGone(n) && crewOf(n) === '' ? ROOT_NAME : crewLabel(isGone(n) ? goneName(n) : n);
     const sp = label.indexOf(' ');
     return sp > 0 ? { icon: label.slice(0, sp), text: label.slice(sp + 1) } : { icon: '🥔', text: label };
   };
@@ -402,6 +510,11 @@
     try { d = await api('/api/chats'); } catch { return; }
     chats = d.chats || [];
     // 처음 보는 크루는 지금까지의 답을 모두 읽은 것으로 시작한다 (처음부터 안 읽음이 쌓여 보이지 않게)
+    // 크루 이름·★·채팅방 이름·고정·순서도 기기마다 달라지지 않게 감자알의 것을 받아 오고, 이 기기에서 바꾼 것은 올린다
+    const uiChanged = uiApply(d.ui);
+    uiMigrate(d.ui || {});
+    uiFlush();
+    if (uiChanged) { updateHomeBtn(); if (!$('homePanel').classList.contains('hidden')) renderHome(); }
     // 읽음 기록은 감자알과 모든 기기가 같이 쓴다: 감자알의 기록과 이 기기의 기록 중 더 늦은 시각을 따른다
     const seen = store.get('cc:seen', {});
     const shared = d.seen || {};
@@ -417,7 +530,7 @@
     cnt.textContent = total > 9 ? '9+' : String(total);
     cnt.classList.toggle('hidden', !total);
     // 바뀐 게 없으면 다시 그리지 않는다 (스크롤·눌림 상태가 흐트러지지 않게). 시간 글자는 분이 바뀔 때 갱신된다
-    const key = `${JSON.stringify(chats)}|${JSON.stringify(seen)}|${JSON.stringify(store.get('cc:roomMade', {}))}|${JSON.stringify(Object.keys(getDrafts()))}|${JSON.stringify(getRoomTitles())}|${JSON.stringify(getRoomPins())}|${new Date().getMinutes()}`;
+    const key = `${JSON.stringify(chats)}|${JSON.stringify(seen)}|${JSON.stringify(store.get('cc:roomMade', {}))}|${JSON.stringify(draftRooms())}|${JSON.stringify(getRoomTitles())}|${JSON.stringify(getRoomPins())}|${new Date().getMinutes()}`;
     if (tab === 'chat' && key !== chatKey) { chatKey = key; renderChats(seen); }
   }
   let chatKey = ''; // 마지막으로 그린 채팅 목록의 내용 (같으면 다시 그리지 않는다)
@@ -433,7 +546,7 @@
     // 채팅방이 있는 크루만 보여 준다: 말한 적이 있거나 방이 만들어진 크루 (감자 톡톡은 항상).
     // 맨 위로 올라오는 기준은 두 가지뿐: ① 대화가 오갔을 때(마지막 대화 시각) ② 방이 만들어졌을 때. 더 최근인 방이 위
     const opened = store.get('cc:roomMade', {});
-    const drafts = getDrafts();
+    const drafts = Object.fromEntries(draftRooms().map((n) => [n, 1])); // 쓰던 글이나 붙여 둔 사진이 있는 방 (연필 표시)
     const last = (c) => Math.max(c.ts || 0, opened[c.name] || 0);
     // 채팅방 설정에서 📌 고정한 방은 목록 맨 위에 둔다 (크루 탭의 ★ 자주 쓰는 크루와는 별개). 고정끼리, 나머지끼리는 각각 최근 순. 고정한 방은 대화 전에도 보인다
     const pinned = new Set(Object.keys(getRoomPins()));
@@ -1245,8 +1358,8 @@
   }
   els.newBtn.onclick = async () => {
     els.menu.classList.add('hidden');
-    if (runId || remoteRunId) return alert('응답 중에는 새 대화를 시작할 수 없어요. 먼저 중지하세요.');
-    if (history.length && !confirm('새 대화를 시작할까요? (모든 기기에서 지금 대화가 지워져요)')) return;
+    if (runId || remoteRunId) return alert('응답 중에는 대화를 지울 수 없어요. 먼저 중지하세요.');
+    if (history.length && !confirm(window.GAMJA_I18N.t('room.newConfirm'))) return;
     stopSpeaking();
     try { await api('/api/history/reset', { project }); } catch (err) { return alert(err.message); }
     roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫고 새 대화를 보여 준다
@@ -1401,32 +1514,113 @@
   let ncName = ''; // 적어 둔 채팅방 이름
   function renderNewChat() {
     const T = window.GAMJA_I18N.t;
+    if (!GROUP_CHAT_ENABLED) return renderNcForm();
     const rows = ['', ...projectList].map((n) => {
       const { icon, text } = crewParts(n);
       const on = ncMembers.includes(n);
       return `<button class="fr-row${on ? ' sel' : ''}" data-pick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
         `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
     }).join('');
-    // 그룹 채팅이 닫혀 있는 동안: 크루 목록만 보여 주고, 크루를 누르면 바로 새 채팅방이 열린다 (이름은 채팅방 설정에서 바꾼다)
-    $('newChatForm').innerHTML = !GROUP_CHAT_ENABLED ? `<div class="fr-list">${rows}</div>` :
+    $('newChatForm').innerHTML =
       `<h3>${escapeHtml(T('newchat.name'))}</h3><input id="ncName" maxlength="40" placeholder="${escapeHtml(T('newchat.namePh'))}" value="${escapeHtml(ncName)}" autocomplete="off">` +
       `<h3>${escapeHtml(T('newchat.members'))} ${ncMembers.length}</h3><div class="fr-list">${rows}</div>` +
       `<p class="settings-note">${escapeHtml(T('newchat.groupNote', { max: MAX_ROOM_MEMBERS }))}</p>`;
     $('newChatGo').disabled = !ROOM_CREATE_ENABLED || !ncMembers.length;
   }
+  // 새 채팅 시작(크루 한 명): 채팅방 설정과 같은 구성 — 채팅방 이름 · 참여자(누르면 내 크루/추천 크루 중에서 고르기) · 아래 "새 채팅 시작" 버튼
+  let ncSel = null; // 고른 크루: { kind: 'crew', name } | { kind: 'agent', id } (추천 크루는 시작할 때 추가한다)
+  function ncSelParts() {
+    if (!ncSel) return null;
+    if (ncSel.kind === 'agent') {
+      const a = AGENTS.find((x) => x.id === ncSel.id);
+      return a ? { icon: a.icon, text: stripCrew(a.name), blurb: a.blurb, rec: true } : null;
+    }
+    const p = crewParts(ncSel.name);
+    return { icon: p.icon, text: p.text, blurb: crewBlurb(ncSel.name), rec: false };
+  }
+  function renderNcForm() {
+    const T = window.GAMJA_I18N.t;
+    const s = ncSelParts();
+    $('newChatForm').innerHTML =
+      `<h3>${escapeHtml(T('newchat.name'))}</h3><input id="ncName" maxlength="40" placeholder="${escapeHtml(T('newchat.namePh'))}" value="${escapeHtml(ncName)}" autocomplete="off">` +
+      `<p class="settings-note">${escapeHtml(T('newchat.nameNote'))}</p>` +
+      `<h3>${escapeHtml(T('newchat.members'))} ${s ? 1 : 0}</h3><div class="fr-list"><button class="fr-row" data-nc-open type="button">` +
+      (s ? `<i class="fr-av">${escapeHtml(s.icon)}</i><span class="fr-mid"><b>${escapeHtml(s.text)}</b><small>${escapeHtml(s.blurb)}</small></span>` +
+          `${s.rec ? `<span class="fr-pill">${escapeHtml(T('newchat.willAdd'))}</span>` : ''}<span class="nc-go">›</span>`
+        : `<i class="fr-av">＋</i><span class="fr-mid"><b>${escapeHtml(T('newchat.pick'))}</b><small>${escapeHtml(T('newchat.pickSub'))}</small></span><span class="nc-go">›</span>`) +
+      `</button></div><p class="settings-note">${escapeHtml(T('newchat.pickNote'))}</p>`;
+    $('newChatGo').disabled = !s;
+  }
+  // 참여자 고르기 창: 크루 탭의 줄 + 추천 크루 카드. 검색 · 감자 톡톡 · ★ 자주 쓰는 크루 · 묶음별 크루 · 추천 크루
+  let ncQuery = '';
+  function renderNcPick() {
+    const T = window.GAMJA_I18N.t;
+    const isSel = (n) => !!ncSel && ncSel.kind === 'crew' && ncSel.name === n;
+    const rowHtml = (n) => {
+      const { icon, text } = crewParts(n);
+      return `<button class="fr-row${n === '' ? ' me' : ''}${isSel(n) ? ' sel' : ''}" data-pick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
+        `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-go">${isSel(n) ? '✓' : '›'}</span></button>`;
+    };
+    const list = (names) => `<div class="fr-list">${names.map(rowHtml).join('')}</div>`;
+    const shelf = (agents) => '<div class="fr-shelf">' + agents.map((a) =>
+      `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small>` +
+      `<button class="fr-pill" data-pick-agent="${escapeHtml(a.id)}" type="button">${escapeHtml(T('newchat.choose'))}</button></div>`).join('') + '</div>';
+    const rec = AGENTS.filter((a) => !projectList.includes(a.folder));
+    const q = ncQuery.trim().toLowerCase();
+    let html = '';
+    if (q) {
+      const hit = ['', ...projectList].filter((n) => `${crewParts(n).text} ${crewBlurb(n)}`.toLowerCase().includes(q));
+      const recHit = rec.filter((a) => `${a.name} ${a.blurb}`.toLowerCase().includes(q));
+      if (hit.length) html += `<div class="fr-sec"><span>${escapeHtml(T('newchat.results', { n: hit.length }))}</span></div>${list(hit)}`;
+      if (recHit.length) html += `<div class="fr-sec"><span>${escapeHtml(T('newchat.recommend'))}</span></div>${shelf(recHit)}`;
+      if (!html) html = `<p class="empty">${escapeHtml(T('newchat.none'))}</p>`;
+    } else {
+      html += list(['']);
+      const favs = getFavs().filter((n) => n !== '');
+      if (favs.length) html += `<div class="fr-sec"><span><i class="fr-star">★</i> ${escapeHtml(T('newchat.favs'))} ${favs.length}</span></div>${list(favs)}`;
+      const shut = getShut();
+      for (const g of [...GROUPS, GROUP_ETC]) {
+        const names = projectList.filter((n) => crewGroup(n).id === g.id);
+        if (!names.length) continue;
+        html += `<button class="fr-grp" data-nc-grp="${g.id}" type="button"><span>${escapeHtml(g.name)} ${names.length}</span><small>${shut[g.id] ? '▸' : '▾'}</small></button>`;
+        if (!shut[g.id]) html += list(names);
+      }
+      if (rec.length) html += `<div class="fr-sec"><span>${escapeHtml(T('newchat.recommend'))}</span></div>${shelf(rec.slice(0, 8))}`;
+    }
+    $('ncListBox').innerHTML = html;
+  }
+  function openNcPick() {
+    const T = window.GAMJA_I18N.t;
+    ncQuery = '';
+    $('ncSearch').value = '';
+    $('ncSearch').placeholder = T('newchat.search');
+    $('ncPickH').textContent = T('newchat.pickTitle');
+    renderNcPick();
+    $('ncPick').classList.remove('hidden');
+  }
   function openNewChat() {
     const T = window.GAMJA_I18N.t;
     ncMembers = [];
+    ncSel = null;
     ncName = '';
     $('newChatH').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.title' : 'newchat.titleOne');
     $('newChatNote').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.note' : 'newchat.noteOne');
-    $('newChatGo').textContent = T('newchat.go');
-    $('newChatGo').classList.toggle('hidden', !GROUP_CHAT_ENABLED);
+    $('newChatGo').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.go' : 'newchat.start');
     renderNewChat();
     newChatEl.classList.remove('hidden');
   }
   async function startNewChat() {
-    const crews = ncMembers.slice();
+    let crews = ncMembers.slice();
+    if (!GROUP_CHAT_ENABLED) {
+      if (!ncSel) return;
+      if (ncSel.kind === 'agent') { // 추천 크루를 골랐으면 먼저 크루를 추가하고, 그 크루의 새 채팅방을 만든다
+        const a = AGENTS.find((x) => x.id === ncSel.id);
+        if (!a) return;
+        await createAgent({ folder: a.folder, instructions: a.instructions, tpl: a.id, go: false });
+        if (!projectList.includes(a.folder)) return;
+        crews = [a.folder];
+      } else crews = [ncSel.name];
+    }
     if (!ROOM_CREATE_ENABLED || !crews.length) return;
     let r;
     try { r = await api('/api/rooms', { crews }); } catch (err) { return alert(err.message); }
@@ -1443,11 +1637,25 @@
   $('newChatBack').onclick = () => newChatEl.classList.add('hidden');
   $('newChatGo').onclick = startNewChat;
   newChatEl.addEventListener('input', (e) => { if (e.target.id === 'ncName') ncName = e.target.value; });
+  // 참여자 고르기 창 (크루 한 명): 내 크루나 추천 크루를 고르면 창이 닫히고 "참여자" 줄에 보인다
+  const ncPickEl = $('ncPick');
+  $('ncPickBack').onclick = () => ncPickEl.classList.add('hidden');
+  $('ncSearch').addEventListener('input', (e) => { ncQuery = e.target.value; renderNcPick(); });
+  ncPickEl.addEventListener('click', (e) => {
+    const grp = e.target.closest('[data-nc-grp]'); // 묶음 접고 펴기 (크루 탭과 같은 기억)
+    if (grp) { const shut = getShut(); shut[grp.dataset.ncGrp] = !shut[grp.dataset.ncGrp]; store.set('cc:crewShut', shut); return renderNcPick(); }
+    const agent = e.target.closest('[data-pick-agent]');
+    const row = e.target.closest('[data-pick]');
+    if (!agent && !row) return;
+    ncSel = agent ? { kind: 'agent', id: agent.dataset.pickAgent } : { kind: 'crew', name: row.dataset.pick };
+    ncPickEl.classList.add('hidden');
+    renderNcForm();
+  });
   newChatEl.addEventListener('click', (e) => {
+    if (!GROUP_CHAT_ENABLED && e.target.closest('[data-nc-open]')) return openNcPick();
     const row = e.target.closest('[data-pick]');
     if (!row) return;
     const n = row.dataset.pick;
-    if (!GROUP_CHAT_ENABLED) { ncMembers = [n]; return startNewChat(); } // 크루 한 명: 고르면 바로 새 채팅방
     if (ncMembers.includes(n)) ncMembers = ncMembers.filter((x) => x !== n);
     else ncMembers = [...ncMembers, n].slice(-MAX_ROOM_MEMBERS); // 한도를 넘으면 먼저 고른 쪽이 빠진다 (지금은 한 명이라 바꿔 고르기)
     renderNewChat();
@@ -1580,7 +1788,7 @@
   // 감자 앱의 뒤로 가기 버튼: 열려 있는 창부터 하나씩 닫는다 (닫았으면 true). 위에 있는 창부터 확인
   window.gamjaBack = () => {
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
-    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
+    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {
       if (!$(panel).classList.contains('hidden')) { $(back).click(); return true; }
     }
@@ -2616,6 +2824,13 @@
     store.set('cc:drafts', drafts);
   }
   const draftImages = {}; // 방마다 붙여 둔 사진 (이 화면을 닫기 전까지만)
+  // 쓰던 글이 있거나 사진을 붙여 둔 방들 (채팅 목록의 연필 표시). 지금 방의 사진은 pending, 다른 방의 사진은 draftImages에 있다
+  function draftRooms() {
+    const set = new Set(Object.keys(getDrafts()));
+    for (const [room, list] of Object.entries(draftImages)) if (room !== project && list && list.length) set.add(room);
+    if (pending.length) set.add(project);
+    return [...set];
+  }
   function swapRoomInput(from, to) {
     if (from === to) return;
     saveDraft(from); // 방을 옮기기 직전의 글을 떠나는 방에 저장 (아직 입력칸에는 그 글이 있다)
