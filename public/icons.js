@@ -69,6 +69,7 @@
     note: '<path class="a" d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
     stop: '<rect class="a" x="6" y="6" width="12" height="12" rx="2.5"/>',
     starline: '<path d="M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.5l6-.8z"/>',
+    shield: '<path class="a" d="M12 3l7 3v5.5c0 4.4-3 7.8-7 9.5-4-1.7-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.6"/>',
     hourglass:'<path d="M6 3h12M6 21h12"/><path class="a" d="M7 3c0 5 5 6 5 9s-5 4-5 9h10c0-5-5-6-5-9s5-4 5-9z"/>',
   };
   // 이모지(변형 문자 FE0E·FE0F를 뺀 것) → 아이콘 이름
@@ -83,6 +84,7 @@
     '🧑': 'person', '💼': 'suitcase', '👥': 'people', '🆕': 'spark', '🛠': 'wrench', '🔧': 'wrench', '🗑': 'trash',
     '🖼': 'image', '🔔': 'bell', '📜': 'doc', '🎲': 'dice', '🌙': 'moon', '☀': 'sun', '🌓': 'theme', '⬇': 'down',
     '❌': 'fail', '📝': 'pencil', '📖': 'book', '💻': 'laptop', '📂': 'folder', '🗒': 'note', '🔗': 'link', '⏹': 'stop', '☆': 'starline',
+    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench',
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');
@@ -95,7 +97,7 @@
   // 글 사이에 이모지가 섞여 있는 곳. 채팅 말풍선(대화 내용)은 일부러 넣지 않는다
   const INLINE = '.menu-item, .crew-btn, .made-btn, .settings-body h3, .settings-bar h2, .ui-title, .settings-note, .settings-row span, .share-check, ' +
     '.notice, .toast, .settings-ghost, .settings-save, .settings-danger, .home-add, .welcome-btn, .chip, .welcome h2, .welcome p, ' +
-    '.tools summary, .tools div, .interim, .cl-mid b, .cl-mid small, .row.error .bubble, .voice-text, .fr-join, .sheet-main, .sheet-sub button, .sheet-chips button, .pick-card b, .pick-card small, .set-row b, .set-row small, .status, .voice-state, .resume-form button';
+    '.tools summary, .tools div, .interim, .cl-mid b, .cl-mid small, .row.error .bubble, .voice-text, .fr-join, .sheet-main, .sheet-sub button, .sheet-chips button, .pick-card b, .pick-card small, .set-row b, .set-row small, .status, .voice-state, .resume-form button, .perm-card b, .perm-card small, .install-card b, .conn-bar span';
   const ALL = WHOLE + ', ' + INLINE;
   const ANY_RE = /(\p{Extended_Pictographic}[︎️]?|[＋ⓘℹ★☆✕➤←])/gu;
   const LEAD_RE = /^(\s*)(\p{Extended_Pictographic}[︎️]?|＋)/u;
