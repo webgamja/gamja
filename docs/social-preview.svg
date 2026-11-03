@@ -25,26 +25,28 @@
   <rect x="882" y="92" width="276" height="560" rx="32" fill="#bacee0"/>
   <g clip-path="url(#scr)">
     <rect x="882" y="92" width="276" height="62" fill="#a9bdce"/>
-    <text x="900" y="134" font-size="16" class="t" font-weight="600">🌐 홈페이지 ▾</text>
+    <g transform="translate(898 119) scale(.88)" fill="none" stroke="#191919" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
+    <text x="922" y="134" font-size="16" class="t" font-weight="600">홈페이지 ▾</text>
     <rect x="1006" y="114" width="86" height="30" rx="15" fill="#fff" opacity=".55"/>
-    <text x="1049" y="134" font-size="13" text-anchor="middle" class="t b">👀 결과물</text>
+    <g transform="translate(1016 120) scale(.75)" fill="none" stroke="#191919" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></g>
+    <text x="1054" y="134" font-size="13" text-anchor="middle" class="t b">결과물</text>
 
     <rect x="942" y="176" width="204" height="56" rx="14" fill="#fee500"/>
     <text x="954" y="199" font-size="13.5" class="t">우리 동네 카페 '봄날' 소개</text>
     <text x="954" y="219" font-size="13.5" class="t">페이지 만들어 줘!</text>
 
-    <rect x="896" y="248" width="30" height="30" rx="11" fill="#d97757"/><text x="911" y="270" font-size="15" text-anchor="middle">🌐</text>
+    <rect x="896" y="248" width="30" height="30" rx="11" fill="#d97757"/><g transform="translate(901 253) scale(.8)" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
     <rect x="934" y="248" width="212" height="132" rx="14" fill="#fff"/>
     <g font-size="13.5" class="t">
       <text x="946" y="272">'봄날' 소개 페이지를</text>
-      <text x="946" y="291">만들었어요 ☕</text>
+      <text x="946" y="291">만들었어요</text>
       <text x="946" y="319">• 소개와 영업시간</text>
       <text x="946" y="339">• 메뉴와 가격표</text>
       <text x="946" y="359">• 오시는 길 안내</text>
     </g>
 
     <rect x="934" y="394" width="212" height="58" rx="14" fill="#fff"/>
-    <rect x="946" y="404" width="38" height="38" rx="10" fill="#f2f4f6"/><text x="965" y="431" font-size="19" text-anchor="middle">🌐</text>
+    <rect x="946" y="404" width="38" height="38" rx="10" fill="#f2f4f6"/><g transform="translate(953 411) scale(1)" fill="none" stroke="#191919" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
     <text x="996" y="420" font-size="13" class="t b">결과물 · index.html</text>
     <text x="996" y="438" font-size="11.5" class="s">눌러서 열어 보기 ›</text>
 

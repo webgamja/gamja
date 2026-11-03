@@ -824,6 +824,7 @@ html, body { touch-action: pan-x pan-y; }
 .gs { width: 100%; max-width: 520px; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--gs-card); color: var(--gs-text); animation: gsUp .2s ease-out; }
 .gs h2 { margin: 0 0 6px; font-size: 19px; font-weight: 800; letter-spacing: -.2px; }
 .gs p { margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: var(--gs-sub); white-space: pre-line; word-break: keep-all; overflow-wrap: anywhere; }
+.gs-field { display: block; width: 100%; margin: 0 0 16px; padding: 13px 14px; border: 0; border-radius: 14px; background: var(--gs-line); color: var(--gs-text); font: inherit; font-size: 15px; line-height: 1.45; resize: none; outline: none; word-break: break-all; }
 .gs-btns { display: flex; flex-direction: column; gap: 8px; }
 .gs-ok, .gs-cancel { height: 54px; border: 0; border-radius: 14px; font: inherit; font-size: 17px; font-weight: 800; }
 .gs-ok { background: var(--me, #fee500); color: var(--me-fg, #191919); }

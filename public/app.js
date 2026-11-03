@@ -218,16 +218,27 @@
   // 가볍게 알릴 일은 toast, 결정하거나 되돌릴 수 없는 일은 시트. gSheet(...)는 true(확인)/false(취소·바깥을 누름·뒤로 가기)를 돌려준다
   //   gSheet({ title, message, ok, cancel, danger }) / gAlert(message, title) — 확인 버튼 하나만 있는 알림
   let gsOpen = null; // 지금 열려 있는 시트 { bg, close }
-  function gSheet({ title = '', message = '', ok = '', cancel = '', danger = false, alertOnly = false } = {}) {
+  //   field: { value, placeholder, readonly } — 글칸이 있는 시트. 입력받는 시트(readonly 아님)는 확인하면 글자를, 취소하면 null을 돌려준다.
+  //   읽기 전용 글칸은 복사할 글을 보여 줄 때 쓴다 (gCopy)
+  function gSheet({ title = '', message = '', ok = '', cancel = '', danger = false, alertOnly = false, field = null } = {}) {
     const T = window.GAMJA_I18N.t;
     return new Promise((resolve) => {
       if (gsOpen) gsOpen.close(false);
       const bg = document.createElement('div');
       bg.className = 'gs-bg';
       bg.innerHTML = '<div class="gs" role="dialog" aria-modal="true">' + (title ? '<h2></h2>' : '') + (message ? '<p></p>' : '') +
+        (field ? '<textarea class="gs-field" rows="2" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>' : '') +
         `<div class="gs-btns"><button class="gs-ok${danger ? ' danger' : ''}" type="button"></button>${alertOnly ? '' : '<button class="gs-cancel" type="button"></button>'}</div></div>`;
       if (title) bg.querySelector('h2').textContent = title;
       if (message) bg.querySelector('p').textContent = message;
+      const input = field ? bg.querySelector('.gs-field') : null;
+      if (input) {
+        input.value = field.value || '';
+        input.placeholder = field.placeholder || '';
+        input.readOnly = !!field.readonly;
+        input.rows = field.readonly ? Math.min(6, Math.max(2, Math.ceil(input.value.length / 28))) : 1;
+      }
+      const asks = !!input && !field.readonly; // 글을 입력받는 시트
       bg.querySelector('.gs-ok').textContent = ok || T('sheet.ok');
       const cancelBtn = bg.querySelector('.gs-cancel');
       if (cancelBtn) cancelBtn.textContent = cancel || T('sheet.cancel');
@@ -238,16 +249,24 @@
         if (gsOpen && gsOpen.bg === bg) gsOpen = null;
         resolve(v);
       };
+      const accept = () => close(asks ? input.value : true);
+      const dismiss = () => close(asks ? null : false);
       bg.addEventListener('click', (e) => {
-        if (e.target === bg) close(false);
-        else if (e.target.closest('.gs-ok')) close(true);
-        else if (e.target.closest('.gs-cancel')) close(false);
+        if (e.target === bg) dismiss();
+        else if (e.target.closest('.gs-ok')) accept();
+        else if (e.target.closest('.gs-cancel')) dismiss();
       });
+      if (asks) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); accept(); } });
       document.body.appendChild(bg);
-      gsOpen = { bg, close };
+      gsOpen = { bg, close: (v) => (asks ? close(null) : close(v)) };
+      if (input) setTimeout(() => { input.focus(); input.select(); }, 60); // 복사할 글은 미리 전부 선택해 둔다
     });
   }
   const gAlert = (message, title = '') => gSheet({ title, message, alertOnly: true });
+  // 복사할 글을 보여 주는 시트: 복사가 막힌 환경에서 글을 꾹 눌러 복사할 수 있게 (예전의 prompt 대신)
+  const gCopy = (title, text, message = '') => gSheet({ title, message, ok: window.GAMJA_I18N.t('sheet.close'), alertOnly: true, field: { value: text, readonly: true } });
+  // 브라우저 기본 alert 대신 같은 시트를 쓴다 (이 화면 안의 alert(...) 호출이 모두 시트로 바뀐다)
+  function alert(message) { return gAlert(String(message)); }
 
   // ---------- API ----------
   async function api(path, body) {
@@ -782,7 +801,7 @@
       if (item) return openResult(madeData.files[Number(item.dataset.i)]);
       if (e.target.id === 'madeCopy') {
         const text = origin + base;
-        navigator.clipboard.writeText(text).then(() => toast('📋 주소를 복사했어요'), () => prompt('이 주소를 복사하세요', text));
+        navigator.clipboard.writeText(text).then(() => toast('📋 주소를 복사했어요'), () => gCopy('이 주소를 복사하세요', text));
       }
     };
   }
@@ -1089,7 +1108,7 @@
     } else if (id === 'shareCopy') {
       const text = crewShareText();
       try { await navigator.clipboard.writeText(text); toast('📋 복사했어요. 카톡에 붙여 넣어서 보내세요'); }
-      catch { prompt('이 글을 복사해서 보내세요', text); }
+      catch { gCopy('이 글을 복사해서 보내세요', text); }
     }
   });
   $('shareBack').onclick = () => shareEl.classList.add('hidden');
@@ -1318,7 +1337,7 @@
     for (;;) { // 같은 이름의 크루가 이미 있으면 새 이름을 물어서 다시 시도한다
       try { r = await api('/api/archive/restore', { id: old.slice(1), ...(newName ? { newName } : {}) }); break; } catch (err) {
         if (!/같은 이름/.test(err.message)) return alert(err.message);
-        const input = prompt(T('gone.rename', { name: newName || oldCrew }), `${newName || oldCrew}-2`);
+        const input = await gSheet({ message: T('gone.rename', { name: newName || oldCrew }), field: { value: `${newName || oldCrew}-2` } });
         if (!input || !input.trim()) return;
         newName = input.trim();
       }
@@ -1417,7 +1436,7 @@
     const id = $('resumeInput').value.trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return alert('세션 ID 형식이 아니에요. (예: 44bd115a-6d55-...)');
     if (runId || remoteRunId) return alert('응답이 끝난 뒤에 바꿀 수 있어요.');
-    if (history.length && !confirm('지금 화면의 대화 대신 이 세션을 이어갈까요?')) return;
+    if (history.length && !(await gSheet({ title: '세션을 이어갈까요?', message: '지금 화면의 대화 대신 이 세션을 이어가요.', ok: '이어가기' }))) return;
     try { await api('/api/history/resume', { project, sessionId: id }); } catch (err) { return alert(err.message); }
     $('resumeInput').value = '';
     els.menu.classList.add('hidden');
@@ -2007,7 +2026,7 @@
   $('compactBtn').onclick = async () => {
     els.menu.classList.add('hidden');
     if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
-    if (!confirm('지금 대화를 압축할까요?\n화면의 대화 기록은 그대로 남고, Claude의 기억만 요약본으로 바뀌어요. 오래된 세부 내용은 일부 빠질 수 있어요.')) return;
+    if (!(await gSheet({ title: '대화를 압축할까요?', message: '화면의 대화 기록은 그대로 남고, Claude의 기억만 요약본으로 바뀌어요. 오래된 세부 내용은 일부 빠질 수 있어요.', ok: '압축하기' }))) return;
     try { await api('/api/compact', { project }); } catch (err) { return alert(err.message); }
     roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫는다
     loadConversation(); // 진행 상황을 따라가며 보여 준다
@@ -2059,7 +2078,7 @@
   let lanAddr = '';
   $('lanCopy').onclick = async () => {
     try { await navigator.clipboard.writeText(lanAddr); toast(window.GAMJA_I18N.t('ext.copied')); }
-    catch { prompt(window.GAMJA_I18N.t('ext.copy'), lanAddr); }
+    catch { gCopy(window.GAMJA_I18N.t('ext.copy'), lanAddr); }
   };
   $('lanToggle').onchange = async () => {
     try { await api('/api/lan', { on: $('lanToggle').checked }); } catch (err) { alert(err.message); }
@@ -2080,14 +2099,14 @@
   $('tunnelBack').onclick = () => { clearTimeout(tunnelPoll); tunnelEl.classList.add('hidden'); };
   $('tunnelToggle').onclick = async () => {
     const turnOn = !$('tunnelToggle').dataset.on;
-    if (turnOn && !confirm('인터넷에 공개되는 주소를 만들까요?\n주소를 아는 누구나 로그인 화면까지 올 수 있어요.')) return;
+    if (turnOn && !(await gSheet({ title: '인터넷에 공개되는 주소를 만들까요?', message: '주소를 아는 누구나 로그인 화면까지 올 수 있어요.', ok: '만들기', danger: true }))) return;
     try { await api('/api/tunnel', { on: turnOn }); } catch (err) { return alert(err.message); }
     refreshTunnel();
   };
   $('tunnelCopy').onclick = async () => {
     const url = $('tunnelUrl').textContent;
     try { await navigator.clipboard.writeText(url); alert('주소를 복사했어요. 다른 기기의 브라우저에 붙여 넣으세요.'); }
-    catch { prompt('이 주소를 복사하세요', url); }
+    catch { gCopy('이 주소를 복사하세요', url); }
   };
 
   // ---------- 🐙 GitHub 연결 (기록 보관) ----------
@@ -2139,10 +2158,10 @@
       if (id === 'ghConnect') { await api('/api/github/start', {}); renderGh(); }
       else if (id === 'ghCopy') {
         const code = ghBody.querySelector('.gh-code').textContent;
-        try { await navigator.clipboard.writeText(code); toast('📋 코드를 복사했어요'); } catch { prompt('이 코드를 복사하세요', code); }
+        try { await navigator.clipboard.writeText(code); toast('📋 코드를 복사했어요'); } catch { gCopy('이 코드를 복사하세요', code); }
       } else if (id === 'ghSync') { await api('/api/github/sync', {}); toast('기록을 시작했어요'); renderGh(); }
       else if (id === 'ghOff') {
-        if (!confirm('GitHub 연결을 끊을까요?\n이 폰에 저장한 열쇠를 지우고, 앞으로는 기록하지 않아요. 이미 올라간 기록은 그대로 남아요.')) return;
+        if (!(await gSheet({ title: 'GitHub 연결을 끊을까요?', message: '이 폰에 저장한 열쇠를 지우고, 앞으로는 기록하지 않아요. 이미 올라간 기록은 그대로 남아요.', ok: '연결 끊기', danger: true }))) return;
         await api('/api/github/disconnect', {});
         toast('연결을 끊었어요');
         renderGh();
@@ -2179,7 +2198,7 @@
   async function autoSaveProject() {
     const form = readCrewForm($('projForm'), 'ps');
     const instructions = form.job;
-    if (projLoadedInstructions.trim() && !instructions.trim() && !confirm('이 크루의 지침을 모두 지울까요? (CLAUDE.md 파일이 삭제돼요)')) {
+    if (projLoadedInstructions.trim() && !instructions.trim() && !(await gSheet({ title: '지침을 모두 지울까요?', message: '이 크루의 CLAUDE.md 파일이 삭제돼요.', ok: '지우기', danger: true }))) {
       $('psJob').value = projLoadedInstructions;
       return;
     }
@@ -2283,7 +2302,7 @@
     try { ({ command } = await api('/api/install-link', {})); } catch (err) { return alert(err.message); }
     let copied = false;
     try { await navigator.clipboard.writeText(command); copied = true; } catch {}
-    prompt(`${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`, command);
+    gCopy('다른 폰에 감자 설치', command, `${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`);
   };
   $('rollbackBtn').onclick = () => adminAction('/api/admin/rollback', window.GAMJA_I18N.t('admin.rollbackTitle'), window.GAMJA_I18N.t('admin.rollbackMsg'), window.GAMJA_I18N.t('admin.rollbackOk'));
   // ---------- 화면비율 (⋯ 메뉴): 크롬의 확대·축소 줄처럼 [−] 100% [＋] ----------
@@ -2968,18 +2987,18 @@
   const errDetail = (e) => String((e && e.error) || '').split('|').slice(1).join('|');
   // 말 없음·중단은 평소에도 나는 일이라 조용히 넘기고, 그 밖의 오류는 번호를 보여 줘서 원인을 찾기 쉽게 한다
   const reportMicError = (code, detail) => { if (code && !['no-speech', 'aborted', 'network'].includes(code) && !isMicDenied(code)) toast(`음성 인식 오류 (${detail || code})`); };
-  function micDenied(kind, detail) {
+  async function micDenied(kind, detail) {
     const app = window.GamjaApp;
     const diag = detail ? `\n\n[진단] ${detail}` : '';
     if (kind === 'service-permission') {
       // 감자는 허용돼 있는데, 말을 글자로 바꿔 주는 폰의 음성 인식 서비스(Google 앱)에 마이크 권한이 없는 경우
       if (app && typeof app.recognizerSettings !== 'undefined') {
-        if (confirm('폰의 음성 인식 서비스(Google 앱)에 마이크 권한이 필요해요.\n그 앱의 설정 화면을 열까요?\n(권한 → 마이크 → 허용)' + diag)) app.recognizerSettings();
+        if (await gSheet({ title: '마이크 권한이 필요해요', message: '폰의 음성 인식 서비스(Google 앱)에 마이크 권한이 필요해요.\n그 앱의 설정 화면을 열까요?\n(권한 → 마이크 → 허용)' + diag, ok: '설정 열기' })) app.recognizerSettings();
       } else alert('폰의 음성 인식 서비스(Google 앱)에 마이크 권한이 없어요. 폰 설정 → 앱 → Google → 권한에서 마이크를 허용해 주세요.' + diag);
       return;
     }
     if (app && typeof app.appSettings !== 'undefined') {
-      if (confirm('음성을 쓰려면 마이크를 허용해야 해요.\n폰의 GAMJA 앱 설정 화면을 열까요?\n(권한 → 마이크 → 허용)' + diag)) app.appSettings();
+      if (await gSheet({ title: '마이크를 허용해 주세요', message: '음성을 쓰려면 마이크를 허용해야 해요.\n폰의 GAMJA 앱 설정 화면을 열까요?\n(권한 → 마이크 → 허용)' + diag, ok: '설정 열기' })) app.appSettings();
     } else if (app) alert('마이크 권한이 없어요. 폰 설정 → 앱 → GAMJA → 권한에서 마이크를 허용해 주세요.' + diag);
     else alert('마이크 권한이 없어요. (HTTPS 또는 localhost 접속이 필요할 수 있어요)');
   }
