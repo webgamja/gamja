@@ -1545,8 +1545,8 @@
       `<h3>${escapeHtml(T('newchat.name'))}</h3><input id="ncName" maxlength="40" placeholder="${escapeHtml(T('newchat.namePh'))}" value="${escapeHtml(ncName)}" autocomplete="off">` +
       `<p class="settings-note">${escapeHtml(T('newchat.nameNote'))}</p>` +
       `<h3>${escapeHtml(T('newchat.members'))} ${s ? 1 : 0}</h3><div class="fr-list"><button class="fr-row" data-nc-open type="button">` +
-      (s ? `<i class="fr-av">${escapeHtml(s.icon)}</i><span class="fr-mid"><b>${escapeHtml(s.text)}</b><small>${escapeHtml(s.blurb)}</small></span>` +
-          `${s.rec ? `<span class="fr-pill">${escapeHtml(T('newchat.willAdd'))}</span>` : ''}<span class="nc-go">›</span>`
+      (s ? `<i class="fr-av">${escapeHtml(s.icon)}</i><span class="fr-mid"><b>${escapeHtml(s.text)}</b><small>${escapeHtml(s.blurb)}</small>` +
+          `${s.rec ? `<small class="nc-tag">${escapeHtml(T('newchat.willAdd'))}</small>` : ''}</span><span class="nc-go">›</span>`
         : `<i class="fr-av">＋</i><span class="fr-mid"><b>${escapeHtml(T('newchat.pick'))}</b><small>${escapeHtml(T('newchat.pickSub'))}</small></span><span class="nc-go">›</span>`) +
       `</button></div><p class="settings-note">${escapeHtml(T('newchat.pickNote'))}</p>`;
     $('newChatGo').disabled = !s;
@@ -1567,6 +1567,16 @@
       `<button class="fr-pill" data-pick-agent="${escapeHtml(a.id)}" type="button">${escapeHtml(T('newchat.choose'))}</button></div>`).join('') + '</div>';
     const rec = AGENTS.filter((a) => !projectList.includes(a.folder));
     const q = ncQuery.trim().toLowerCase();
+    if (ncAll) { // 추천 크루 전체 보기: 묶음별로 모두 보여 준다 (고르면 크루 탭에 추가될 크루로 정해진다)
+      const agentRow = (a) => `<button class="fr-row" data-pick-agent="${escapeHtml(a.id)}" type="button"><i class="fr-av">${escapeHtml(a.icon)}</i>` +
+        `<span class="fr-mid"><b>${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small></span><span class="nc-go">›</span></button>`;
+      const all = GROUPS.map((g) => {
+        const as = rec.filter((a) => a.group === g.id);
+        return as.length ? `<div class="fr-sec"><span>${escapeHtml(g.icon)} ${escapeHtml(g.name)} ${as.length}</span></div><div class="fr-list">${as.map(agentRow).join('')}</div>` : '';
+      }).join('');
+      $('ncListBox').innerHTML = all || `<p class="empty">${escapeHtml(T('newchat.none'))}</p>`;
+      return;
+    }
     let html = '';
     if (q) {
       const hit = ['', ...projectList].filter((n) => `${crewParts(n).text} ${crewBlurb(n)}`.toLowerCase().includes(q));
@@ -1585,12 +1595,14 @@
         html += `<button class="fr-grp" data-nc-grp="${g.id}" type="button"><span>${escapeHtml(g.name)} ${names.length}</span><small>${shut[g.id] ? '▸' : '▾'}</small></button>`;
         if (!shut[g.id]) html += list(names);
       }
-      if (rec.length) html += `<div class="fr-sec"><span>${escapeHtml(T('newchat.recommend'))}</span></div>${shelf(rec.slice(0, 8))}`;
+      if (rec.length) html += `<div class="fr-sec"><span>${escapeHtml(T('newchat.recommend'))}</span><button class="fr-more" data-nc-all="1" type="button">${escapeHtml(T('newchat.all'))}</button></div>${shelf(rec.slice(0, 8))}`;
     }
     $('ncListBox').innerHTML = html;
   }
+  let ncAll = false; // 추천 크루 전체 보기 중인지
   function openNcPick() {
     const T = window.GAMJA_I18N.t;
+    ncAll = false;
     ncQuery = '';
     $('ncSearch').value = '';
     $('ncSearch').placeholder = T('newchat.search');
@@ -1639,9 +1651,19 @@
   newChatEl.addEventListener('input', (e) => { if (e.target.id === 'ncName') ncName = e.target.value; });
   // 참여자 고르기 창 (크루 한 명): 내 크루나 추천 크루를 고르면 창이 닫히고 "참여자" 줄에 보인다
   const ncPickEl = $('ncPick');
-  $('ncPickBack').onclick = () => ncPickEl.classList.add('hidden');
+  $('ncPickBack').onclick = () => {
+    if (ncAll) { ncAll = false; $('ncPickH').textContent = window.GAMJA_I18N.t('newchat.pickTitle'); renderNcPick(); return; } // 전체 보기에서는 먼저 크루 고르기로 돌아간다
+    ncPickEl.classList.add('hidden');
+  };
   $('ncSearch').addEventListener('input', (e) => { ncQuery = e.target.value; renderNcPick(); });
   ncPickEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-nc-all]')) { // 추천 크루 전체 보기 (크루 탭의 "전체 보기"처럼)
+      ncAll = true;
+      $('ncPickH').textContent = window.GAMJA_I18N.t('newchat.recommend');
+      renderNcPick();
+      ncPickEl.querySelector('.settings-body').scrollTop = 0;
+      return;
+    }
     const grp = e.target.closest('[data-nc-grp]'); // 묶음 접고 펴기 (크루 탭과 같은 기억)
     if (grp) { const shut = getShut(); shut[grp.dataset.ncGrp] = !shut[grp.dataset.ncGrp]; store.set('cc:crewShut', shut); return renderNcPick(); }
     const agent = e.target.closest('[data-pick-agent]');
