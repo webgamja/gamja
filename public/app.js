@@ -461,7 +461,7 @@
     if (pinRooms.length) html += `<div class="cl-hd first"><span><i class="fr-star">★</i> 고정 ${pinRooms.length}</span></div><div class="cl-list">${pinRooms.map(rowOf).join('')}</div>`;
     if (restRooms.length) html += `<div class="cl-hd${pinRooms.length ? '' : ' first'}"><span>최근 ${restRooms.length}</span></div><div class="cl-list">${restRooms.map(rowOf).join('')}</div>`;
     chatBody.innerHTML = '<div class="tab-head"><h1 class="ui-title">채팅</h1>' +
-      (GROUP_CHAT_ENABLED ? '<div class="tab-acts"><button id="chatNewBtn" type="button" aria-label="새 채팅">＋</button></div>' : '') + '</div>' + (html || '<p class="empty">아직 대화가 없어요.<br>크루 탭에서 크루를 골라 말을 걸어 보세요.</p>');
+      '<div class="tab-acts"><button id="chatNewBtn" type="button" aria-label="새 채팅">＋</button></div></div>' + (html || '<p class="empty">아직 대화가 없어요.<br>크루 탭에서 크루를 골라 말을 걸어 보세요.</p>');
   }
   // 채팅방 이름: 직접 정한 이름이 있으면 그것, 없으면 크루 이름 (이 기기에 저장)
   const getRoomTitles = () => store.get('cc:roomTitle', {});
@@ -1395,7 +1395,7 @@
   // 채팅 탭의 ＋: "채팅방 만들기" 화면 (채팅방 이름 + 참여자 고르기). 같은 크루와도 일마다 대화를 따로 나눌 수 있다
   // 참여자를 둘 이상 고르면 그룹 채팅: 크루들이 차례로 자기 분야 의견을 낸다 (서버의 handleGroupChat)
   const MAX_ROOM_MEMBERS = 4; // 서버의 한도와 같게 둔다
-  const ROOM_CREATE_ENABLED = GROUP_CHAT_ENABLED;
+  const ROOM_CREATE_ENABLED = true; // 크루 한 명의 새 채팅방은 열려 있다. 둘 이상(그룹)은 GROUP_CHAT_ENABLED와 서버가 막는다
   const newChatEl = $('newChat');
   let ncMembers = []; // 고른 참여자(크루 이름)
   let ncName = ''; // 적어 둔 채팅방 이름
@@ -1407,7 +1407,8 @@
       return `<button class="fr-row${on ? ' sel' : ''}" data-pick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
         `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
     }).join('');
-    $('newChatForm').innerHTML =
+    // 그룹 채팅이 닫혀 있는 동안: 크루 목록만 보여 주고, 크루를 누르면 바로 새 채팅방이 열린다 (이름은 채팅방 설정에서 바꾼다)
+    $('newChatForm').innerHTML = !GROUP_CHAT_ENABLED ? `<div class="fr-list">${rows}</div>` :
       `<h3>${escapeHtml(T('newchat.name'))}</h3><input id="ncName" maxlength="40" placeholder="${escapeHtml(T('newchat.namePh'))}" value="${escapeHtml(ncName)}" autocomplete="off">` +
       `<h3>${escapeHtml(T('newchat.members'))} ${ncMembers.length}</h3><div class="fr-list">${rows}</div>` +
       `<p class="settings-note">${escapeHtml(T('newchat.groupNote', { max: MAX_ROOM_MEMBERS }))}</p>`;
@@ -1417,9 +1418,10 @@
     const T = window.GAMJA_I18N.t;
     ncMembers = [];
     ncName = '';
-    $('newChatH').textContent = T('newchat.title');
-    $('newChatNote').textContent = T('newchat.note');
+    $('newChatH').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.title' : 'newchat.titleOne');
+    $('newChatNote').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.note' : 'newchat.noteOne');
     $('newChatGo').textContent = T('newchat.go');
+    $('newChatGo').classList.toggle('hidden', !GROUP_CHAT_ENABLED);
     renderNewChat();
     newChatEl.classList.remove('hidden');
   }
@@ -1445,6 +1447,7 @@
     const row = e.target.closest('[data-pick]');
     if (!row) return;
     const n = row.dataset.pick;
+    if (!GROUP_CHAT_ENABLED) { ncMembers = [n]; return startNewChat(); } // 크루 한 명: 고르면 바로 새 채팅방
     if (ncMembers.includes(n)) ncMembers = ncMembers.filter((x) => x !== n);
     else ncMembers = [...ncMembers, n].slice(-MAX_ROOM_MEMBERS); // 한도를 넘으면 먼저 고른 쪽이 빠진다 (지금은 한 명이라 바꿔 고르기)
     renderNewChat();
