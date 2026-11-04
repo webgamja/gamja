@@ -295,14 +295,15 @@ class MainActivity : Activity() {
             addView(logScroll, LinearLayout.LayoutParams(-1, dp(220)))
         })
         val start = primaryButton("시작하기")
-        root.addView(start, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
-        showPage(root)
+        showPage(root, listOf(start)) // 시작하기는 화면 아래에 고정
 
         val lines = ArrayDeque<String>()
         start.setOnClickListener {
             if (installing) return@setOnClickListener
             installing = true
             start.isEnabled = false
+            start.text = "진행 중..."
+            start.alpha = 0.5f
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // 준비 중 화면 꺼짐 방지
             thread {
                 try {
@@ -328,6 +329,7 @@ class MainActivity : Activity() {
                         stepText.text = "⚠️ 문제가 생겼어요: ${e.message}\n'다시 시도'를 누르면 끝난 단계는 건너뛰고 이어서 해요."
                         start.text = "다시 시도"
                         start.isEnabled = true
+                        start.alpha = 1f
                     }
                 }
             }
@@ -352,16 +354,41 @@ class MainActivity : Activity() {
                 addView(infoRow("${i + 1}. $s", ""))
             }
         })
-        root.addView(primaryButton("Claude 로그인 화면 열기").apply {
+        val go = primaryButton("Claude 로그인 화면 열기").apply {
             setOnClickListener { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) }
-        }, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
-        root.addView(ghostButton("나중에 할게요").apply {
+        }
+        // 로그인을 마쳐야 감자를 쓸 수 있다. 미루려면 앱을 종료하고, 다시 열면 이 화면에서 시작한다
+        val later = ghostButton("나중에 할게요").apply {
             setOnClickListener {
-                getPreferences(MODE_PRIVATE).edit().putBoolean("skipLogin", true).apply()
-                route()
+                confirmSheet("앱을 종료할까요?", "Claude 로그인을 마쳐야 감자를 쓸 수 있어요.\n앱을 종료하고, 다시 열면 이 화면에서 시작해요.", "종료하기", "취소") { finishAndRemoveTask() }
             }
-        }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
-        showPage(root)
+        }
+        showPage(root, listOf(go, later))
+    }
+
+    /** 아래에서 올라오는 확인 창 */
+    private fun confirmSheet(title: String, message: String, ok: String, cancel: String, onOk: () -> Unit) {
+        val dlg = android.app.Dialog(this)
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(Color.WHITE, 24)
+            setPadding(dp(22), dp(24), dp(22), dp(18))
+            addView(label(title, 19f, HOME_INK, bold = true))
+            addView(label(message, 14f, HOME_SUB).apply { setPadding(0, dp(8), 0, dp(18)) })
+            addView(primaryButton(ok).apply { setOnClickListener { dlg.dismiss(); onOk() } }, LinearLayout.LayoutParams(-1, dp(54)))
+            addView(ghostButton(cancel).apply { setOnClickListener { dlg.dismiss() } }, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
+        }
+        dlg.setContentView(android.widget.FrameLayout(this).apply {
+            setPadding(dp(12), 0, dp(12), dp(12))
+            addView(box)
+        })
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setGravity(Gravity.BOTTOM)
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+        dlg.show()
     }
 
     // ---------- 1.5 배터리 설정 (준비 다음 단계) ----------
@@ -375,13 +402,9 @@ class MainActivity : Activity() {
         root.addView(card().apply {
             addView(infoRow("지금 상태", if (batteryAllowed()) "허용됨" else "허용 안 됨"))
         })
-        root.addView(primaryButton("허용하러 가기").apply {
-            setOnClickListener { askBatteryOptimization() }
-        }, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
-        root.addView(ghostButton("나중에 할게요").apply {
-            setOnClickListener { finishBatteryPage() }
-        }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
-        showPage(root)
+        val go = primaryButton("허용하러 가기").apply { setOnClickListener { askBatteryOptimization() } }
+        val later = ghostButton("나중에 할게요").apply { setOnClickListener { finishBatteryPage() } }
+        showPage(root, listOf(go, later))
     }
 
     private fun finishBatteryPage() {
@@ -402,13 +425,25 @@ class MainActivity : Activity() {
         return root
     }
 
-    private fun showPage(root: LinearLayout) {
+    /** 내용은 스크롤되고, actions(버튼)는 화면 아래에 고정된다 */
+    private fun showPage(root: LinearLayout, actions: List<View> = emptyList()) {
         window.statusBarColor = HOME_BG
         window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        setContentView(ScrollView(this).apply {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(HOME_BG)
+            setPadding(dp(16), dp(6), dp(16), dp(16))
+            for (a in actions) {
+                val h = if (a.tag == "ghost") dp(52) else dp(60)
+                addView(a, LinearLayout.LayoutParams(-1, h).apply { topMargin = dp(8) })
+            }
+        }
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(HOME_BG)
             fitsSystemWindows = true
-            addView(root)
+            addView(ScrollView(this@MainActivity).apply { addView(root) }, LinearLayout.LayoutParams(-1, 0, 1f))
+            if (actions.isNotEmpty()) addView(bar, LinearLayout.LayoutParams(-1, -2))
         })
     }
 
@@ -423,6 +458,7 @@ class MainActivity : Activity() {
     }
 
     private fun ghostButton(s: String) = Button(this).apply {
+        tag = "ghost"
         text = s
         textSize = 16f
         isAllCaps = false
