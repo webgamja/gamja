@@ -69,6 +69,7 @@
     note: '<path class="a" d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
     stop: '<rect class="a" x="6" y="6" width="12" height="12" rx="2.5"/>',
     starline: '<path d="M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.5l6-.8z"/>',
+    yinyang: '<circle class="a" cx="12" cy="12" r="9"/><path d="M12 3a4.5 4.5 0 0 1 0 9 4.5 4.5 0 0 0 0 9"/><circle class="d" cx="12" cy="7.5" r=".9"/>',
     tarot: '<rect class="a" x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 8l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 14l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>',
     shield: '<path class="a" d="M12 3l7 3v5.5c0 4.4-3 7.8-7 9.5-4-1.7-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.6"/>',
     hourglass:'<path d="M6 3h12M6 21h12"/><path class="a" d="M7 3c0 5 5 6 5 9s-5 4-5 9h10c0-5-5-6-5-9s5-4 5-9z"/>',
@@ -85,7 +86,7 @@
     '🧑': 'person', '💼': 'suitcase', '👥': 'people', '🆕': 'spark', '🛠': 'wrench', '🔧': 'wrench', '🗑': 'trash',
     '🖼': 'image', '🔔': 'bell', '📜': 'doc', '🎲': 'dice', '🌙': 'moon', '☀': 'sun', '🌓': 'theme', '⬇': 'down',
     '❌': 'fail', '📝': 'pencil', '📖': 'book', '💻': 'laptop', '📂': 'folder', '🗒': 'note', '🔗': 'link', '⏹': 'stop', '☆': 'starline',
-    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '🃏': 'tarot', '🔮': 'tarot', '🎴': 'tarot',
+    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'tarot', '🎴': 'tarot',
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');

@@ -86,12 +86,17 @@ const HELP = `gamja-make 사용법 (이 크루 폴더 안의 파일만 다룰 �
   image <그림.svg> <결과.png> [가로픽셀]    SVG 그림을 PNG로 (기본 가로 1080)
   video <결과.mp4> <한장당초> <소리파일|-> <사진1> <사진2> ...   사진을 이어 붙인 슬라이드 영상 (소리가 필요 없으면 -)
   audio <악보.json> <결과.wav>             악보 JSON을 소리로. 예) {"bpm":120,"notes":[{"note":"C4","beats":1},{"note":"E4","beats":1},{"note":"rest","beats":0.5}]}
+  saju <YYYY-MM-DD> <HH:MM|모름> [남|여]    사주(년·월·일·시 기둥, 오행, 십성, 대운)를 계산. 양력만. 예) saju 1990-05-15 14:30 남  (옵션: --lon 127 --tz 9 --zasi yaja|jo --no-correction)
   help                                     이 설명
 
 재료 파일(.md .csv .svg .json)은 먼저 Write로 만든 뒤 위 명령을 실행하세요.`;
 
 const [cmd, ...a] = process.argv.slice(2);
 switch (cmd) {
+  case 'saju': { // 사주 계산은 외부 프로그램이 필요 없어서 도구 상자 설치 없이 쓸 수 있다
+    try { console.log(require('./saju.js').run(a)); } catch (e) { die(e.message); }
+    break;
+  }
   case 'doc': {
     const [src, dest] = a;
     const input = inside(src, { mustExist: true });
