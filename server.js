@@ -2332,7 +2332,7 @@ if (PORT === 3000 && SUPERVISED) {
   try {
     const envPath = path.join(__dirname, '.env');
     const before = fs.readFileSync(envPath, 'utf8');
-    const after = before.replace(/^PORT=3000[ \t]*$/m, 'PORT=26514');
+    const after = before.replace(/^PORT=3000[ \t\r]*$/m, 'PORT=26514');
     if (after !== before) {
       fs.writeFileSync(envPath + '.tmp', after, { mode: 0o600 });
       fs.renameSync(envPath + '.tmp', envPath);

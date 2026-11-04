@@ -82,7 +82,22 @@ class MainActivity : Activity() {
 
     // ---------- 3. 홈 화면: 감자는 폰의 브라우저(크롬 등)로 연다 ----------
     // 앱 안의 화면(WebView)은 폰마다 버전이 달라 화면이 안 뜨는 일이 있어서, 기본은 브라우저로 열고 앱은 감자알을 켜 두는 일과 설정을 맡는다.
+    /**
+     * 예전에 설치한 폰의 .env가 PORT=3000이면 26514로 바꾼다. 감자알 0.1.127부터 3000과 26514를 함께 열 수 있어서,
+     * 그보다 새 감자알일 때만 바꾼다 (옛 감자알은 3000만 열어서 앱이 못 붙는다). 감자알은 다음에 다시 켜질 때 26514로 뜬다.
+     */
+    private fun migratePort() {
+        runCatching {
+            val build = java.io.File(p.appDir, "BUILD").takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+            if (build < 127 || !p.envFile.exists()) return
+            val text = p.envFile.readText()
+            val fixed = text.replace(Regex("(?m)^PORT=3000[ \\t\\r]*\$"), "PORT=26514")
+            if (fixed != text) p.envFile.writeText(fixed)
+        }
+    }
+
     private fun showHome() {
+        migratePort()
         syncChatCode()
         GamjaService.start(this)
         // 감자 콘솔 더보기와 같은 느낌: 옅은 회색 바탕, 흰 카드, 노란 큰 버튼
@@ -149,17 +164,13 @@ class MainActivity : Activity() {
         // 문제 해결 (접어 둔다)
         root.addView(sectionLabel("문제 해결"))
         val trouble = card().apply { visibility = View.GONE }
-        trouble.addView(infoRow("감자알 로그 보기", "›") { showLog() })
-        trouble.addView(divider())
         trouble.addView(infoRow("Claude 다시 로그인", "›") { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) })
         trouble.addView(divider())
-        trouble.addView(infoRow("다른 기기에서 접속하는 주소", "›") { showAddress() })
-        trouble.addView(divider())
-        trouble.addView(infoRow("앱 안에서 열기 (문제 해결용)", "›") { showChat() })
+        trouble.addView(infoRow("감자알 로그 보기", "›") { showLog() })
         trouble.addView(divider())
         trouble.addView(infoRow("오픈소스 라이선스", "›") { showLicenses() })
         root.addView(card().apply {
-            addView(infoRow("로그 · Claude 로그인 · 그 밖의 도구", "›") {
+            addView(infoRow("문제 해결 도구", "›") {
                 trouble.visibility = if (trouble.visibility == View.GONE) View.VISIBLE else View.GONE
             })
         })
