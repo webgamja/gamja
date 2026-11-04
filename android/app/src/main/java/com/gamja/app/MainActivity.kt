@@ -85,36 +85,159 @@ class MainActivity : Activity() {
     private fun showHome() {
         syncChatCode()
         GamjaService.start(this)
-        val col = column()
-        col.addView(text("🥔 감자", 30f, bold = true))
-        val status = text("감자알을 깨우는 중...", 15f)
-        col.addView(status)
-        val open = Button(this).apply { text = "감자 열기"; isEnabled = false; setOnClickListener { openInBrowser(null) } }
-        col.addView(open)
-        col.addView(text("감자는 폰의 브라우저에서 열려요. 홈 화면에 추가해 두면 앱처럼 쓸 수 있어요.", 13f))
-        fun add(label: String, action: () -> Unit) = col.addView(Button(this).apply { text = label; setOnClickListener { action() } })
-        add("다른 기기에서 접속하는 주소 보기") { showAddress() }
-        add("감자 앱 업데이트 확인 (${Updater.currentName(this)})") { checkUpdate(silentIfLatest = false) }
-        add("배터리 설정") { openBatterySettings() }
-        add("감자알 로그 보기") { showLog() }
-        add("Claude 다시 로그인") { startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN) }
-        add("앱 안에서 열기 (문제 해결용)") { showChat() }
-        add("오픈소스 라이선스") { showLicenses() }
-        setContentView(ScrollView(this).apply { addView(col) })
+        // 감자 콘솔 더보기와 같은 느낌: 옅은 회색 바탕, 흰 카드, 노란 큰 버튼
+        window.statusBarColor = HOME_BG
+        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(20), dp(16), dp(28))
+        }
+        root.addView(label("감자", 34f, HOME_INK, bold = true).apply { setPadding(dp(4), dp(8), 0, 0) })
+        root.addView(label("감자알이 돌아가는 곳이에요", 14f, HOME_SUB).apply { setPadding(dp(4), dp(4), 0, dp(14)) })
+
+        // 감자알 상태 카드
+        val dot = View(this).apply { background = rounded(0xFF9AA1AB.toInt(), 8) }
+        val statusTitle = label("감자알을 깨우는 중...", 17f, HOME_INK, bold = true)
+        val statusSub = label(BASE.removePrefix("http://"), 13f, HOME_SUB)
+        val statusCard = card().apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            addView(dot, LinearLayout.LayoutParams(dp(12), dp(12)).apply { rightMargin = dp(14) })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(statusTitle)
+                addView(statusSub)
+            })
+        }
+        root.addView(statusCard)
+
+        // 노란 큰 버튼
+        val open = Button(this).apply {
+            text = "감자 콘솔 접속하기"
+            textSize = 18f
+            isAllCaps = false
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(0xFF191919.toInt())
+            stateListAnimator = null
+            background = rounded(HOME_YELLOW, 20)
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener { openInBrowser(null) }
+        }
+        root.addView(open, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(4); bottomMargin = dp(4) })
+
+        // 정보
+        root.addView(sectionLabel("정보"))
+        val eggBuild = runCatching { java.io.File(p.appDir, "BUILD").readText().trim() }.getOrNull()
+        root.addView(card().apply {
+            addView(infoRow("감자 버전", Updater.currentName(this@MainActivity)) { checkUpdate(silentIfLatest = false) })
+            addView(divider())
+            addView(infoRow("감자알 버전", if (eggBuild.isNullOrBlank()) "-" else "0.1.$eggBuild"))
+        })
+        root.addView(label("감자 버전을 누르면 새 버전을 확인해요", 12f, HOME_SUB).apply { setPadding(dp(4), dp(2), 0, 0) })
+
+        // 설정
+        root.addView(sectionLabel("설정"))
+        val batteryValue = TextView(this)
+        batteryValueView = batteryValue
+        root.addView(card().apply {
+            addView(infoRow("배터리 설정", "", batteryValue) { openBatterySettings() })
+        })
+        refreshBatteryValue()
+
+        // 문제 해결 (접어 둔다)
+        root.addView(sectionLabel("문제 해결"))
+        val trouble = card().apply { visibility = View.GONE }
+        trouble.addView(infoRow("감자알 로그 보기", "›") { showLog() })
+        trouble.addView(divider())
+        trouble.addView(infoRow("Claude 다시 로그인", "›") { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) })
+        trouble.addView(divider())
+        trouble.addView(infoRow("다른 기기에서 접속하는 주소", "›") { showAddress() })
+        trouble.addView(divider())
+        trouble.addView(infoRow("앱 안에서 열기 (문제 해결용)", "›") { showChat() })
+        trouble.addView(divider())
+        trouble.addView(infoRow("오픈소스 라이선스", "›") { showLicenses() })
+        root.addView(card().apply {
+            addView(infoRow("로그 · Claude 로그인 · 그 밖의 도구", "›") {
+                trouble.visibility = if (trouble.visibility == View.GONE) View.VISIBLE else View.GONE
+            })
+        })
+        root.addView(trouble)
+        root.addView(label("평소에는 안 봐도 돼요", 12f, HOME_SUB).apply { setPadding(dp(4), dp(2), 0, 0) })
+
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(HOME_BG)
+            fitsSystemWindows = true
+            addView(root)
+        })
+
         thread {
             val ready = waitForServer()
             ui.post {
                 if (isFinishing || isDestroyed) return@post
                 if (ready) {
-                    status.text = "감자알이 켜져 있어요 (${BASE.removePrefix("http://")})"
+                    dot.background = rounded(0xFF2F9E44.toInt(), 8)
+                    statusTitle.text = "감자알이 켜져 있어요"
                     open.isEnabled = true
+                    open.alpha = 1f
                     handleProjectIntent(intent)
                 } else {
-                    val log = runCatching { p.serverLog.readText().takeLast(1200) }.getOrDefault("")
-                    status.text = "감자알이 아직 안 떠요. 잠시 후 앱을 다시 열어 보세요.\n\n[감자알 로그]\n$log"
+                    dot.background = rounded(0xFFE5484D.toInt(), 8)
+                    statusTitle.text = "감자알이 아직 안 떠요"
+                    val log = runCatching { p.serverLog.readText().takeLast(600) }.getOrDefault("")
+                    statusSub.text = "잠시 후 앱을 다시 열어 보세요.\n$log"
                 }
             }
         }
+    }
+
+    // ---- 홈 화면 도우미 ----
+    private var batteryValueView: TextView? = null
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun rounded(color: Int, radiusDp: Int) = android.graphics.drawable.GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+    private fun label(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+        text = s
+        textSize = size
+        setTextColor(color)
+        if (bold) setTypeface(typeface, Typeface.BOLD)
+    }
+    private fun card() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = rounded(Color.WHITE, 20)
+        setPadding(dp(20), dp(4), dp(20), dp(4))
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) }
+    }
+    private fun sectionLabel(s: String) = label(s, 13f, HOME_SUB, bold = true).apply { setPadding(dp(4), dp(14), 0, dp(6)) }
+    private fun divider() = View(this).apply {
+        setBackgroundColor(HOME_LINE)
+        layoutParams = LinearLayout.LayoutParams(-1, dp(1))
+    }
+    /** 왼쪽 이름, 오른쪽 값. onClick이 있으면 눌러서 쓰는 줄 */
+    private fun infoRow(name: String, value: String, valueView: TextView? = null, onClick: (() -> Unit)? = null): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(15), 0, dp(15))
+            addView(label(name, 16f, HOME_INK), LinearLayout.LayoutParams(0, -2, 1f))
+            addView((valueView ?: TextView(this@MainActivity)).apply {
+                text = value
+                textSize = 16f
+                setTextColor(HOME_SUB)
+                gravity = Gravity.END
+            })
+            if (onClick != null) {
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+        }
+
+    private fun refreshBatteryValue() {
+        val ok = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        batteryValueView?.text = if (ok) "허용됨  ›" else "설정 필요  ›"
     }
 
     /** 폰의 브라우저로 감자를 연다. 앱이 한 번만 쓰는 로그인 표를 받아 함께 넘기므로 비밀번호를 다시 치지 않아도 된다 */
@@ -395,7 +518,7 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onResume() { super.onResume(); visible = true; askUpdateOnOpen() }
+    override fun onResume() { super.onResume(); visible = true; askUpdateOnOpen(); refreshBatteryValue() }
     override fun onPause() {
         visible = false
         // 앱을 떠나면 듣기를 멈춘다. 단, 마이크 권한 창이 떠서 잠깐 멈추는 경우(아직 인식기를 안 만든 상태)는 그대로 기다린다
@@ -903,6 +1026,12 @@ class MainActivity : Activity() {
     companion object {
         /** 감자알 주소. 포트는 감자알의 .env에서 읽는다 (예전에 설치한 폰 3000, 새로 설치한 폰 26514) */
         val BASE: String get() = "http://127.0.0.1:${Ports.current()}"
+        // 홈 화면 색 (감자 콘솔 더보기와 같은 팔레트)
+        private val HOME_BG = 0xFFF2F4F6.toInt()
+        private val HOME_INK = 0xFF191F28.toInt()
+        private val HOME_SUB = 0xFF6B7684.toInt()
+        private val HOME_LINE = 0xFFE5E8EB.toInt()
+        private val HOME_YELLOW = 0xFFFEE500.toInt()
         const val EXTRA_PROJECT = "project"
         const val EXTRA_UPDATE = "update"
         /** 감자 화면이 지금 보이는지 (보이면 완료 알림을 띄우지 않음) */
