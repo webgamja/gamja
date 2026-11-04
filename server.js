@@ -73,6 +73,7 @@ function isAuthed(req) {
   return true;
 }
 
+const loginTickets = new Map(); // 앱이 브라우저를 열 때 쓰는 한 번용 로그인 표 → 만료 시각
 // 로그인 무차별 대입 방지: IP당 15분에 10회 (로그인 실패와 비밀번호 바꾸기 실패는 따로 센다)
 const attempts = new Map();   // 로그인 실패
 const pwAttempts = new Map(); // 비밀번호 바꾸기에서 현재 비밀번호를 틀린 횟수
@@ -1620,6 +1621,34 @@ const server = http.createServer(async (req, res) => {
       attempts.delete(ip);
       const cookie = `${COOKIE}=${makeToken()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${COOKIE_SECURE ? '; Secure' : ''}`;
       return send(res, 200, { ok: true }, { 'Set-Cookie': cookie });
+    }
+    // 앱 → 브라우저 로그인: 감자 앱이 비밀번호로 한 번만 쓰는 표를 받아 브라우저로 열면, 브라우저가 로그인된 채로 감자 화면을 연다.
+    // 이 폰 안(127.0.0.1)의 요청만 받고, 표는 60초 안에 한 번만 쓸 수 있다
+    if (p === '/api/login-ticket' && req.method === 'POST') {
+      if (!isLocalReq(req)) return send(res, 403, { error: '이 폰 안에서만 쓸 수 있어요' });
+      if (tooManyAttempts(ip)) return send(res, 429, { error: '잠시 후 다시 시도해 주세요' });
+      const body = await readBody(req);
+      if (!safeEqual(body.password || '', PASSWORD)) {
+        attempts.get(ip).push(Date.now());
+        return send(res, 401, { error: '비밀번호가 틀렸습니다' });
+      }
+      const now = Date.now();
+      for (const [t, exp] of loginTickets) if (exp < now) loginTickets.delete(t);
+      if (loginTickets.size > 20) loginTickets.clear();
+      const ticket = crypto.randomBytes(24).toString('base64url');
+      loginTickets.set(ticket, now + 60e3);
+      return send(res, 200, { ticket });
+    }
+    if (p === '/api/app-login' && req.method === 'GET') {
+      const exp = loginTickets.get(url.searchParams.get('t') || '');
+      loginTickets.delete(url.searchParams.get('t') || '');
+      if (!isLocalReq(req) || !exp || exp < Date.now()) {
+        return send(res, 403, '로그인 표가 없거나 만료됐어요. 감자 앱에서 "감자 열기"를 다시 눌러 주세요.', { 'Content-Type': 'text/plain; charset=utf-8' });
+      }
+      const to = url.searchParams.get('to') || '/';
+      const dest = /^\/(?!\/)[^\r\n\\]*$/.test(to) && !to.startsWith('/api/') ? to : '/'; // 이 감자알 안의 화면 주소만
+      const cookie = `${COOKIE}=${makeToken()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${COOKIE_SECURE ? '; Secure' : ''}`;
+      return send(res, 302, '', { Location: dest, 'Set-Cookie': cookie });
     }
     if (p === '/api/logout' && req.method === 'POST') {
       return send(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` });

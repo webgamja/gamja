@@ -76,8 +76,65 @@ class MainActivity : Activity() {
         when {
             !p.isInstalled() -> showSetup()
             !p.isLoggedIn() && !prefs.getBoolean("skipLogin", false) -> showLogin()
-            else -> showChat()
+            else -> showHome()
         }
+    }
+
+    // ---------- 3. 홈 화면: 감자는 폰의 브라우저(크롬 등)로 연다 ----------
+    // 앱 안의 화면(WebView)은 폰마다 버전이 달라 화면이 안 뜨는 일이 있어서, 기본은 브라우저로 열고 앱은 감자알을 켜 두는 일과 설정을 맡는다.
+    private fun showHome() {
+        syncChatCode()
+        GamjaService.start(this)
+        val col = column()
+        col.addView(text("🥔 감자", 30f, bold = true))
+        val status = text("감자알을 깨우는 중...", 15f)
+        col.addView(status)
+        val open = Button(this).apply { text = "감자 열기"; isEnabled = false; setOnClickListener { openInBrowser(null) } }
+        col.addView(open)
+        col.addView(text("감자는 폰의 브라우저에서 열려요. 홈 화면에 추가해 두면 앱처럼 쓸 수 있어요.", 13f))
+        fun add(label: String, action: () -> Unit) = col.addView(Button(this).apply { text = label; setOnClickListener { action() } })
+        add("다른 기기에서 접속하는 주소 보기") { showAddress() }
+        add("감자 앱 업데이트 확인 (${Updater.currentName(this)})") { checkUpdate(silentIfLatest = false) }
+        add("배터리 설정") { openBatterySettings() }
+        add("감자알 로그 보기") { showLog() }
+        add("Claude 다시 로그인") { startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN) }
+        add("앱 안에서 열기 (문제 해결용)") { showChat() }
+        add("오픈소스 라이선스") { showLicenses() }
+        setContentView(ScrollView(this).apply { addView(col) })
+        thread {
+            val ready = waitForServer()
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                if (ready) {
+                    status.text = "감자알이 켜져 있어요 (${BASE.removePrefix("http://")})"
+                    open.isEnabled = true
+                    handleProjectIntent(intent)
+                } else {
+                    val log = runCatching { p.serverLog.readText().takeLast(1200) }.getOrDefault("")
+                    status.text = "감자알이 아직 안 떠요. 잠시 후 앱을 다시 열어 보세요.\n\n[감자알 로그]\n$log"
+                }
+            }
+        }
+    }
+
+    /** 폰의 브라우저로 감자를 연다. 앱이 한 번만 쓰는 로그인 표를 받아 함께 넘기므로 비밀번호를 다시 치지 않아도 된다 */
+    private fun openInBrowser(project: String?) {
+        thread {
+            val ticket = runCatching { loginTicket() }.getOrNull()
+            ui.post {
+                val to = if (project != null) "/?project=" + Uri.encode(project) else "/"
+                val url = if (ticket != null) "$BASE/api/app-login?t=${Uri.encode(ticket)}&to=${Uri.encode(to)}" else "$BASE$to"
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    .onFailure { Toast.makeText(this, "브라우저를 찾지 못했어요. 폰에 크롬 같은 브라우저를 설치해 주세요.", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    /** 🔔 완료 알림을 눌러 열렸으면 그 크루 방을 브라우저로 연다 */
+    private fun handleProjectIntent(i: Intent?) {
+        val project = i?.getStringExtra(EXTRA_PROJECT) ?: return
+        i.removeExtra(EXTRA_PROJECT)
+        openInBrowser(project)
     }
 
     // ---------- 1. 준비 화면 ----------
@@ -257,7 +314,9 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.hasExtra(EXTRA_PROJECT)) web?.loadUrl(chatUrl(intent))
+        if (intent.hasExtra(EXTRA_PROJECT)) {
+            if (web != null) web?.loadUrl(chatUrl(intent)) else handleProjectIntent(intent)
+        }
         handleUpdateIntent(intent)
     }
 
@@ -634,6 +693,19 @@ class MainActivity : Activity() {
             Thread.sleep(500)
         }
         return false
+    }
+
+    /** 브라우저가 로그인된 채로 열리도록, 비밀번호로 한 번만 쓰는 로그인 표를 감자알에서 받는다 */
+    private fun loginTicket(): String? {
+        val pw = p.password() ?: return null
+        val conn = URL("$BASE/api/login-ticket").openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 3000; conn.readTimeout = 3000
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.outputStream.use { it.write(JSONObject().put("password", pw).toString().toByteArray()) }
+        if (conn.responseCode != 200) return null
+        return JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("ticket").ifBlank { null }
     }
 
     /** 이 폰에서 여는 화면은 비밀번호 없이 바로 들어가도록 앱이 대신 로그인 */
