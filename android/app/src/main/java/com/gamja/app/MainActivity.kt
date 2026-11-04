@@ -157,14 +157,29 @@ class MainActivity : Activity() {
         root.addView(sectionLabel("설정"))
         val batteryValue = TextView(this)
         batteryValueView = batteryValue
+        val notifValue = TextView(this)
+        notifValueView = notifValue
         root.addView(card().apply {
             addView(infoRow("배터리 설정", "", batteryValue) { openBatterySettings() })
+            addView(divider())
+            addView(infoRow("알림 허용", "", notifValue) { askNotifOrSettings() })
         })
         refreshBatteryValue()
+        refreshNotifValue()
+        // 처음 열 때 한 번 알림 허용을 물어본다 (안드로이드 13 이상은 허용해야 답변 완료 알림이 와요)
+        val prefsHome = getPreferences(MODE_PRIVATE)
+        if (!notifAllowed() && !prefsHome.getBoolean("notifAsked", false)) {
+            prefsHome.edit().putBoolean("notifAsked", true).apply()
+            askNotif()
+        }
 
         // 문제 해결 (접어 둔다)
         root.addView(sectionLabel("문제 해결"))
         val trouble = card().apply { visibility = View.GONE }
+        trouble.addView(infoRow("감자알 다시 시작", "›") {
+            confirmSheet("감자알을 다시 시작할까요?", "진행 중인 답변이 있으면 끊겨요. 보통 10초쯤 걸려요.", "다시 시작", "취소") { restartEgg() }
+        })
+        trouble.addView(divider())
         trouble.addView(infoRow("Claude 다시 로그인", "›") { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) })
         trouble.addView(divider())
         trouble.addView(infoRow("감자알 로그 보기", "›") { showLog() })
@@ -246,6 +261,47 @@ class MainActivity : Activity() {
                 setOnClickListener { onClick() }
             }
         }
+
+    private var notifValueView: TextView? = null
+    private fun notifAllowed() = Build.VERSION.SDK_INT < 33 ||
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    private fun askNotif() {
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
+    }
+    /** 허용돼 있으면 폰의 알림 설정 화면을, 아니면 허용 창을 연다 (한 번 거절하면 안드로이드가 창을 다시 안 띄워서 설정 화면으로 보낸다) */
+    private fun askNotifOrSettings() {
+        val prefs = getPreferences(MODE_PRIVATE)
+        if (!notifAllowed() && !prefs.getBoolean("notifDenied", false)) { askNotif(); return }
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+        }.onFailure { openAppDetails(packageName) }
+    }
+    private fun refreshNotifValue() {
+        notifValueView?.text = if (notifAllowed()) "허용됨  ›" else "허용 필요  ›"
+    }
+
+    /** 감자알을 스스로 다시 시작하게 하고(start.sh 루프가 다시 띄운다), 다시 켜질 때까지 기다린 뒤 홈 화면을 새로 그린다 */
+    private fun restartEgg() {
+        Toast.makeText(this, "감자알을 다시 시작하는 중...", Toast.LENGTH_SHORT).show()
+        thread {
+            val ok = runCatching {
+                val pw = p.password() ?: return@runCatching false
+                val conn = URL("$BASE/api/self-restart").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 3000; conn.readTimeout = 3000
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.outputStream.use { it.write(JSONObject().put("password", pw).toString().toByteArray()) }
+                conn.responseCode == 200
+            }.getOrDefault(false)
+            if (ok) { Thread.sleep(2500); waitForServer() }
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                Toast.makeText(this, if (ok) "다시 시작했어요" else "다시 시작하지 못했어요. 잠시 뒤에 다시 눌러 주세요", Toast.LENGTH_LONG).show()
+                showHome()
+            }
+        }
+    }
 
     private fun refreshBatteryValue() {
         val ok = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
@@ -648,7 +704,7 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
-        super.onResume(); visible = true; askUpdateOnOpen(); refreshBatteryValue()
+        super.onResume(); visible = true; askUpdateOnOpen(); refreshBatteryValue(); refreshNotifValue()
         if (onBatteryPage && batteryAllowed()) finishBatteryPage() // 배터리 허용 화면에서 돌아왔고 허용됐으면 다음 단계로
     }
     override fun onPause() {
@@ -920,6 +976,11 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIF) {
+            if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) getPreferences(MODE_PRIVATE).edit().putBoolean("notifDenied", true).apply()
+            refreshNotifValue()
+            return
+        }
         if (requestCode != REQ_MIC) return
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
             if (voiceOpen) startRecognizer()
@@ -1172,5 +1233,6 @@ class MainActivity : Activity() {
         private const val REQ_MIC = 2
         private const val REQ_FILE = 3
         private const val REQ_PICK = 4
+        private const val REQ_NOTIF = 5
     }
 }

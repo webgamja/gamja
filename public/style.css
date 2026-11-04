@@ -883,6 +883,9 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 #trashPanel { z-index: 31; }
 /* 도구 설치 카드 (채팅 말풍선 아래) */
 .install-card { margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: var(--bot); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.auth-card { margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: #fff7c2; color: #191919; display: flex; flex-direction: column; gap: 6px; }
+.auth-card b { font-size: 14px; }
+.auth-card small { font-size: 13px; line-height: 1.5; }
 .install-card b { font-size: 14px; }
 .install-card small { font-size: 12px; color: var(--muted); }
 .install-go { border: 0; border-radius: 12px; padding: 11px; background: var(--me); color: var(--me-fg); font: inherit; font-size: 14px; font-weight: 800; }

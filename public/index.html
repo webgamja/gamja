@@ -29,6 +29,7 @@
       <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" required>
       <button type="submit">로그인</button>
       <p id="loginErr" class="err"></p>
+      <p id="loginHint" class="settings-note"></p>
     </form>
   </section>
 
@@ -405,9 +406,11 @@
       <p class="settings-row"><span>지금 대화 길이</span><b id="ctxSize">-</b></p>
       <p class="settings-note">ⓘ Claude는 메시지마다 대화 전체를 다시 읽어요. 길어질수록 느리고 사용량이 커져서, 오래된 대화를 요약본으로 바꾸는 <b>압축</b>을 해요. (⋯ → 🗜 대화 압축으로 바로 할 수도 있어요)</p>
       <div class="radio-list">
-        <label><input type="radio" name="autocompact" value=""> 기본값 <span>한계 가까이에서 자동 압축</span></label>
-        <label><input type="radio" name="autocompact" value="200k"> 일찍 <span>20만 토큰에서 압축 · 빠름</span></label>
+        <label><input type="radio" name="autocompact" value="200k"> 추천 <span>20만 토큰에서 압축 · 빠르고 가벼워요</span></label>
+        <label><input type="radio" name="autocompact" value="150k"> 더 일찍 <span>15만 토큰에서 압축</span></label>
+        <label><input type="radio" name="autocompact" value="100k"> 가장 일찍 <span>10만 토큰에서 압축 · 가장 빠름</span></label>
         <label><input type="radio" name="autocompact" value="400k"> 중간 <span>40만 토큰에서 압축</span></label>
+        <label><input type="radio" name="autocompact" value=""> 기본값 <span>한계 가까이에서 자동 압축 · 길어질수록 느려져요</span></label>
       </div>
 
       <p class="settings-note">모델·생각 깊이는 <b>다음 메시지부터</b> 적용돼요. 크루마다 따로 정하려면 크루의 📁 크루 설정에서 바꾸세요.</p>
@@ -485,6 +488,7 @@
       <!-- 설정 목록(연결) 바로 아래에 이어서 보이는 것들: 감자 앱, 정보, 업데이트 기록, 문제가 생겼을 때. 하위 화면을 열면 숨겨진다 -->
       <div id="setInfo">
       <!-- 감자 앱 안에서 열었을 때만 보인다 (앱이 알려 주는 정보와 기능) -->
+      <button id="pwaRow" class="set-row hidden"></button>
       <div id="appGroup" class="hidden">
         <h3>🥔 감자 앱</h3>
         <button id="appLogin" class="set-row"><span class="pick-icon">🤖</span><span><b>Claude 로그인 다시 하기</b><small>공식 Claude 로그인 화면을 열어요</small></span><i>›</i></button>

@@ -58,9 +58,13 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
 1. Download `gamja.apk` from the [latest release](https://github.com/webgamja/gamja-release/releases/latest)
    and install it (Android 8 or newer). Allow "install unknown apps" for your browser when asked.
 2. Open GAMJA. The first start prepares everything and takes 10 to 20 minutes. Keep it on Wi-Fi and plugged in.
-3. Sign in with **your own Claude account** on the official Claude Code screen. GAMJA never sees your login.
-4. In Android settings, set the battery usage of GAMJA to "Unrestricted" so it can keep running.
-5. Pick a crew and say what you want.
+3. Allow the battery setting so the egg keeps running while the screen is off.
+4. Sign in with **your own Claude account** on the official Claude Code screen. GAMJA never sees your login.
+5. Tap **Open GAMJA console** on the home screen. The console opens in your phone's browser. Pick a crew and say what you want.
+
+You can add the console to your home screen to use it like an app.
+
+**Names:** **GAMJA** is the Android app (it keeps the egg running), the **egg (감자알)** is the program that runs inside the app, and the **console (감자 콘솔)** is the chat and crew screen you open in the browser.
 
 GAMJA is distributed from GitHub, not from Google Play. See
 [android/README.md](android/README.md) for why (it runs programs inside the app, which Android 10+ restricts for

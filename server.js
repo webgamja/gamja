@@ -305,10 +305,12 @@ const isUuid = (s) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f
 // ---------- 설정 (호칭·답변 스타일·모델) ----------
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const MODELS = ['', 'opus', 'sonnet']; // '' = Claude Code 기본값
-const AUTOCOMPACT = ['', '200k', '400k']; // '' = Claude Code 기본(한계 가까이에서 자동 압축)
+const AUTOCOMPACT = ['', '100k', '150k', '200k', '400k']; // '' = Claude Code 기본(한계 가까이에서 자동 압축). 추천은 200k
+// Claude 로그인이 풀렸을 때 Claude Code가 내는 오류 글. 이런 오류에는 화면이 "로그인하기" 안내를 붙인다
+const AUTH_ERR = /not logged in|please run \/login|invalid api key|authentication[_ ]error|oauth token (has )?expired|login required/i;
 const EFFORTS = ['', 'low', 'medium', 'high']; // 생각 깊이 (--effort). '' = Claude Code 기본값
 // lanAccess: 같은 와이파이의 다른 기기(PC·아이폰 등)에서 접속하는 것을 허용할지. 기본은 꺼짐 (이 폰 안의 감자 앱·브라우저만)
-let settings = { nickname: '', style: '', model: '', autocompact: '', effort: '', lanAccess: false };
+let settings = { nickname: '', style: '', model: '', autocompact: '200k', effort: '', lanAccess: false }; // 자동 압축은 20만 토큰이 기본(추천)
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch {}
 // 기기 간에 같이 쓰는 화면 정보: 크루 이름·아이콘·묶음(crew), 템플릿(tpl), ★ 자주 쓰는 크루(favs), 채팅방 이름(roomTitle),
 // 📌 고정(roomPin), 방 만든 시각(roomMade). 항목마다 { v, ts }로 두고 더 늦은 ts가 이긴다 (v가 null이면 지운 것)
@@ -1080,7 +1082,7 @@ function handleChat(req, res, body, opts = {}) {
     clearInterval(heartbeat);
     running.delete(runId);
     if (bot.text || bot.tools.length) { bot.ts = Date.now(); conv.messages.push(bot); } // 말풍선 시각 = 답변이 끝난 시각 (시작 시각이 아니라)
-    if (errorText) conv.messages.push({ role: 'error', text: errorText, ts: Date.now() });
+    if (errorText) conv.messages.push({ role: 'error', text: errorText, ts: Date.now(), ...(AUTH_ERR.test(errorText) ? { auth: true } : {}) });
     saveConv(project);
     projectRuns.delete(project);
     recordDone(project, bot, errorText, Date.now() - startedAt, opts);
@@ -1587,12 +1589,20 @@ const LAN_OFF_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta nam
 main{padding:28px;max-width:360px}h1{font-size:22px;margin:0 0 10px}p{margin:0 0 18px;line-height:1.6;color:#6b7684}
 button{border:0;border-radius:14px;padding:14px 26px;background:#fee500;color:#191919;font-size:16px;font-weight:800}</style></head>
 <body><main><h1 id="t">접속이 꺼져 있어요</h1><p id="d">이 폰의 감자에서 같은 와이파이 접속을 껐거나 아직 켜지 않았어요. 폰에서 더보기 → 연결 → 외부 접속을 켠 뒤 다시 시도해 주세요.</p><button id="b" onclick="location.reload()">다시 시도</button></main>
-<script>if(!/^ko/i.test(navigator.language)){t.textContent='Access is off';d.textContent='Same-Wi-Fi access is turned off on the phone. Turn it on in the GAMJA app (More > Connections > External access) and try again.';b.textContent='Try again'}</script></body></html>`;
+<script>if(!/^ko/i.test(navigator.language)){t.textContent='Access is off';d.textContent='Same-Wi-Fi access is turned off on the phone. Turn it on in the GAMJA console (More > Connections > External access) and try again.';b.textContent='Try again'}</script></body></html>`;
 
 // ---------- 라우팅 ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
+  // 브라우저로 쓰게 되면서 다른 사이트가 감자 콘솔 화면을 액자(iframe)에 넣어 누르게 속이는 일을 막는다.
+  // 크루가 만든 결과물(/preview/)은 아래 previewHeaders가 따로 보안 헤더(sandbox 등)를 붙인다
+  if (!p.startsWith('/preview/')) {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+  }
   // 로그인 시도 제한용 IP. 터널을 거치면 모두 127.0.0.1로 보이므로, 이 폰 안에서 온 요청일 때만
   // 터널이 알려 주는 실제 접속자 주소(cf-connecting-ip)를 믿는다
   const sockIp = req.socket.remoteAddress || '';
@@ -1604,7 +1614,7 @@ const server = http.createServer(async (req, res) => {
   // 같은 와이파이 접속이 꺼져 있으면(기본) 이 폰 안의 요청과 개발자 모드의 터널만 받는다.
   // 새 폰 설치 주소(/install/…)는 30분짜리 토큰이 따로 지켜서 예외로 둔다
   if (!fromLocal && !settings.lanAccess && !p.startsWith('/install/')) {
-    const msg = '같은 와이파이 접속이 꺼져 있어요. 이 폰의 감자 앱에서 더보기 → 연결 → 외부 접속에서 켜 주세요. (Same-Wi-Fi access is off. Turn it on in the GAMJA app: More > Connections > External access.)';
+    const msg = '같은 와이파이 접속이 꺼져 있어요. 이 폰의 감자 콘솔에서 더보기 → 연결 → 외부 접속에서 켜 주세요. (Same-Wi-Fi access is off. Turn it on in the GAMJA console: More > Connections > External access.)';
     // code: 열려 있는 화면이 "접속이 끊겼어요"를 보여 주는 데 쓴다
     if (p.startsWith('/api/')) return send(res, 403, { error: msg, code: 'lan-off' });
     return send(res, 403, LAN_OFF_PAGE, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -1649,6 +1659,20 @@ const server = http.createServer(async (req, res) => {
       const dest = /^\/(?!\/)[^\r\n\\]*$/.test(to) && !to.startsWith('/api/') ? to : '/'; // 이 감자알 안의 화면 주소만
       const cookie = `${COOKIE}=${makeToken()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${COOKIE_SECURE ? '; Secure' : ''}`;
       return send(res, 302, '', { Location: dest, 'Set-Cookie': cookie });
+    }
+    // 감자 앱의 "감자알 다시 시작": 이 폰 안에서, 비밀번호를 아는 요청만. start.sh 루프 아래에서 돌 때만 다시 켜진다
+    if (p === '/api/self-restart' && req.method === 'POST') {
+      if (!isLocalReq(req)) return send(res, 403, { error: '이 폰 안에서만 쓸 수 있어요' });
+      if (tooManyAttempts(ip)) return send(res, 429, { error: '잠시 후 다시 시도해 주세요' });
+      const body = await readBody(req);
+      if (!safeEqual(body.password || '', PASSWORD)) {
+        attempts.get(ip).push(Date.now());
+        return send(res, 401, { error: '비밀번호가 틀렸습니다' });
+      }
+      if (!SUPERVISED) return send(res, 409, { error: '이 감자알은 스스로 다시 시작할 수 없어요' });
+      send(res, 200, { ok: true });
+      setTimeout(() => process.exit(0), 300);
+      return;
     }
     if (p === '/api/logout' && req.method === 'POST') {
       return send(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` });
@@ -1939,15 +1963,21 @@ const server = http.createServer(async (req, res) => {
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
         const conv = loadConv(project);
         const run = projectRuns.get(project);
+        // tail=N: 긴 방은 최근 N개만 보낸다 (처음 열 때 수백 KB를 받지 않도록). 화면의 "이전 대화 불러오기"가 tail 없이 다시 받아 간다
+        const tail = Math.max(0, Math.min(2000, Number(url.searchParams.get('tail')) || 0));
+        const partial = tail > 0 && conv.messages.length > tail;
         // 기록이 화면이 이미 가진 것과 같으면(rev가 같으면) 대화 전체를 다시 보내지 않는다. 긴 방에서 답을 기다리는 동안 1.5초마다 수백 KB를 주고받아 느려지던 것을 막는다
-        const rev = `${conv.updatedAt || 0}:${conv.messages.length}:${Object.keys(TOOLKITS).filter((k) => kitInstalled(k)).join(',')}`;
+        const rev = `${conv.updatedAt || 0}:${conv.messages.length}:${Object.keys(TOOLKITS).filter((k) => kitInstalled(k)).join(',')}:${partial ? 't' + tail : 'all'}`;
         const same = url.searchParams.get('rev') === rev;
         // 이미 설치된 도구의 "설치" 버튼은 보여 주지 않는다
-        const messages = same ? undefined : conv.messages.map((m) => (m.install ? { ...m, install: m.install.filter((k) => TOOLKITS[k.id] && !kitInstalled(k.id)) } : m));
+        const messages = same ? undefined : (partial ? conv.messages.slice(-tail) : conv.messages)
+          .map((m) => (m.install ? { ...m, install: m.install.filter((k) => TOOLKITS[k.id] && !kitInstalled(k.id)) } : m));
         return send(res, 200, {
           sessionId: conv.sessionId,
           rev,
           same,
+          partial,
+          hiddenCount: partial ? conv.messages.length - tail : 0,
           messages,
           running: !!run,
           runId: run ? run.runId : null,

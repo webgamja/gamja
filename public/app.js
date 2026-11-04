@@ -290,8 +290,24 @@
     firstOpen = true; // 다시 로그인하면 채팅 목록부터
     els.app.classList.add('hidden');
     els.login.classList.remove('hidden');
+    $('loginHint').textContent = window.GAMJA_I18N.t('login.hint'); // 비밀번호를 모르면 앱의 "감자 콘솔 접속하기"로 열라고 알려 준다
     setTimeout(() => els.pw.focus(), 50);
   }
+  // 홈 화면에 추가 (PWA): 크롬이 설치 창을 지원하면 바로 띄우고, 아니면 방법을 알려 준다. 이미 홈 화면에서 연 경우에는 보이지 않는다
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+  (function initPwaRow() {
+    const row = $('pwaRow');
+    const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    if (!row || standalone || window.GamjaApp) return;
+    const T = window.GAMJA_I18N.t;
+    row.innerHTML = `<span class="pick-icon">📲</span><span><b>${escapeHtml(T('pwa.title'))}</b><small>${escapeHtml(T('pwa.go'))}</small></span><i>›</i>`;
+    row.classList.remove('hidden');
+    row.onclick = async () => {
+      if (installPrompt) { installPrompt.prompt(); installPrompt = null; return; }
+      await gAlert(T('pwa.body'), T('pwa.title'));
+    };
+  })();
   let firstOpen = true;
   let deepLink = linked !== null; // 알림을 눌러 특정 크루로 열렸는지 (한 번만)
   async function showApp() {
@@ -902,6 +918,9 @@
       agentBody.innerHTML = (clipCrew
         ? `<button class="pick-card pick-hot" data-clip="1"><span class="pick-icon">📥</span><span><b>복사한 크루 가져오기</b><small>${escapeHtml(clipCrew.icon)} ${escapeHtml(clipCrew.name)}</small></span></button>`
         : '') +
+        '<h3>🙋 나는 어떤 사람이에요?</h3><p class="settings-note">고르면 그 사람에게 맞는 크루를 모아서 보여 드려요.</p>' +
+        window.GAMJA_TEMPLATES.PERSONAS.map((x) =>
+          `<button class="pick-card" data-persona="${x.id}"><span class="pick-icon">${x.icon}</span><span><b>${escapeHtml(x.name)}</b><small>${escapeHtml(x.desc)}</small></span></button>`).join('') +
         '<h3>⭐ 깊게 도와주는 전문가 크루</h3>' +
         window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => a.featured)).map((a) =>
           `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('') +
@@ -928,6 +947,13 @@
         (c.examples.length ? '<h3>예시 문장</h3>' + c.examples.map((t) => `<p class="settings-note">• ${escapeHtml(t)}</p>`).join('') : '') +
         '<button id="crewAdd" class="settings-save" type="button">크루 추가하기</button>' +
         '<button id="crewCancel" class="settings-ghost" type="button">취소</button>';
+    } else if (String(agentView).startsWith('persona:')) {
+      const ps = window.GAMJA_TEMPLATES.PERSONAS.find((x) => x.id === agentView.slice(8));
+      if (!ps) { agentView = null; return renderAgents(); }
+      $('agentTitle').textContent = `${ps.icon} ${ps.name}`;
+      agentBody.innerHTML = `<p class="settings-note">${escapeHtml(ps.desc)}. 위에 있을수록 먼저 써 보시길 권해요.</p>` +
+        ps.agents.map((id) => AGENTS.find((a) => a.id === id)).filter(Boolean).map((a) =>
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('');
     } else {
       const g = GROUPS.find((x) => x.id === agentView);
       $('agentTitle').textContent = `${g.icon} ${g.name}`;
@@ -1165,7 +1191,8 @@
     if (btn && btn.dataset.import) { agentView = '__import'; return renderAgents(); }
     const b = e.target.closest('.pick-card');
     if (!b) return;
-    if (b.dataset.group) { agentView = b.dataset.group; renderAgents(); }
+    if (b.dataset.persona) { agentView = 'persona:' + b.dataset.persona; renderAgents(); }
+    else if (b.dataset.group) { agentView = b.dataset.group; renderAgents(); }
     else if (b.dataset.import) { agentView = '__import'; renderAgents(); }
     else if (b.dataset.clip) { pendingCrew = clipCrew; agentView = '__preview'; renderAgents(); }
     else if (b.dataset.custom) { agentView = '__custom'; customIcon = '🙋'; renderAgents(); }
@@ -1230,7 +1257,8 @@
       else {
         // 화면에 그려 둔 기록의 rev를 보내면, 기록이 그대로일 때 서버가 대화 전체 대신 "같음"만 알려 준다
         const sendRev = loadedProject === project && historyRev && historyRevProject === project;
-        data = await api('/api/history' + q() + (sendRev ? `&rev=${encodeURIComponent(historyRev)}` : ''));
+        // 긴 방은 처음에 최근 대화만 받고(tail), 위로 올려 오래된 대화가 필요해지면 그때 전체를 받는다 (fetchHiddenOlder)
+        data = await api('/api/history' + q() + (sendRev ? `&rev=${encodeURIComponent(historyRev)}` : '') + (fullFor.has(project) ? '' : `&tail=${TAIL}`));
         if (data.same) data.messages = history;
         data = await migrateLocal(data);
       }
@@ -1285,6 +1313,7 @@
     history = data.messages;
     historyRev = data.rev || '';
     historyRevProject = project;
+    if (!data.same) serverHidden = data.partial ? data.hiddenCount || 0 : 0;
     els.messages.innerHTML = '';
     if (!history.length && !data.running && !data.archived) showEmpty();
     // 큰 방은 맨 아래로 열 때 가장 최근 대화부터 그려서 바로 보여 주고, 오래된 대화는 위로 올려 읽을 때 조금씩 위에 붙인다 (화면이 얼지 않게)
@@ -1322,9 +1351,32 @@
   const OLDER_CHUNK = 30; // 위로 올릴 때 한 번에 위에 붙이는 오래된 대화 수
   // 위로 올려 읽다가 맨 위 가까이 오면 오래된 대화를 한 조각 위에 붙인다 (카톡처럼). 맨 아래만 보는 동안에는 화면을 건드리지 않는다.
   // 붙일 때는 보던 말풍선의 실제 화면 위치를 재서 그대로 지킨다 (높이 차이를 정수로 더하면 조금씩 어긋난다)
+  const TAIL = 150; // 긴 방을 열 때 서버에서 먼저 받는 최근 대화 수
+  const fullFor = new Set(); // 전체 기록을 이미 받은 방
+  let serverHidden = 0; // 서버가 아직 안 보낸 오래된 대화 수
+  let fetchingOlder = false;
+  // 받아 둔 오래된 대화를 다 올려 읽었는데 서버에 더 있으면, 그때 전체를 한 번 받아서 오래된 쪽에 이어 붙인다
+  async function fetchHiddenOlder() {
+    if (fetchingOlder || !serverHidden || runId || remoteRunId) return;
+    fetchingOlder = true;
+    const proj = project;
+    try {
+      const d = await api('/api/history' + q());
+      if (proj !== project || !d.messages) return;
+      const extra = d.messages.slice(0, Math.max(0, d.messages.length - history.length));
+      olderQueue = [...extra, ...olderQueue];
+      history = d.messages;
+      historyRev = d.rev || '';
+      historyRevProject = project;
+      fullFor.add(project);
+      serverHidden = 0;
+      loadOlder();
+    } catch { /* 다음에 위로 올릴 때 다시 시도한다 */ } finally { fetchingOlder = false; }
+  }
   function loadOlder() {
     const m = els.messages;
-    if (!olderQueue.length || m.scrollTop > 800) return;
+    if (m.scrollTop > 800) return;
+    if (!olderQueue.length) { if (serverHidden) fetchHiddenOlder(); return; }
     const frag = document.createDocumentFragment();
     for (const x of olderQueue.splice(Math.max(0, olderQueue.length - OLDER_CHUNK))) addMessage(x, frag);
     const ref = m.firstElementChild;
@@ -1582,7 +1634,7 @@
     $('infoModel').textContent = prettyModel(d.info.model);
     for (const r of settingsEl.querySelectorAll('input[name=effort]')) r.checked = r.value === (d.settings.effort || '');
     for (const r of settingsEl.querySelectorAll('input[name=autocompact]')) r.checked = r.value === (d.settings.autocompact || '');
-    const limit = { '200k': 200000, '400k': 400000 }[d.settings.autocompact];
+    const limit = { '100k': 100000, '150k': 150000, '200k': 200000, '400k': 400000 }[d.settings.autocompact];
     $('ctxSize').textContent = d.context === null ? '아직 모름 (메시지를 보내면 표시돼요)'
       : d.context === 0 ? '방금 압축했어요'
         : `약 ${Math.round(d.context / 1000)}천 토큰${limit ? ` (압축 시점의 ${Math.min(100, Math.round(d.context / limit * 100))}%)` : ''}`;
@@ -2566,6 +2618,11 @@
     }
     if (!view.extra) return;
     let html = '';
+    // Claude 로그인이 풀려서 난 오류: 어떻게 다시 로그인하는지 안내한다 (감자 앱에서 로그인해야 한다)
+    if (m.role === 'error' && m.auth) {
+      const T = window.GAMJA_I18N.t;
+      html += `<div class="auth-card"><b>${escapeHtml(T('auth.title'))}</b><small>${escapeHtml(T('auth.body'))}</small></div>`;
+    }
     // 답이 오는 동안 이 칸은 계속 새로 그려지므로, 펼쳐 둔 상태를 기억해 두었다가 그대로 다시 펼쳐 준다
     if (!view.extra.dataset.toggleWatch) {
       view.extra.dataset.toggleWatch = '1';
