@@ -728,7 +728,13 @@ html, body { touch-action: pan-x pan-y; }
 .fr-search { margin: 0 0 4px; }
 .fr-search input { display: block; width: 100%; padding: 12px 16px; border: 0; border-radius: 14px; background: var(--ui-card); color: var(--ui-text); font: inherit; font-size: 15px; }
 .fr-sec { display: flex; align-items: center; justify-content: space-between; margin: 16px 4px 8px; font-size: 13px; font-weight: 700; color: var(--ui-sub); }
-.fr-star { font-style: normal; color: #f5c400; }
+.fr-star { display: inline-block; font-style: normal; color: #f5c400; }
+.fr-star .gi-s { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
+.fr-star .gi-s .a, .sheet-chips button.on .gi-s .a { fill: #f5c400; stroke: #f5c400; }
+.fr-make { background: var(--me); color: var(--me-fg); font-weight: 800; font-size: 15px; --gi-line: currentColor; --gi-a-line: currentColor; }
+.fr-make span { color: var(--me-fg); opacity: .7; }
+.fr-sec + .fr-shelf { margin-top: 10px; }
+.sheet-chips button .gi-lead { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
 .fr-more { border: 0; background: none; color: var(--ui-sub); font-size: 13px; font-weight: 700; }
 .fr-list { border-radius: 20px; background: var(--ui-card); overflow: hidden; }
 .fr-row, .fr-grp {

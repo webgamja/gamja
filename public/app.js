@@ -455,10 +455,11 @@
     loadTrash(); // 삭제한 크루가 있으면 맨 아래에 "삭제한 크루 복구하기"가 나온다
   }
   // "직접 만들기"와 "코드로 가져오기" 버튼: 크루 탭과 추천 크루 화면이 똑같은 모양을 쓴다
+  const starSvg = () => (window.GAMJA_ICONS ? window.GAMJA_ICONS.svg('star') : '★');
   function makeButtonsHtml() {
     const T = window.GAMJA_I18N.t;
     return `<button class="fr-join fr-make" data-custom="1" type="button">${escapeHtml(T('crew.make'))}<span>${escapeHtml(T('crew.makeSub'))}</span></button>` +
-      `<button class="fr-join" data-import="1" type="button">${escapeHtml(T('crew.import'))}<span>${escapeHtml(T('crew.importSub'))}</span></button>`;
+      `<button class="fr-join fr-make" data-import="1" type="button">${escapeHtml(T('crew.import'))}<span>${escapeHtml(T('crew.importSub'))}</span></button>`;
   }
   function renderCrewList() {
     const box = $('crewListBox');
@@ -479,7 +480,7 @@
     } else {
       // 카톡 친구 목록처럼: 맨 위 감자 톡톡(내 프로필 자리) → ★ 자주 쓰는 크루 → 묶음별 제목 줄과 그 아래 크루 (접고 펼침)
       html += `<div class="fr-list">${rowHtml('')}</div>`;
-      if (favs.length) html += `<div class="fr-sec"><span><i class="fr-star">★</i> 자주 쓰는 크루 ${favs.length}</span></div>${list(favs)}`;
+      if (favs.length) html += `<div class="fr-sec"><span><i class="fr-star">${starSvg()}</i> 자주 쓰는 크루 ${favs.length}</span></div>${list(favs)}`;
       const groups = [...GROUPS, GROUP_ETC];
       const shut = getShut();
       for (const g of groups) {
@@ -655,7 +656,7 @@
     const pinRooms = rooms.filter((c) => pinned.has(c.name)).sort(byRecent);
     const restRooms = rooms.filter((c) => !pinned.has(c.name)).sort(byRecent);
     let html = '';
-    if (pinRooms.length) html += `<div class="cl-hd first"><span><i class="fr-star">★</i> 고정 ${pinRooms.length}</span></div><div class="cl-list">${pinRooms.map(rowOf).join('')}</div>`;
+    if (pinRooms.length) html += `<div class="cl-hd first"><span><i class="fr-star">${starSvg()}</i> 고정${pinRooms.length}</span></div><div class="cl-list">${pinRooms.map(rowOf).join('')}</div>`;
     if (restRooms.length) html += `<div class="cl-hd${pinRooms.length ? '' : ' first'}"><span>최근 ${restRooms.length}</span></div><div class="cl-list">${restRooms.map(rowOf).join('')}</div>`;
     chatBody.innerHTML = '<div class="tab-head"><h1 class="ui-title">채팅</h1>' +
       '<div class="tab-acts"><button id="chatNewBtn" type="button" aria-label="새 채팅">＋</button></div></div>' + (html || '<p class="empty">아직 대화가 없어요.<br>크루 탭에서 크루를 골라 말을 걸어 보세요.</p>');
@@ -720,8 +721,8 @@
       return;
     }
     if (t('#crewAddBtn') || t('[data-store]')) return openAgents();
-    if (t('[data-import]')) return openAgents('__import');
-    if (t('[data-custom]')) { customIcon = '🙋'; return openAgents('__custom'); }
+    if (t('[data-import]')) return openAgents('__import', true); // 크루 탭에서 바로 연 화면: 뒤로 가면 크루 탭으로 돌아온다
+    if (t('[data-custom]')) { customIcon = '🙋'; return openAgents('__custom', true); }
     if (t('[data-trash]')) return openTrash();
   });
   homeBody.addEventListener('input', (e) => {
@@ -740,7 +741,7 @@
     $('shBlurb').textContent = crewBlurb(name);
     $('shGroup').textContent = name === '' ? '기본 대화' : g.name;
     const fav = getFavs().includes(name);
-    $('shFav').textContent = fav ? '★ 자주 쓰는 크루' : '☆ 자주 쓰는 크루에 추가';
+    $('shFav').innerHTML = `<span class="gi-lead">${window.GAMJA_ICONS.svg(fav ? 'star' : 'starline')}</span>${fav ? '자주 쓰는 크루' : '자주 쓰는 크루에 추가'}`;
     $('shFav').classList.toggle('on', fav);
     $('shShare').classList.toggle('hidden', !name); // 홈 대화는 공유할 크루가 아니다
     sheetEl.classList.remove('hidden');
@@ -1829,7 +1830,7 @@
     } else {
       html += list(['']);
       const favs = getFavs().filter((n) => n !== '');
-      if (favs.length) html += `<div class="fr-sec"><span><i class="fr-star">★</i> ${escapeHtml(T('newchat.favs'))} ${favs.length}</span></div>${list(favs)}`;
+      if (favs.length) html += `<div class="fr-sec"><span><i class="fr-star">${starSvg()}</i> ${escapeHtml(T('newchat.favs'))} ${favs.length}</span></div>${list(favs)}`;
       const shut = getShut();
       for (const g of [...GROUPS, GROUP_ETC]) {
         const names = projectList.filter((n) => crewGroup(n).id === g.id);
