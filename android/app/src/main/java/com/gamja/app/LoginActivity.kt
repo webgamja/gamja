@@ -73,7 +73,20 @@ class LoginActivity : Activity() {
             background = rounded(Color.WHITE, 20)
             val pad = (18 * dp).toInt()
             setPadding(pad, (16 * dp).toInt(), pad, pad)
-            addView(guideStep)
+            // 맨 위 줄: 단계 표시(왼쪽)와 나가기(오른쪽)
+            addView(LinearLayout(this@LoginActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(guideStep, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(TextView(this@LoginActivity).apply {
+                    text = "나가기"
+                    textSize = 14f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(0xFF6B7684.toInt())
+                    setPadding((12 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt())
+                    setOnClickListener { finish() } // 뒤로 가기와 같다: 앱 첫 화면으로 돌아간다
+                })
+            })
             addView(guideTitle)
             addView(guideText)
             addView(guideButton, LinearLayout.LayoutParams(-1, (52 * dp).toInt()))
