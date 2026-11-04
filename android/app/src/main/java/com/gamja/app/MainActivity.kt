@@ -75,6 +75,7 @@ class MainActivity : Activity() {
         val prefs = getPreferences(MODE_PRIVATE)
         when {
             !p.isInstalled() -> showSetup()
+            prefs.getBoolean("needBattery", false) && !batteryAllowed() -> showBattery()
             !p.isLoggedIn() && !prefs.getBoolean("skipLogin", false) -> showLogin()
             else -> showHome()
         }
@@ -273,19 +274,29 @@ class MainActivity : Activity() {
 
     // ---------- 1. 준비 화면 ----------
     private fun showSetup() {
-        val col = column()
-        col.addView(text("🥔 감자", 30f, bold = true))
-        col.addView(text("이 폰을 나만의 Claude Code 서버로 만들어요.\n처음 한 번만 준비가 필요해요. 약 10~20분 걸리니 와이파이에 연결하고 충전기를 꽂아 주세요.", 15f))
-        val stepText = text("", 15f, bold = true)
-        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = Installer.TOTAL_STEPS }
-        val logView = text("", 11f).apply { typeface = Typeface.MONOSPACE }
+        val root = pageRoot("처음 설정 1/3", "감자 준비하기",
+            "이 폰을 나만의 Claude Code로 만들어요. 처음 한 번만 필요하고 10~20분쯤 걸려요. 와이파이에 연결하고 충전기를 꽂아 주세요.")
+        val stepText = label("시작하기를 누르면 준비를 시작해요", 15f, HOME_INK, bold = true)
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = Installer.TOTAL_STEPS
+            progressTintList = android.content.res.ColorStateList.valueOf(HOME_YELLOW)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(HOME_LINE)
+        }
+        val logView = label("", 11f, HOME_SUB).apply { typeface = Typeface.MONOSPACE }
         val logScroll = ScrollView(this).apply { addView(logView) }
-        val start = Button(this).apply { text = "시작하기" }
-        col.addView(start)
-        col.addView(stepText)
-        col.addView(bar)
-        col.addView(logScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(col)
+        root.addView(card().apply {
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            addView(stepText)
+            addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        })
+        root.addView(sectionLabel("진행 기록"))
+        root.addView(card().apply {
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            addView(logScroll, LinearLayout.LayoutParams(-1, dp(220)))
+        })
+        val start = primaryButton("시작하기")
+        root.addView(start, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
+        showPage(root)
 
         val lines = ArrayDeque<String>()
         start.setOnClickListener {
@@ -307,7 +318,7 @@ class MainActivity : Activity() {
                     ui.post {
                         installing = false
                         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        askBatteryOptimization()
+                        getPreferences(MODE_PRIVATE).edit().putBoolean("needBattery", true).apply() // 다음 단계: 배터리 설정
                         route()
                     }
                 } catch (e: Exception) {
@@ -325,28 +336,99 @@ class MainActivity : Activity() {
 
     // ---------- 2. 로그인 안내 ----------
     private fun showLogin() {
-        val col = column()
-        col.addView(text("Claude 로그인", 24f, bold = true))
-        col.addView(text(
-            "이제 공식 Claude Code 화면을 열어요. 감자는 화면을 띄워 주기만 하고, " +
-                "로그인 정보는 감자를 거치지 않고 Anthropic과 직접 주고받아요.\n\n" +
-                "1) 처음 설정 화면이 나오면 Enter로 넘어가세요.\n" +
-                "2) 로그인 방법에서 Claude 계정(구독)을 고르세요.\n" +
-                "3) '로그인 주소 열기'를 눌러 브라우저에서 로그인하세요.\n" +
-                "4) 받은 코드를 복사한 뒤 '붙여넣기'를 누르세요.\n" +
-                "5) 로그인이 끝나면 /exit 를 입력해 나오세요.", 15f))
-        col.addView(Button(this).apply {
-            text = "Claude 로그인 화면 열기"
-            setOnClickListener { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) }
+        val root = pageRoot("처음 설정 3/3", "Claude 로그인",
+            "이제 공식 Claude Code 화면을 열어요. 감자는 화면을 띄워 주기만 하고, 로그인 정보는 감자를 거치지 않고 Anthropic과 직접 주고받아요.")
+        root.addView(sectionLabel("이렇게 하세요"))
+        root.addView(card().apply {
+            val steps = listOf(
+                "처음 설정 화면이 나오면 Enter로 넘어가세요.",
+                "로그인 방법에서 Claude 계정(구독)을 고르세요.",
+                "'로그인 주소 열기'를 눌러 브라우저에서 로그인하세요.",
+                "받은 코드를 복사한 뒤 '붙여넣기'를 누르세요.",
+                "로그인이 끝나면 /exit 를 입력해 나오세요.",
+            )
+            steps.forEachIndexed { i, s ->
+                if (i > 0) addView(divider())
+                addView(infoRow("${i + 1}. $s", ""))
+            }
         })
-        col.addView(Button(this).apply {
-            text = "나중에 할게요"
+        root.addView(primaryButton("Claude 로그인 화면 열기").apply {
+            setOnClickListener { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) }
+        }, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
+        root.addView(ghostButton("나중에 할게요").apply {
             setOnClickListener {
                 getPreferences(MODE_PRIVATE).edit().putBoolean("skipLogin", true).apply()
                 route()
             }
+        }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
+        showPage(root)
+    }
+
+    // ---------- 1.5 배터리 설정 (준비 다음 단계) ----------
+    private var onBatteryPage = false
+    private fun batteryAllowed() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    private fun showBattery() {
+        onBatteryPage = true
+        val root = pageRoot("처음 설정 2/3", "배터리 설정",
+            "화면이 꺼져 있어도 감자알이 계속 돌아가게 해 주세요. 허용하지 않으면 폰이 감자알을 멈춰서 답변을 받지 못할 수 있어요.")
+        root.addView(card().apply {
+            addView(infoRow("지금 상태", if (batteryAllowed()) "허용됨" else "허용 안 됨"))
         })
-        setContentView(col)
+        root.addView(primaryButton("허용하러 가기").apply {
+            setOnClickListener { askBatteryOptimization() }
+        }, LinearLayout.LayoutParams(-1, dp(60)).apply { topMargin = dp(8) })
+        root.addView(ghostButton("나중에 할게요").apply {
+            setOnClickListener { finishBatteryPage() }
+        }, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
+        showPage(root)
+    }
+
+    private fun finishBatteryPage() {
+        onBatteryPage = false
+        getPreferences(MODE_PRIVATE).edit().remove("needBattery").apply()
+        route()
+    }
+
+    // ---------- 설정 화면 공통 모양 (감자 콘솔 더보기와 같은 팔레트) ----------
+    private fun pageRoot(step: String, title: String, sub: String): LinearLayout {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(20), dp(16), dp(28))
+        }
+        root.addView(label(step, 13f, HOME_SUB, bold = true).apply { setPadding(dp(4), dp(8), 0, 0) })
+        root.addView(label(title, 30f, HOME_INK, bold = true).apply { setPadding(dp(4), dp(4), 0, 0) })
+        root.addView(label(sub, 14f, HOME_SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(14)) })
+        return root
+    }
+
+    private fun showPage(root: LinearLayout) {
+        window.statusBarColor = HOME_BG
+        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(HOME_BG)
+            fitsSystemWindows = true
+            addView(root)
+        })
+    }
+
+    private fun primaryButton(s: String) = Button(this).apply {
+        text = s
+        textSize = 18f
+        isAllCaps = false
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(0xFF191919.toInt())
+        stateListAnimator = null
+        background = rounded(HOME_YELLOW, 20)
+    }
+
+    private fun ghostButton(s: String) = Button(this).apply {
+        text = s
+        textSize = 16f
+        isAllCaps = false
+        setTextColor(HOME_INK)
+        stateListAnimator = null
+        background = rounded(HOME_LINE, 20)
     }
 
     @Deprecated("Activity 결과 API (minSdk 26, AndroidX 없이 사용)")
@@ -529,7 +611,10 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onResume() { super.onResume(); visible = true; askUpdateOnOpen(); refreshBatteryValue() }
+    override fun onResume() {
+        super.onResume(); visible = true; askUpdateOnOpen(); refreshBatteryValue()
+        if (onBatteryPage && batteryAllowed()) finishBatteryPage() // 배터리 허용 화면에서 돌아왔고 허용됐으면 다음 단계로
+    }
     override fun onPause() {
         visible = false
         // 앱을 떠나면 듣기를 멈춘다. 단, 마이크 권한 창이 떠서 잠깐 멈추는 경우(아직 인식기를 안 만든 상태)는 그대로 기다린다
