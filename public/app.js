@@ -1642,7 +1642,6 @@
     const auto = $('autoUpdateToggle');
     auto.disabled = !d.info.build;
     auto.checked = !!d.info.build && d.settings.autoUpdate !== false;
-    setAutoUpdateNote(!!d.info.build, auto.checked);
     $('eggUpdate').onclick = async () => {
       const btn = $('eggUpdate');
       btn.disabled = true;
@@ -2457,14 +2456,10 @@
     try { await navigator.clipboard.writeText(command); copied = true; } catch {}
     gCopy('다른 폰에 감자 설치', command, `${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`);
   };
-  function setAutoUpdateNote(isRelease, on) {
-    const T = window.GAMJA_I18N.t;
-    $('autoUpdateNote').textContent = T(!isRelease ? 'update.autoDev' : on ? 'update.autoOn' : 'update.autoOff');
-  }
   $('autoUpdateToggle').onchange = async () => {
     const box = $('autoUpdateToggle');
     const on = box.checked;
-    try { await api('/api/auto-update', { on }); setAutoUpdateNote(true, on); }
+    try { await api('/api/auto-update', { on }); }
     catch (err) { box.checked = !on; alert(err.message); }
   };
   // ---------- 화면비율 (⋯ 메뉴): 크롬의 확대·축소 줄처럼 [−] 100% [＋] ----------
