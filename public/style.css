@@ -694,8 +694,9 @@ html, body { touch-action: pan-x pan-y; }
 .tool-btn.done { background: var(--ui-bg); }
 
 /* 직접 만들기 화면: 아이콘 고르기 */
-.cf-icons { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 14px; }
-.cf-icons button { aspect-ratio: 1; display: grid; place-items: center; padding: 0; border: 2px solid transparent; border-radius: 12px; background: var(--ui-card); font-size: 20px; }
+.cf-icons { display: grid; grid-template-rows: repeat(2, 46px); grid-auto-flow: column; grid-auto-columns: 46px; gap: 6px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.cf-icons::-webkit-scrollbar { display: none; }
+.cf-icons button { width: 46px; height: 46px; display: grid; place-items: center; padding: 0; border: 2px solid transparent; border-radius: 12px; background: var(--ui-card); font-size: 20px; }
 .cf-icons button .gi-s { width: 24px; height: 24px; }
 .cf-icons button.on { border-color: var(--me); background: color-mix(in srgb, var(--me) 20%, var(--ui-card)); }
 
@@ -745,8 +746,6 @@ html, body { touch-action: pan-x pan-y; }
 .fr-pill { padding: 7px 18px; border: 0; border-radius: 16px; background: var(--me); color: var(--me-fg); font-size: 13px; font-weight: 800; }
 .fr-join { display: flex; align-items: center; gap: 10px; width: 100%; margin: 12px 0 0; padding: 14px; border: 0; border-radius: 16px; background: var(--ui-card); color: var(--ui-text); font: inherit; font-weight: 700; font-size: 14px; text-align: left; }
 .fr-join span { margin-left: auto; color: var(--ui-sub); font-weight: 600; font-size: 12px; }
-.fr-make { background: var(--me); color: var(--me-fg); font-weight: 800; font-size: 15px; --gi-line: currentColor; --gi-a-line: currentColor; }
-.fr-make span { color: var(--me-fg); opacity: .7; }
 /* 크루 프로필 창 */
 .sheet-dim { position: fixed; inset: 0; z-index: 28; display: flex; align-items: flex-end; background: rgba(0,0,0,.45); }
 .sheet-card { width: 100%; padding: 10px 18px calc(20px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; background: var(--ui-card); color: var(--ui-text); text-align: center; }

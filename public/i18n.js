@@ -219,7 +219,7 @@
   add('ko', {
     'crew.make': '✏️ 직접 만들기',
     'crew.makeSub': '이름과 맡길 일 적기 ›',
-    'crew.import': '📥 친구가 보낸 크루 코드로 추가',
+    'crew.import': '📥 친구가 보낸 크루 추가',
     'crew.importSub': '붙여넣기 ›',
     'crew.deleteConfirm': "'{name}' 크루를 삭제할까요?\n크루의 폴더와 지침, 나눈 대화는 보관돼요.\n크루 탭의 '삭제한 크루 복구하기'에서 30일 안에 되살릴 수 있고, 그 뒤에는 완전히 지워져요.",
     'room.title': '채팅방 설정',
@@ -443,7 +443,7 @@
   add('en', {
     'crew.make': '✏️ Create your own',
     'crew.makeSub': 'Write a name and a job ›',
-    'crew.import': '📥 Add with a code from a friend',
+    'crew.import': '📥 Add a crew from a friend',
     'crew.importSub': 'Paste ›',
     'crew.deleteConfirm': "Delete the crew '{name}'?\nIts folder, instructions and conversations are kept.\nYou can restore it within 30 days from 'Restore deleted crews' in the Crew tab; after that it is erased for good.",
     'room.title': 'Chat room settings',

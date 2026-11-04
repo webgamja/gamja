@@ -72,6 +72,10 @@
     yinyang: '<circle class="a" cx="12" cy="12" r="9"/><path d="M12 3a4.5 4.5 0 0 1 0 9 4.5 4.5 0 0 0 0 9"/><circle class="d" cx="12" cy="7.5" r=".9"/>',
     tarot: '<rect class="a" x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 8l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 14l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>',
     shield: '<path class="a" d="M12 3l7 3v5.5c0 4.4-3 7.8-7 9.5-4-1.7-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.6"/>',
+    grad: '<path class="a" d="M2 9l10-5 10 5-10 5z"/><path d="M6 11.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-4.5M22 9v6"/>',
+    rocket: '<path class="a" d="M12 3c3 2 4.5 5.5 4.5 9l-2 3h-5l-2-3c0-3.5 1.5-7 4.5-9z"/><circle cx="12" cy="10" r="1.5"/><path d="M9.5 15L7 19l3-1M14.5 15L17 19l-3-1"/>',
+    coder: '<rect class="a" x="3" y="4" width="18" height="13" rx="2.5"/><path d="M10 8.5L7.5 10.5 10 12.5M14 8.5l2.5 2-2.5 2M2 20h20"/>',
+    crystal: '<circle class="a" cx="12" cy="10.5" r="7"/><path d="M6 20h12M8 17l-1 3M16 17l1 3M9 8.5a3.5 3.5 0 0 1 3-2"/>',
     hourglass:'<path d="M6 3h12M6 21h12"/><path class="a" d="M7 3c0 5 5 6 5 9s-5 4-5 9h10c0-5-5-6-5-9s5-4 5-9z"/>',
   };
   // 이모지(변형 문자 FE0E·FE0F를 뺀 것) → 아이콘 이름
@@ -86,7 +90,7 @@
     '🧑': 'person', '💼': 'suitcase', '👥': 'people', '🆕': 'spark', '🛠': 'wrench', '🔧': 'wrench', '🗑': 'trash',
     '🖼': 'image', '🔔': 'bell', '📜': 'doc', '🎲': 'dice', '🌙': 'moon', '☀': 'sun', '🌓': 'theme', '⬇': 'down',
     '❌': 'fail', '📝': 'pencil', '📖': 'book', '💻': 'laptop', '📂': 'folder', '🗒': 'note', '🔗': 'link', '⏹': 'stop', '☆': 'starline',
-    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'tarot', '🎴': 'tarot',
+    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'crystal', '🎓': 'grad', '🚀': 'rocket', '⭐': 'star', '🧑‍💻': 'coder', '🎴': 'tarot',
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');
