@@ -772,7 +772,7 @@ class MainActivity : Activity() {
         val ips = NetworkInterface.getNetworkInterfaces().toList()
             .flatMap { it.inetAddresses.toList() }
             .filter { it is Inet4Address && !it.isLoopbackAddress }
-            .map { "http://${it.hostAddress}:3000" }
+            .map { "http://${it.hostAddress}:${Ports.current()}" }
         val pw = p.password() ?: "(없음)"
         AlertDialog.Builder(this)
             .setTitle("다른 기기에서 접속")
@@ -829,7 +829,8 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val BASE = "http://127.0.0.1:3000"
+        /** 감자알 주소. 포트는 감자알의 .env에서 읽는다 (예전에 설치한 폰 3000, 새로 설치한 폰 26514) */
+        val BASE: String get() = "http://127.0.0.1:${Ports.current()}"
         const val EXTRA_PROJECT = "project"
         const val EXTRA_UPDATE = "update"
         /** 감자 화면이 지금 보이는지 (보이면 완료 알림을 띄우지 않음) */

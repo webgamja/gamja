@@ -100,7 +100,7 @@ class Installer(
         ctx.assets.open("gamja-egg.pack").use { untar(it, p.appDir) }
         if (!p.envFile.exists()) {
             val pw = randomPassword()
-            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=3000\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\n")
+            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=${Ports.DEFAULT}\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\n")
             onLog("· 로그인 비밀번호를 만들었어요 (앱 메뉴 → 다른 기기에서 접속)")
         }
     }

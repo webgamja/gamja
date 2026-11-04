@@ -85,7 +85,7 @@ cp .env.example .env     # set APP_PASSWORD
 ./start.sh               # or: APP_PASSWORD=... node server.js
 ```
 
-Open `http://localhost:3000`. There is no build step: restarting is deploying.
+Open `http://localhost:26514`. There is no build step: restarting is deploying.
 The Android app is built by GitHub Actions (`.github/workflows/android.yml`); you can also build it with Gradle
 from `android/`. Builds without the official signing key are signed with a debug key.
 

@@ -88,7 +88,7 @@ mkdir -p ~/projects       # 안의 폴더 하나가 크루 하나예요
 ./start.sh                # tmux 세션에서 실행, 비정상 종료되면 3초 뒤 자동 재시작
 ```
 
-`http://localhost:3000`으로 접속해요.
+`http://localhost:26514`로 접속해요.
 
 | 명령 | 동작 |
 |---|---|
@@ -102,7 +102,7 @@ mkdir -p ~/projects       # 안의 폴더 하나가 크루 하나예요
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `APP_PASSWORD` | (필수) | 로그인 비밀번호. 바꾸면 기존 로그인은 모두 풀려요 |
-| `PORT` / `HOST` | `3000` / `0.0.0.0` | 접속 위치 |
+| `PORT` / `HOST` | `26514` / `0.0.0.0` | 접속 위치 (예전 버전으로 설치한 폰은 `3000` 그대로) |
 | `PROJECTS_DIR` | `~/projects` | 크루(하위 폴더)들이 있는 폴더 |
 | `CLAUDE_BIN` | `claude` | claude 실행 파일 경로 |
 | `ALLOWED_TOOLS` | (없음) | 추가로 자동 허용할 도구. 예: `"Bash(git status:*) Bash(npm test:*)"` |

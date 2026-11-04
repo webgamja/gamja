@@ -873,6 +873,10 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .conn-bar.hidden { display: none; }
 .conn-bar button { flex: none; border: 0; border-radius: 10px; padding: 6px 12px; background: #fee500; color: #191919; font: inherit; font-weight: 800; }
 .conn-bar button.hidden { display: none; }
+/* 다른 폰에 감자 설치: 설치 순서 */
+#installPanel { z-index: 31; }
+.install-step { display: flex; align-items: flex-start; gap: 12px; margin: 0 4px 12px; font-size: 14px; line-height: 1.55; color: var(--ui-text); }
+.install-step b { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--me); color: var(--me-fg); font-size: 13px; font-weight: 800; }
 /* 삭제한 크루 복구하기 (복구 / 완전히 삭제 버튼) */
 .trash-btns { flex: none; display: flex; flex-direction: column; gap: 6px; }
 .tool-btn.danger { background: transparent; color: var(--danger); }

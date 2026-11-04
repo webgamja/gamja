@@ -7,7 +7,8 @@ const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const PORT = Number(process.env.PORT) || 3000;
+// 기본 포트: 개발 도구들이 흔히 쓰는 3000과 겹치지 않게 26514를 쓴다. 예전에 설치한 폰은 .env에 PORT=3000이 적혀 있어서 그대로 3000을 쓴다 (앱이 .env의 PORT를 읽는다)
+const PORT = Number(process.env.PORT) || 26514;
 const HOST = process.env.HOST || '0.0.0.0';
 const PASSWORD = process.env.APP_PASSWORD;
 const PROJECTS_DIR = path.resolve(process.env.PROJECTS_DIR || path.join(os.homedir(), 'projects'));

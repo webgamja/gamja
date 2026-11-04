@@ -91,7 +91,7 @@ Phone (Android app)                                   Claude Code
 │  ├─ foreground service                    │        └──────▲────────┘
 │  ├─ proot + Ubuntu                        │               │ spawn (cwd = crew folder)
 │  │    └─ gamja-egg (server.js, Node.js) ──┼───────────────┘
-│  └─ WebView ──► http://127.0.0.1:3000 ◄───┘  chat UI (public/), streamed with SSE
+│  └─ WebView ──► http://127.0.0.1:26514 ◄──┘  chat UI (public/), streamed with SSE
 └──────────────────────────────────────────┘
 ```
 
@@ -111,12 +111,12 @@ mkdir -p ~/projects       # each folder inside is a crew
 ./start.sh                # runs in a tmux session, restarts after crashes
 ```
 
-Open `http://localhost:3000`. Main settings (`.env`):
+Open `http://localhost:26514`. Main settings (`.env`):
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `APP_PASSWORD` | (required) | Login password |
-| `PORT` / `HOST` | `3000` / `0.0.0.0` | Where to listen |
+| `PORT` / `HOST` | `26514` / `0.0.0.0` | Where to listen (phones installed with older versions keep `3000`) |
 | `PROJECTS_DIR` | `~/projects` | Folder whose sub-folders are crews |
 | `CLAUDE_BIN` | `claude` | Path to the Claude Code executable |
 | `ALLOWED_TOOLS` | (none) | Extra tools to allow, e.g. `"Bash(git status:*)"` |

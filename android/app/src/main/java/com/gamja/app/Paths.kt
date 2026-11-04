@@ -18,6 +18,8 @@ class Paths(ctx: Context) {
     val envFile = File(appDir, ".env")
     val claudeBin = File(rootfs, "root/.local/bin/claude")
 
+    init { Ports.envFile = envFile } // 앱의 다른 곳(MainActivity.BASE 등)이 감자알의 포트를 알 수 있게 .env 위치를 알려 둔다
+
     fun marker(name: String) = File(markers, name)
 
     fun isInstalled() = marker("installed").exists()
@@ -31,4 +33,21 @@ class Paths(ctx: Context) {
 
     fun password(): String? = envFile.takeIf { it.exists() }?.readLines()
         ?.firstOrNull { it.startsWith("APP_PASSWORD=") }?.substringAfter("=")
+}
+
+/**
+ * 감자알이 듣는 포트. 감자알의 .env에 적힌 PORT를 읽는다. 예전에 설치한 폰은 PORT=3000이 적혀 있어서 그대로 3000을 쓰고,
+ * 새로 설치한 폰은 26514다. .env에 PORT가 없으면 감자알의 기본값(26514)과 같게 맞춘다.
+ */
+object Ports {
+    const val DEFAULT = 26514
+    @Volatile var envFile: File? = null
+
+    fun current(): Int {
+        val fromEnv = runCatching {
+            envFile?.takeIf { it.exists() }?.readLines()
+                ?.firstOrNull { it.startsWith("PORT=") }?.substringAfter("=")?.trim()?.toInt()
+        }.getOrNull()
+        return fromEnv?.takeIf { it in 1..65535 } ?: DEFAULT
+    }
 }

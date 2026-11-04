@@ -1378,6 +1378,7 @@
   const restoreGoneCrew = () => restoreArchived(project.slice(1), true);
   els.messages.addEventListener('click', (e) => { if (e.target.closest('#goneRestore')) restoreGoneCrew(); });
 
+  let proUi = false; // 개발자 모드인지 (감자알이 알려 준다)
   // ---------- 🗑 삭제한 크루 복구하기 (크루 탭) ----------
   // 크루를 지우면 폴더는 휴지통으로, 대화는 보관함으로 간다. 채팅 목록에는 남기지 않고 여기에서만 보이며, 30일 안에 복구하거나 완전히 지울 수 있다
   let trashItems = [];
@@ -1544,7 +1545,10 @@
     $('appGroup').classList.toggle('hidden', !window.GamjaApp);
     $('infoAppRow').classList.toggle('hidden', !window.GamjaApp);
     // 감자알 로그는 일반 사용자에게 필요 없어서 숨겨 둔다. 나중에 프로(개발자) 모드를 켰을 때만 보여 준다 (앱에서만)
+    proUi = !!d.info.pro; // 개발자 모드 (Termux 설치 명령 등을 보여 줄지)
     $('appLog').classList.toggle('hidden', !(window.GamjaApp && d.info.pro));
+    $('installRowTitle').textContent = window.GAMJA_I18N.t('install.row');
+    $('installRowSub').textContent = window.GAMJA_I18N.t('install.rowSub');
     $('permRowTitle').textContent = window.GAMJA_I18N.t('perm.rowTitle');
     $('permRowSub').textContent = window.GAMJA_I18N.t('perm.rowSub');
     $('extRowTitle').textContent = window.GAMJA_I18N.t('ext.rowTitle');
@@ -1953,7 +1957,7 @@
   window.gamjaBack = () => {
     if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
-    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['trashPanel', 'trashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
+    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['installPanel', 'installBack'], ['trashPanel', 'trashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {
       if (!$(panel).classList.contains('hidden')) { $(back).click(); return true; }
     }
@@ -2353,9 +2357,31 @@
     location.reload();
   };
 
-  // 다른 폰에 감자 설치: 새 폰의 Termux에 붙여 넣을 한 줄 명령 (30분 유효)
-  $('installBtn').onclick = async () => {
+  // 다른 폰에 감자 설치: 내려받기 QR + 설치 순서. 새 폰이 QR을 찍으면 홈페이지(내려받기 버튼)가 열린다
+  // (예전의 Termux 명령 방식은 개발용 폰을 만들던 길이라 개발자 모드에서만 보여 준다)
+  const installEl = $('installPanel');
+  const installUrl = () => (window.GAMJA_I18N.lang === 'en' ? 'https://webgamja.com/en/' : 'https://webgamja.com/');
+  function openInstall() {
+    const T = window.GAMJA_I18N.t;
     els.menu.classList.add('hidden');
+    for (const [id, key] of [['installH', 'install.title'], ['installNote', 'install.note'], ['installQrHint', 'install.qrHint'], ['installCopy', 'install.copy'],
+      ['installStepsH', 'install.stepsH'], ['installMove', 'install.move'], ['installDevH', 'install.devH'], ['installDevNote', 'install.devNote'], ['installTermux', 'install.devBtn']]) $(id).textContent = T(key);
+    const url = installUrl();
+    $('installQr').innerHTML = window.GAMJA_QR ? window.GAMJA_QR.svg(url) : '';
+    $('installQr').classList.toggle('hidden', !$('installQr').innerHTML);
+    $('installUrl').textContent = url.replace('https://', '');
+    $('installSteps').innerHTML = [1, 2, 3, 4].map((n) => `<p class="install-step"><b>${n}</b><span>${escapeHtml(T(`install.s${n}`))}</span></p>`).join('');
+    $('installDev').classList.toggle('hidden', !proUi);
+    installEl.classList.remove('hidden');
+  }
+  $('installBtn').onclick = openInstall;
+  $('installBack').onclick = () => installEl.classList.add('hidden');
+  $('installCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText(installUrl()); toast(window.GAMJA_I18N.t('install.copied')); }
+    catch { gCopy(window.GAMJA_I18N.t('install.copy'), installUrl()); }
+  };
+  // 개발자 모드: 새 폰의 Termux에 붙여 넣을 한 줄 명령 (30분 유효)
+  $('installTermux').onclick = async () => {
     let command;
     try { ({ command } = await api('/api/install-link', {})); } catch (err) { return alert(err.message); }
     let copied = false;

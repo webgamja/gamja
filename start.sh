@@ -66,4 +66,4 @@ if [ ! -f .env ]; then
   done
 fi
 tmux new-session -d -s "$SESSION" -c "$PWD" "${ENV_ARGS[@]}" "./start.sh run"
-echo "시작됨 → http://0.0.0.0:${PORT:-3000}  (로그: ./start.sh attach)"
+echo "시작됨 → http://0.0.0.0:${PORT:-26514}  (로그: ./start.sh attach)"

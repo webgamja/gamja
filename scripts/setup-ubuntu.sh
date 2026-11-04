@@ -31,7 +31,7 @@ if [ ! -f "$APP/.env" ]; then
   pw=$(head -c 64 /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 12)
   cat > "$APP/.env" <<EOF
 APP_PASSWORD=$pw
-PORT=3000
+PORT=26514
 HOST=0.0.0.0
 CLAUDE_BIN=/root/.local/bin/claude
 EOF

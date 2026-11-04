@@ -218,6 +218,32 @@
     </div>
   </section>
 
+  <!-- 📦 다른 폰에 감자 설치: 내려받기 QR과 설치 순서 (Termux 명령은 개발자 모드에서만) -->
+  <section id="installPanel" class="settings ui ui-big hidden">
+    <header class="settings-bar">
+      <button id="installBack" class="icon-btn" title="닫기">←</button>
+      <h2>다른 폰에 감자 설치</h2>
+    </header>
+    <div class="settings-body">
+      <h1 id="installH" class="ui-title"></h1>
+      <p id="installNote" class="settings-note"></p>
+      <div class="lan-card">
+        <div id="installQr" class="lan-qr"></div>
+        <p id="installQrHint" class="lan-hint"></p>
+        <p id="installUrl" class="lan-addr"></p>
+        <button id="installCopy" class="settings-ghost" type="button"></button>
+      </div>
+      <h3 id="installStepsH"></h3>
+      <div id="installSteps"></div>
+      <p id="installMove" class="settings-note"></p>
+      <div id="installDev" class="hidden">
+        <h3 id="installDevH"></h3>
+        <p id="installDevNote" class="settings-note"></p>
+        <button id="installTermux" class="settings-ghost" type="button"></button>
+      </div>
+    </div>
+  </section>
+
   <!-- 🗑 삭제한 크루 복구하기 (크루 탭): 30일 안에 복구하거나 완전히 지운다 -->
   <section id="trashPanel" class="settings ui ui-big hidden">
     <header class="settings-bar">
@@ -442,7 +468,7 @@
       <div id="page-connect" class="set-page hidden" data-title="🌐 연결">
       <button id="tunnelBtn" class="set-row"><span class="pick-icon">🌐</span><span><b id="extRowTitle">외부 접속</b><small id="extRowSub">같은 와이파이의 다른 기기에서 접속해요</small></span><i>›</i></button>
       <button id="ghBtn" class="set-row"><span class="pick-icon">🐙</span><span><b>GitHub 연결 (기록 보관)</b><small>크루가 일한 결과를 내 GitHub 비공개 저장소에 자동으로 기록해요</small></span><i>›</i></button>
-      <button id="installBtn" class="set-row"><span class="pick-icon">📦</span><span><b>다른 폰에 감자 설치</b><small>새 폰에 붙여 넣을 한 줄 명령을 만들어요</small></span><i>›</i></button>
+      <button id="installBtn" class="set-row"><span class="pick-icon">📦</span><span><b id="installRowTitle">다른 폰에 감자 설치</b><small id="installRowSub">QR을 찍어 새 폰에 감자를 내려받아요</small></span><i>›</i></button>
       </div>
 
       <!-- 설정 목록(연결) 바로 아래에 이어서 보이는 것들: 감자 앱, 정보, 업데이트 기록, 문제가 생겼을 때. 하위 화면을 열면 숨겨진다 -->
