@@ -2327,7 +2327,21 @@ function purgeTrash() {
   sweep(ARCHIVE_DIR, (n) => (/^\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d__/.test(n) ? stampTime(n) : 0));
 }
 
-// 예전에 설치한 폰(.env에 PORT=3000)은 새 앱이 기본 포트 26514로 붙어도 열리도록, 같은 감자알을 26514에서도 연다 (앱이 .env를 못 읽은 경우 대비)
+// 예전에 설치한 폰(.env에 PORT=3000)은 26514로 옮긴다: .env의 PORT 줄만 바꾸고 끝내면, start.sh 루프가 3초 뒤 새 포트로 다시 띄운다 (앱도 .env를 읽어서 같은 포트로 붙는다)
+if (PORT === 3000 && SUPERVISED) {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    const before = fs.readFileSync(envPath, 'utf8');
+    const after = before.replace(/^PORT=3000[ \t]*$/m, 'PORT=26514');
+    if (after !== before) {
+      fs.writeFileSync(envPath + '.tmp', after, { mode: 0o600 });
+      fs.renameSync(envPath + '.tmp', envPath);
+      console.log('포트를 3000에서 26514로 옮겨요. 곧 다시 시작해요.');
+      process.exit(0);
+    }
+  } catch (e) { console.error(`포트 옮기기에 실패했어요(3000 그대로 쓰고 26514도 함께 열어요): ${e.message}`); }
+}
+// 옮기지 못한 경우를 위해: 3000으로 떠 있으면 26514도 같이 연다
 if (PORT === 3000) {
   const alt = http.createServer(server.listeners('request')[0]);
   alt.on('error', (e) => console.error(`보조 포트 26514를 열지 못했어요: ${e.message}`));
