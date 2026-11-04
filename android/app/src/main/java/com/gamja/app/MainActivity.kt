@@ -135,7 +135,7 @@ class MainActivity : Activity() {
         root.addView(card().apply {
             addView(infoRow("배터리 설정", "", batteryValue) { openBatterySettings() })
             addView(divider())
-            addView(infoRow("알림 허용", "", notifValue, caption = "지금 나만의 Claude Code 서버로 동작되고 있어요.") { askNotifOrSettings() })
+            addView(infoRow("알림 허용", "", notifValue) { askNotifOrSettings() })
         })
         refreshBatteryValue()
         refreshNotifValue()

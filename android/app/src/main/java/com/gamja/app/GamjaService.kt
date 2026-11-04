@@ -200,7 +200,7 @@ class GamjaService : Service() {
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("감자 실행 중")
-            .setContentText("이 폰이 나만의 Claude Code 서버로 동작하고 있어요")
+            .setContentText("감자알이 정상적으로 동작되고 있어요.")
             .setContentIntent(open)
             .setOngoing(true)
             .build()
