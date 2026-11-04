@@ -1680,22 +1680,7 @@ const server = http.createServer(async (req, res) => {
             botTs: conv.messages.filter((m) => m.role === 'bot' && m.ts).slice(-9).map((m) => m.ts),
           };
         });
-        // 삭제된 크루의 남은 대화 (읽기 전용)
-        try {
-          for (const f of fs.readdirSync(ARCHIVE_DIR)) {
-            const m = /^(.+?)__(.+)\.json$/.exec(f);
-            if (!m) continue;
-            let conv;
-            try { conv = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, f), 'utf8')); } catch { continue; }
-            const talk = (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot' || x.role === 'error');
-            const last = talk[talk.length - 1];
-            chats.push({
-              name: `~${f.slice(0, -5)}`, archive: f.slice(0, -5),
-              ts: last ? last.ts : 0, last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null,
-              running: false, status: '', botTs: [],
-            });
-          }
-        } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
+        // 삭제한 크루는 채팅 목록에 방으로 남기지 않는다. 크루 탭의 "삭제한 크루 복구하기"(/api/trash)에서 복구하거나 완전히 지운다
         return send(res, 200, { chats, seen: seenMap, ui: uiState });
       }
       // 기기 간 공유 화면 정보 올리기: 항목마다 더 늦은 시각이 이긴다
@@ -1765,6 +1750,55 @@ const server = http.createServer(async (req, res) => {
         }
         if (changed) saveSeen();
         return send(res, 200, { seen: seenMap });
+      }
+      // 삭제한 크루 목록 (크루 탭의 "삭제한 크루 복구하기"): 같은 때 지워진 한 크루가 한 줄. 30일 안에 복구할 수 있다
+      if (p === '/api/trash' && req.method === 'GET') {
+        const found = new Map();
+        let files = [];
+        try { files = fs.readdirSync(ARCHIVE_DIR); } catch { files = []; }
+        for (const f of files) {
+          const m = /^(\d{4})-(\d\d)-(\d\d)-(\d\d)-(\d\d)-(\d\d)__(.+)\.json$/.exec(f);
+          if (!m) continue;
+          let rid;
+          try { rid = decodeURIComponent(m[7]); } catch { continue; }
+          const crew = crewOf(rid);
+          if (!crew) continue; // 크루 없이 있던 방은 되살릴 크루가 없다
+          const stamp = f.slice(0, 19);
+          let conv = {};
+          try { conv = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, f), 'utf8')); } catch { /* 깨진 기록은 대화 0개로 */ }
+          const key = `${stamp}|${crew}`;
+          const e = found.get(key) || {
+            id: '', crew, deletedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), messages: 0,
+            hasFolder: fs.existsSync(path.join(PROJECTS_DIR, '.trash', `${crew}_${stamp}`)),
+          };
+          e.messages += (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot').length;
+          if (!e.id || rid === crew) e.id = f.slice(0, -5);
+          found.set(key, e);
+        }
+        const items = [...found.values()].filter((e) => e.hasFolder).sort((a, b) => b.deletedAt - a.deletedAt);
+        return send(res, 200, { items });
+      }
+      // 삭제한 크루를 지금 완전히 지운다 (휴지통 폴더와 보관된 대화). 되돌릴 수 없다
+      if (p === '/api/trash/purge' && req.method === 'POST') {
+        const m = /^(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)__([\w.%-]+)$/.exec(String((await readBody(req)).id || ''));
+        if (!m) return send(res, 400, { error: '알 수 없는 항목이에요.' });
+        let rid;
+        try { rid = decodeURIComponent(m[2]); } catch { return send(res, 400, { error: '알 수 없는 항목이에요.' }); }
+        const crew = crewOf(rid);
+        if (!isProjectName(crew)) return send(res, 400, { error: '알 수 없는 항목이에요.' });
+        let files = [];
+        try { files = fs.readdirSync(ARCHIVE_DIR); } catch { files = []; }
+        for (const f of files) {
+          const mm = /^(.+?)__(.+)\.(json|conf)$/.exec(f);
+          if (!mm || mm[1] !== m[1]) continue;
+          let r2;
+          try { r2 = decodeURIComponent(mm[2]); } catch { continue; }
+          if (crewOf(r2) === crew) fs.rmSync(path.join(ARCHIVE_DIR, f), { force: true });
+        }
+        const trashRoot = path.join(PROJECTS_DIR, '.trash');
+        const dir = path.join(trashRoot, `${crew}_${m[1]}`);
+        if (path.dirname(dir) === trashRoot && fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        return send(res, 200, { ok: true });
       }
       if ((p === '/api/archive/delete' || p === '/api/archive/restore') && req.method === 'POST') {
         const readBodyOnce = await readBody(req);
@@ -1984,6 +2018,12 @@ const server = http.createServer(async (req, res) => {
             convCache.delete(r.rid);
           }
           // 크루별 모델·생각 깊이 설정도 같이 보관해 둔다 (복구할 때 되살린다)
+          if (projectConf[project]) fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.conf`), JSON.stringify(projectConf[project]));
+        }
+        if (!rooms.length) {
+          // 대화가 한 번도 없던 크루도 "삭제한 크루 복구하기"에 나오도록 빈 보관 파일을 남긴다 (복구하는 길잡이)
+          fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
+          fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.json`), JSON.stringify({ messages: [] }));
           if (projectConf[project]) fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.conf`), JSON.stringify(projectConf[project]));
         }
         delete projectConf[project];

@@ -111,7 +111,10 @@
 
   // 방문 통계 (구글 애널리틱스): 동의 창 없이 기본으로 집계한다. 개인정보처리방침 6번과 같은 내용이다.
   // 브라우저의 "추적 안 함(DNT)"이나 Global Privacy Control 신호를 켜 둔 방문자는 처음부터 집계하지 않는다
-  var signal = navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;
+  // 서비스 초기에는 최대한 모으려고 브라우저의 "추적 안 함"(DNT)·Global Privacy Control 신호와 관계없이 집계한다 (2026-11-04부터. 개인정보처리방침 6번에 적어 두었다)
+  // 나중에 신호를 따르려면 아래 값을 true로 바꾼다
+  var HONOR_DNT = false;
+  var signal = HONOR_DNT && (navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true);
   function loadGA() {
     if (!GA_MEASUREMENT_ID || window.__gaLoaded) return;
     window.__gaLoaded = true;

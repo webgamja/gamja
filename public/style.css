@@ -873,6 +873,10 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .conn-bar.hidden { display: none; }
 .conn-bar button { flex: none; border: 0; border-radius: 10px; padding: 6px 12px; background: #fee500; color: #191919; font: inherit; font-weight: 800; }
 .conn-bar button.hidden { display: none; }
+/* 삭제한 크루 복구하기 (복구 / 완전히 삭제 버튼) */
+.trash-btns { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.tool-btn.danger { background: transparent; color: var(--danger); }
+#trashPanel { z-index: 31; }
 /* 도구 설치 카드 (채팅 말풍선 아래) */
 .install-card { margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: var(--bot); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
 .install-card b { font-size: 14px; }

@@ -434,6 +434,7 @@
         '<div id="crewListBox"></div>';
     }
     renderCrewList();
+    loadTrash(); // 삭제한 크루가 있으면 맨 아래에 "삭제한 크루 복구하기"가 나온다
   }
   // "직접 만들기"와 "코드로 가져오기" 버튼: 크루 탭과 추천 크루 화면이 똑같은 모양을 쓴다
   function makeButtonsHtml() {
@@ -478,6 +479,8 @@
       }
       // 직접 만들기는 크루 탭에서 바로 보이게 둔다 (추천 크루에도 있다)
       html += makeButtonsHtml();
+      // 삭제한 크루가 있을 때만: 30일 안에 되살리거나 완전히 지운다
+      if (trashItems.length) html += `<button class="fr-join" data-trash="1" type="button">${escapeHtml(window.GAMJA_I18N.t('trash.row'))}<span>${trashItems.length} ›</span></button>`;
     }
     box.innerHTML = html;
   }
@@ -701,6 +704,7 @@
     if (t('#crewAddBtn') || t('[data-store]')) return openAgents();
     if (t('[data-import]')) return openAgents('__import');
     if (t('[data-custom]')) { customIcon = '🙋'; return openAgents('__custom'); }
+    if (t('[data-trash]')) return openTrash();
   });
   homeBody.addEventListener('input', (e) => {
     if (e.target.id === 'crewSearch') { crewQuery = e.target.value.trim(); renderCrewList(); }
@@ -1328,14 +1332,15 @@
     els.messages.append(note);
   }
   // 크루 복구: 휴지통의 크루 폴더·대화·모델 설정을 되돌리고, 이 방을 살아 있는 크루의 방으로 바꾼다
-  async function restoreGoneCrew() {
+  // 삭제한 크루를 되살린다. go: 되살린 뒤 그 크루 방으로 갈지 (크루 탭의 "삭제한 크루 복구하기"에서는 가지 않는다)
+  async function restoreArchived(archiveId, go) {
     const T = window.GAMJA_I18N.t;
-    const old = project;
+    const old = `~${archiveId}`;
     const oldCrew = crewOf(goneName(old));
     let newName = '';
     let r;
     for (;;) { // 같은 이름의 크루가 이미 있으면 새 이름을 물어서 다시 시도한다
-      try { r = await api('/api/archive/restore', { id: old.slice(1), ...(newName ? { newName } : {}) }); break; } catch (err) {
+      try { r = await api('/api/archive/restore', { id: archiveId, ...(newName ? { newName } : {}) }); break; } catch (err) {
         if (!/같은 이름/.test(err.message)) return alert(err.message);
         const input = await gSheet({ message: T('gone.rename', { name: newName || oldCrew }), field: { value: `${newName || oldCrew}-2` } });
         if (!input || !input.trim()) return;
@@ -1361,13 +1366,66 @@
       }
       store.set(key, o);
     }
-    const target = (r.rooms.find((x) => x.id === old.slice(1)) || { to: r.project }).to;
-    roomEl.classList.add('hidden');
-    await switchProject(target);
+    const target = (r.rooms.find((x) => x.id === archiveId) || { to: r.project }).to;
     chatKey = '';
+    if (go) {
+      roomEl.classList.add('hidden');
+      await switchProject(target);
+    } else await loadProjects();
     toast(T('gone.restored'));
+    return r;
   }
+  const restoreGoneCrew = () => restoreArchived(project.slice(1), true);
   els.messages.addEventListener('click', (e) => { if (e.target.closest('#goneRestore')) restoreGoneCrew(); });
+
+  // ---------- 🗑 삭제한 크루 복구하기 (크루 탭) ----------
+  // 크루를 지우면 폴더는 휴지통으로, 대화는 보관함으로 간다. 채팅 목록에는 남기지 않고 여기에서만 보이며, 30일 안에 복구하거나 완전히 지울 수 있다
+  let trashItems = [];
+  const trashEl = $('trashPanel');
+  async function loadTrash() {
+    try { trashItems = (await api('/api/trash')).items || []; } catch { return; }
+    if ($('crewListBox')) renderCrewList();
+    if (!trashEl.classList.contains('hidden')) renderTrash();
+  }
+  function renderTrash() {
+    const T = window.GAMJA_I18N.t;
+    $('trashH').textContent = T('trash.title');
+    $('trashNote').textContent = T('trash.note');
+    const DAY = 86400e3;
+    $('trashList').innerHTML = trashItems.length ? trashItems.map((it) => {
+      const p = crewParts(it.crew);
+      const days = Math.max(0, Math.floor((Date.now() - it.deletedAt) / DAY));
+      const left = Math.max(0, 30 - days);
+      const when = days === 0 ? T('trash.today') : T('trash.ago', { d: days });
+      return `<div class="tool-card"><i class="fr-av">${escapeHtml(p.icon)}</i><div class="tool-mid"><b>${escapeHtml(p.text)}</b>` +
+        `<small>${escapeHtml(T('trash.meta', { when, left, n: it.messages }))}</small></div>` +
+        `<div class="trash-btns"><button class="tool-btn" type="button" data-restore="${escapeHtml(it.id)}">${escapeHtml(T('trash.restore'))}</button>` +
+        `<button class="tool-btn danger" type="button" data-purge="${escapeHtml(it.id)}" data-name="${escapeHtml(p.text)}">${escapeHtml(T('trash.purge'))}</button></div></div>`;
+    }).join('') : `<p class="empty">${escapeHtml(T('trash.empty'))}</p>`;
+  }
+  async function openTrash() {
+    await loadTrash();
+    renderTrash();
+    trashEl.classList.remove('hidden');
+  }
+  $('trashBack').onclick = () => trashEl.classList.add('hidden');
+  trashEl.addEventListener('click', async (e) => {
+    const T = window.GAMJA_I18N.t;
+    const re = e.target.closest('[data-restore]');
+    const pu = e.target.closest('[data-purge]');
+    if (re) {
+      re.disabled = true;
+      try { await restoreArchived(re.dataset.restore, false); } catch (err) { alert(err.message); }
+      await loadTrash();
+      renderTrash();
+      if (!$('homePanel').classList.contains('hidden')) renderHome();
+    } else if (pu) {
+      if (!(await gSheet({ title: T('trash.purgeTitle'), message: T('trash.purgeMsg', { name: pu.dataset.name }), ok: T('trash.purgeOk'), danger: true }))) return;
+      try { await api('/api/trash/purge', { id: pu.dataset.purge }); } catch (err) { return alert(err.message); }
+      await loadTrash();
+      renderTrash();
+    }
+  });
   // 읽던 위치 저장 (페이지가 새로 열려도 돌아오도록)
   let scrollSaveTimer = 0;
   els.messages.addEventListener('scroll', () => {
@@ -1895,7 +1953,7 @@
   window.gamjaBack = () => {
     if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
-    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
+    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['trashPanel', 'trashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {
       if (!$(panel).classList.contains('hidden')) { $(back).click(); return true; }
     }
