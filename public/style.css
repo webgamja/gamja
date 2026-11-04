@@ -696,6 +696,7 @@ html, body { touch-action: pan-x pan-y; }
 /* 직접 만들기 화면: 아이콘 고르기 */
 .cf-icons { display: grid; grid-template-rows: repeat(2, 46px); grid-auto-flow: column; grid-auto-columns: 46px; gap: 6px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .cf-icons::-webkit-scrollbar { display: none; }
+#groupSheet { z-index: 35; }
 .cf-group { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 14px; padding: 14px 16px; border: 0; border-radius: 14px; background: var(--ui-card); color: var(--ui-text); font: inherit; font-size: 15px; text-align: left; }
 .cf-group i { font-style: normal; color: var(--ui-sub); }
 .gp-list { margin-top: 12px; text-align: left; }
