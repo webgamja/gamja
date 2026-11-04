@@ -2577,7 +2577,7 @@
     if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>`;
     view.extra.innerHTML = html;
     const sb = view.extra.querySelector('.speak-btn');
-    if (sb) sb.onclick = () => speak(m.text, true);
+    if (sb) sb.onclick = () => speak(m.text, true, view.bubble);
   }
 
   // 허용 카드: 고른 뒤 허용했으면 하던 일을 이어서 해 달라고 자동으로 보낸다
@@ -2829,7 +2829,7 @@
     await loadConversation();
     // 검사 실패 시 서버가 곧바로 자동 후속 실행을 시작하므로 한 번 더 확인
     setTimeout(() => { if (!runId && !remoteRunId && !awaitingRestart) loadConversation(); }, 1500);
-    if (!opts.voice && ttsOn && finished && bot.text && !errorMsg) speak(bot.text); // 음성 대화 모드는 직접 읽어 줌
+    if (!opts.voice && ttsOn && finished && bot.text && !errorMsg) speak(bot.text, false, [...els.messages.querySelectorAll('.row.bot .bubble')].pop()); // 음성 대화 모드는 직접 읽어 줌
     return { text: bot.text, finished, error: errorMsg };
   }
 
@@ -3272,14 +3272,14 @@
       voices.find((v) => v.lang && v.lang.replace('_', '-').startsWith(base));
   }
   // 긴 텍스트는 일부 브라우저에서 끊기므로 문장 단위로 나눈 발화 목록을 만든다
-  function speechTexts(md) {
+  function speechTexts(md, limit = 180) { // limit: 한 덩어리의 글자 수 (읽기 박스는 5초씩 앞뒤로 가려고 잘게 나눈다)
     const text = toSpeech(md);
     const chunks = text.match(/[^.!?。\n]+[.!?。]?/g) || [text];
     const out = [];
     let cur = '';
     const flush = () => { if (cur.trim()) out.push(cur.trim()); cur = ''; };
     for (const c of chunks) {
-      if ((cur + c).length > 180) flush();
+      if ((cur + c).length > limit) flush();
       cur += c;
     }
     flush();
@@ -3297,17 +3297,43 @@
 
   // ---------- 읽어주는 중 한 줄 박스 (멈춤·이어듣기, 15초쯤 앞뒤로, 누르는 동안 2배, 끝내기) ----------
   // 덩어리(문장 묶음)를 하나씩 읽는다. 웹뷰의 pause/resume은 불안정해서, 멈춤은 "지금 덩어리를 끊고 나중에 그 덩어리부터 다시 읽기"로 한다
-  const reader = { chunks: [], i: 0, paused: false, boost: false, token: 0, show: false };
+  const reader = { chunks: [], i: 0, paused: false, boost: false, token: 0, show: false, marks: [] };
   const readerBar = $('readerBar');
+  // 읽는 문장 표시: 읽는 덩어리가 들어 있는 채팅 속 문단을 찾아 노랗게 칠한다 (찾지 못하면 표시만 안 한다)
+  const speechKey = (s) => s.replace(/[^\p{L}\p{N}]/gu, '');
+  function readerFindMarks(bubble) {
+    reader.marks = [];
+    if (!bubble) return;
+    const blocks = [...bubble.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th')].map((el) => ({ el, key: speechKey(el.textContent) }));
+    let from = 0;
+    reader.marks = reader.chunks.map((c) => {
+      const k = speechKey(c).slice(0, 8);
+      if (k.length < 3) return null;
+      for (let j = from; j < blocks.length; j++) {
+        if (!blocks[j].key.includes(k)) continue;
+        let h = j; // 목록 항목 안의 문단처럼 겹치면 가장 안쪽 것을 고른다
+        while (h + 1 < blocks.length && blocks[h].el.contains(blocks[h + 1].el) && blocks[h + 1].key.includes(k)) h++;
+        from = j;
+        return blocks[h].el;
+      }
+      return null;
+    });
+  }
+  function readerMark() {
+    document.querySelectorAll('.reading-now').forEach((el) => el.classList.remove('reading-now'));
+    const el = reader.show ? reader.marks[reader.i] : null;
+    if (!el) return;
+    el.classList.add('reading-now');
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
   function renderReader() {
     const on = reader.show && reader.chunks.length > 0;
     readerBar.classList.toggle('hidden', !on);
+    readerMark();
     if (!on) return;
     const T = window.GAMJA_I18N.t;
     $('readerPlay').textContent = reader.paused ? '▶' : '⏸';
     $('readerPlay').setAttribute('aria-label', T(reader.paused ? 'reader.resume' : 'reader.pause'));
-    $('readerSeek').max = String(reader.chunks.length - 1);
-    $('readerSeek').value = String(Math.min(reader.i, reader.chunks.length - 1));
     $('readerBoost').classList.toggle('on', reader.boost);
   }
   function readerFrom(i) {
@@ -3329,7 +3355,7 @@
   }
   function readerClose() {
     reader.token++;
-    reader.chunks = []; reader.i = 0; reader.paused = false; reader.boost = false; reader.show = false;
+    reader.chunks = []; reader.marks = []; reader.i = 0; reader.paused = false; reader.boost = false; reader.show = false;
     if (synth) synth.cancel();
     renderReader();
   }
@@ -3345,9 +3371,8 @@
     if (reader.paused) readerFrom(reader.i);
     else { reader.token++; synth.cancel(); reader.paused = true; renderReader(); }
   };
-  $('readerBack').onclick = () => { if (reader.chunks.length) readerFrom(readerSkip(-15)); };
-  $('readerFwd').onclick = () => { if (!reader.chunks.length) return; const i = readerSkip(15); if (i >= reader.chunks.length) readerClose(); else readerFrom(i); };
-  $('readerSeek').onchange = (e) => { if (reader.chunks.length) readerFrom(Number(e.target.value)); };
+  $('readerBack').onclick = () => { if (reader.chunks.length) readerFrom(readerSkip(-5)); };
+  $('readerFwd').onclick = () => { if (!reader.chunks.length) return; const i = readerSkip(5); if (i >= reader.chunks.length) readerClose(); else readerFrom(i); };
   $('readerClose').onclick = readerClose;
   // ×2: 누르고 있는 동안만 2배 빠르게
   const boostBtn = $('readerBoost');
@@ -3361,13 +3386,14 @@
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) boostBtn.addEventListener(ev, () => boostSet(false));
   boostBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // 길게 눌러도 메뉴가 뜨지 않게
 
-  function speak(md, force) {
+  function speak(md, force, bubble) {
     if (!synth || (!ttsOn && !force)) return;
     stopSpeaking();
-    const texts = speechTexts(md);
+    const texts = speechTexts(md, 40);
     if (!texts.length) return;
     reader.chunks = texts;
     reader.show = !voice.on; // 🗣 음성 대화 모드에서는 박스를 보이지 않는다
+    readerFindMarks(bubble);
     readerFrom(0);
   }
   // 다 읽으면(또는 중간에 끊으면) 끝나는 읽기 — 음성 대화 모드에서 "다 읽은 뒤 다시 듣기"에 쓴다
