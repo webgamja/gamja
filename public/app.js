@@ -3173,10 +3173,14 @@
   renderTts();
   $('setTts').onchange = (e) => setTtsOn(e.target.checked);
   $('ttsBtn').onclick = () => { els.menu.classList.add('hidden'); setTtsOn(!ttsOn); };
-  function stopSpeaking() { if (synth) synth.cancel(); }
+  function stopSpeaking() {
+    if (typeof readerClose === 'function' && reader.chunks.length) readerClose();
+    if (synth) synth.cancel();
+  }
   function toSpeech(md) {
     return md
       .replace(/```[\s\S]*?(```|$)/g, ' 코드 블록 생략. ')
+      .replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, ` ${window.GAMJA_I18N.t('voice.table')}\n`) // 표는 소리로 읽어도 알아듣기 어려워서 채팅을 보라고 안내한다
       .replace(/`([^`]+)`/g, '$1')
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/https?:\/\/\S+/g, ' 링크 ')
@@ -3185,28 +3189,95 @@
       .replace(/\n{2,}/g, '. ')
       .trim();
   }
+  // 목소리 고르기: 폰에 설치된 목소리 중 화면 언어와 같은 것만 보여 주고, 고른 것은 기억한다 (온라인 목소리가 대체로 더 자연스럽다)
+  let ttsRate = Number(store.get('cc:ttsRate', 1.05)) || 1.05;
+  const voiceBase = () => LOCALE.slice(0, 2);
+  const voiceList = () => (synth ? synth.getVoices() : []).filter((v) => v.lang && v.lang.replace('_', '-').toLowerCase().startsWith(voiceBase()))
+    .sort((a, b) => (a.localService === b.localService ? a.name.localeCompare(b.name) : a.localService ? 1 : -1));
+  const savedVoice = () => { const id = store.get('cc:voice', ''); return id ? voiceList().find((v) => v.voiceURI === id) : null; };
+  function renderVoiceBtns() {
+    const T = window.GAMJA_I18N.t;
+    const cur = savedVoice();
+    $('voiceBtn').textContent = T('voice.menu') + (cur ? `: ${cur.name}` : '');
+    $('setVoiceBtn').textContent = `${T('voice.menu')}: ${cur ? cur.name : T('voice.auto')}`;
+    for (const id of ['voiceBtn', 'setVoiceBtn']) $(id).style.opacity = synth ? '' : '.35';
+  }
+  function openVoicePicker() {
+    const T = window.GAMJA_I18N.t;
+    els.menu.classList.add('hidden');
+    if (!synth) return toast(T('voice.unsupported'));
+    if (gsOpen) gsOpen.close(false);
+    const bg = document.createElement('div');
+    bg.className = 'gs-bg';
+    bg.innerHTML = '<div class="gs" role="dialog" aria-modal="true"><h2></h2><div class="vp-list"></div><p class="vp-sub"></p><div class="vp-rate"></div><p class="vp-hint"></p><div class="gs-btns"><button class="gs-ok" type="button"></button></div></div>';
+    bg.querySelector('h2').textContent = T('voice.title');
+    bg.querySelector('.vp-sub').textContent = T('voice.rate');
+    bg.querySelector('.vp-hint').textContent = T('voice.hint');
+    bg.querySelector('.gs-ok').textContent = T('sheet.close');
+    const list = bg.querySelector('.vp-list'), rates = bg.querySelector('.vp-rate');
+    const close = () => {
+      if (!bg.isConnected || bg.classList.contains('out')) return;
+      bg.classList.add('out');
+      setTimeout(() => bg.remove(), 160);
+      if (gsOpen && gsOpen.bg === bg) gsOpen = null;
+      stopSpeaking();
+    };
+    const preview = (v) => {
+      stopSpeaking();
+      const u = new SpeechSynthesisUtterance(T('voice.sample'));
+      u.lang = LOCALE; u.rate = ttsRate;
+      if (v) u.voice = v;
+      synth.speak(u);
+    };
+    const drawList = () => {
+      const vs = voiceList(), cur = store.get('cc:voice', '');
+      list.innerHTML = '';
+      const row = (label, tag, on, v) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = `vp-row${on ? ' on' : ''}`;
+        const n = document.createElement('span'); n.className = 'vp-name'; n.textContent = label;
+        b.appendChild(n);
+        if (tag) { const s = document.createElement('small'); s.textContent = tag; b.appendChild(s); }
+        b.onclick = () => { store.set('cc:voice', v ? v.voiceURI : ''); renderVoiceBtns(); drawList(); preview(v || pickVoice()); };
+        list.appendChild(b);
+      };
+      row(T('voice.auto'), '', !cur, null);
+      for (const v of vs) row(v.name, v.localService ? T('voice.offline') : T('voice.online'), v.voiceURI === cur, v);
+      if (!vs.length) { const p = document.createElement('p'); p.className = 'settings-note'; p.textContent = T('voice.none'); list.appendChild(p); }
+    };
+    const drawRates = () => {
+      rates.innerHTML = '';
+      for (const r of [0.8, 1, 1.2, 1.5, 2]) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = `×${r}`;
+        if (Math.abs(ttsRate - r) < 0.03) b.className = 'on';
+        b.onclick = () => { ttsRate = r; store.set('cc:ttsRate', r); drawRates(); preview(savedVoice() || pickVoice()); };
+        rates.appendChild(b);
+      }
+    };
+    bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('.gs-ok')) close(); });
+    drawList(); drawRates();
+    document.body.appendChild(bg);
+    gsOpen = { bg, close };
+    synth.onvoiceschanged = () => { drawList(); renderVoiceBtns(); }; // 목소리 목록이 늦게 도착하는 브라우저를 위해
+  }
+  $('voiceBtn').onclick = openVoicePicker;
+  $('setVoiceBtn').onclick = openVoicePicker;
+  if (synth) synth.addEventListener('voiceschanged', renderVoiceBtns);
+  renderVoiceBtns();
   function pickVoice() {
     const voices = synth.getVoices();
     const base = LOCALE.slice(0, 2);
-    return voices.find((v) => v.lang === LOCALE && /google|yuna|sora|heami|samantha|aria/i.test(v.name)) ||
+    return savedVoice() || voices.find((v) => v.lang === LOCALE && /google|yuna|sora|heami|samantha|aria/i.test(v.name)) ||
       voices.find((v) => v.lang && v.lang.replace('_', '-').startsWith(base));
   }
   // 긴 텍스트는 일부 브라우저에서 끊기므로 문장 단위로 나눈 발화 목록을 만든다
-  function utterances(md) {
+  function speechTexts(md) {
     const text = toSpeech(md);
     const chunks = text.match(/[^.!?。\n]+[.!?。]?/g) || [text];
-    const v = pickVoice();
     const out = [];
     let cur = '';
-    const flush = () => {
-      if (!cur.trim()) return;
-      const u = new SpeechSynthesisUtterance(cur.trim());
-      u.lang = LOCALE;
-      if (v) u.voice = v;
-      u.rate = 1.05;
-      out.push(u);
-      cur = '';
-    };
+    const flush = () => { if (cur.trim()) out.push(cur.trim()); cur = ''; };
     for (const c of chunks) {
       if ((cur + c).length > 180) flush();
       cur += c;
@@ -3214,10 +3285,90 @@
     flush();
     return out;
   }
+  function makeUtterance(text, rate) {
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice();
+    u.lang = LOCALE;
+    if (v) u.voice = v;
+    u.rate = rate || ttsRate;
+    return u;
+  }
+  const utterances = (md) => speechTexts(md).map((t) => makeUtterance(t));
+
+  // ---------- 읽어주는 중 한 줄 박스 (멈춤·이어듣기, 15초쯤 앞뒤로, 누르는 동안 2배, 끝내기) ----------
+  // 덩어리(문장 묶음)를 하나씩 읽는다. 웹뷰의 pause/resume은 불안정해서, 멈춤은 "지금 덩어리를 끊고 나중에 그 덩어리부터 다시 읽기"로 한다
+  const reader = { chunks: [], i: 0, paused: false, boost: false, token: 0, show: false };
+  const readerBar = $('readerBar');
+  function renderReader() {
+    const on = reader.show && reader.chunks.length > 0;
+    readerBar.classList.toggle('hidden', !on);
+    if (!on) return;
+    const T = window.GAMJA_I18N.t;
+    $('readerPlay').textContent = reader.paused ? '▶' : '⏸';
+    $('readerPlay').setAttribute('aria-label', T(reader.paused ? 'reader.resume' : 'reader.pause'));
+    $('readerSeek').max = String(reader.chunks.length - 1);
+    $('readerSeek').value = String(Math.min(reader.i, reader.chunks.length - 1));
+    $('readerBoost').classList.toggle('on', reader.boost);
+  }
+  function readerFrom(i) {
+    const my = ++reader.token;
+    synth.cancel();
+    reader.i = Math.max(0, i);
+    reader.paused = false;
+    const next = () => {
+      if (my !== reader.token) return;
+      if (reader.i >= reader.chunks.length) { readerClose(); return; }
+      const u = makeUtterance(reader.chunks[reader.i], Math.min(4, ttsRate * (reader.boost ? 2 : 1)));
+      const advance = () => { if (my !== reader.token) return; reader.i++; renderReader(); next(); };
+      u.onend = advance;
+      u.onerror = (e) => { if (e && (e.error === 'canceled' || e.error === 'interrupted')) return; advance(); };
+      synth.speak(u);
+    };
+    renderReader();
+    next();
+  }
+  function readerClose() {
+    reader.token++;
+    reader.chunks = []; reader.i = 0; reader.paused = false; reader.boost = false; reader.show = false;
+    if (synth) synth.cancel();
+    renderReader();
+  }
+  function readerSkip(sec) { // 글자 수로 sec초쯤 되는 위치로 옮긴다 (한국어는 보통 1초에 6글자쯤, 속도에 비례)
+    let left = Math.abs(sec) * 6 * ttsRate, i = reader.i;
+    const step = sec < 0 ? -1 : 1;
+    if (sec < 0 && reader.i > 0 && !reader.paused) i--; // 방금 읽던 덩어리가 아니라 그 앞부터 센다
+    while (left > 0 && i + step >= 0 && i + step < reader.chunks.length) { left -= reader.chunks[i].length; i += step; }
+    return Math.max(0, Math.min(i, reader.chunks.length));
+  }
+  $('readerPlay').onclick = () => {
+    if (!reader.chunks.length) return;
+    if (reader.paused) readerFrom(reader.i);
+    else { reader.token++; synth.cancel(); reader.paused = true; renderReader(); }
+  };
+  $('readerBack').onclick = () => { if (reader.chunks.length) readerFrom(readerSkip(-15)); };
+  $('readerFwd').onclick = () => { if (!reader.chunks.length) return; const i = readerSkip(15); if (i >= reader.chunks.length) readerClose(); else readerFrom(i); };
+  $('readerSeek').onchange = (e) => { if (reader.chunks.length) readerFrom(Number(e.target.value)); };
+  $('readerClose').onclick = readerClose;
+  // ×2: 누르고 있는 동안만 2배 빠르게
+  const boostBtn = $('readerBoost');
+  const boostSet = (on) => {
+    if (reader.boost === on || !reader.chunks.length) return;
+    reader.boost = on;
+    renderReader();
+    if (!reader.paused) readerFrom(reader.i);
+  };
+  boostBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); try { boostBtn.setPointerCapture(e.pointerId); } catch (_) { /* 일부 브라우저는 지원하지 않는다 */ } boostSet(true); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) boostBtn.addEventListener(ev, () => boostSet(false));
+  boostBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // 길게 눌러도 메뉴가 뜨지 않게
+
   function speak(md, force) {
     if (!synth || (!ttsOn && !force)) return;
     stopSpeaking();
-    for (const u of utterances(md)) synth.speak(u);
+    const texts = speechTexts(md);
+    if (!texts.length) return;
+    reader.chunks = texts;
+    reader.show = !voice.on; // 🗣 음성 대화 모드에서는 박스를 보이지 않는다
+    readerFrom(0);
   }
   // 다 읽으면(또는 중간에 끊으면) 끝나는 읽기 — 음성 대화 모드에서 "다 읽은 뒤 다시 듣기"에 쓴다
   function speakAndWait(md) {

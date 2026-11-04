@@ -45,6 +45,7 @@
       <!-- ⋯ 메뉴: 지금 이 대화에 대한 것만. 크루 설정은 크루 탭의 프로필 창에, 앱 전체 설정은 더보기 탭에 있다 -->
       <div id="menu" class="menu hidden">
         <button id="ttsBtn" class="menu-item" aria-pressed="false">🔇 답변 읽어주기: 꺼짐</button>
+        <button id="voiceBtn" class="menu-item" type="button"></button>
         <div id="zoomRow" class="menu-item menu-zoom">
           <span id="zoomLabel">화면비율</span>
           <span class="zoom-ctl"><button id="zoomOut" type="button" aria-label="줄이기">−</button><button id="zoomVal" type="button">100%</button><button id="zoomIn" type="button" aria-label="키우기">＋</button></span>
@@ -52,6 +53,16 @@
         <button id="settingsBtn" class="menu-item">⚙️ 채팅방 설정</button>
       </div>
     </header>
+
+    <!-- 읽어주는 중: 읽는 동안만 보이는 한 줄 박스 -->
+    <div id="readerBar" class="reader-bar hidden" role="group">
+      <button id="readerBack" type="button" class="rd-btn rd-skip" aria-label="15">↺15</button>
+      <button id="readerPlay" type="button" class="rd-btn rd-play">⏸</button>
+      <button id="readerFwd" type="button" class="rd-btn rd-skip" aria-label="15">15↻</button>
+      <input id="readerSeek" class="rd-seek" type="range" min="0" max="1" value="0" step="1">
+      <button id="readerBoost" type="button" class="rd-btn rd-boost">×2</button>
+      <button id="readerClose" type="button" class="rd-btn rd-x" aria-label="닫기">✕</button>
+    </div>
 
     <main id="messages" class="messages"></main>
     <button id="toBottom" class="to-bottom hidden" type="button" aria-label="맨 아래로">⬇</button>
@@ -406,6 +417,7 @@
       <div id="page-look" class="set-page hidden" data-title="🔊 소리·화면">
       <h3>🔊 답변 읽어주기</h3>
       <label class="share-check"><input id="setTts" type="checkbox"> 답이 끝나면 소리로 읽어 줘요</label>
+      <button id="setVoiceBtn" class="settings-ghost" type="button"></button>
       <p class="settings-note">ⓘ 🗣 음성 대화 모드는 이 설정과 관계없이 답을 읽어 줘요.</p>
       <h3>🔍 대화 글자 크기</h3>
       <div class="radio-list seg">

@@ -895,3 +895,26 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .lan-addr { margin: 0; font-size: 18px; font-weight: 800; color: var(--ui-text); text-align: center; word-break: break-all; white-space: pre-line; user-select: all; }
 .lan-card button { width: 100%; }
 .gone-note button { padding: 11px 22px; border: 0; border-radius: 16px; background: var(--me, #fee500); color: var(--me-fg, #191919); font: inherit; font-weight: 800; }
+
+/* 읽어주는 중 한 줄 박스 */
+.reader-bar { display: flex; align-items: center; gap: 4px; margin: 6px 10px 0; padding: 5px 8px; border-radius: 999px; background: var(--ui-card, #fff); color: var(--ui-text, #191f28); box-shadow: 0 2px 10px rgba(0,0,0,.14); }
+.reader-bar.hidden { display: none; }
+.rd-btn { flex: none; min-width: 38px; height: 38px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 800; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.rd-btn:active { filter: brightness(.9); }
+.rd-play { background: var(--me, #fee500); color: var(--me-fg, #191919); font-size: 16px; }
+.rd-boost { background: rgba(127,127,127,.16); min-width: 46px; }
+.rd-boost.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
+.rd-x { color: var(--muted, #8b95a1); }
+.rd-seek { flex: 1; min-width: 0; height: 28px; margin: 0 4px; accent-color: var(--me-fg, #191919); }
+
+/* 읽어주는 목소리 고르기 (아래에서 올라오는 시트 안의 목록) */
+.vp-list { max-height: 46vh; overflow-y: auto; margin: 0 -6px 12px; padding: 0 6px; -webkit-overflow-scrolling: touch; }
+.vp-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--gs-text); font: inherit; font-size: 15px; text-align: left; }
+.vp-row small { margin-left: auto; font-size: 12px; color: var(--gs-sub); white-space: nowrap; }
+.vp-row .vp-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vp-row.on { background: var(--gs-line); font-weight: 800; }
+.vp-row.on::after { content: '✓'; }
+.vp-rate { display: flex; gap: 6px; margin: 0 0 12px; }
+.vp-rate button { flex: 1; height: 40px; border: 0; border-radius: 10px; background: var(--gs-line); color: var(--gs-text); font: inherit; font-size: 14px; font-weight: 700; }
+.vp-rate button.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
+.vp-sub { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--gs-sub); }
