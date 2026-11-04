@@ -972,7 +972,6 @@
     agentDirect = !!group && direct;
     renderAgents();
     agentEl.classList.remove('hidden');
-    if (!group) peekClipboard();
   }
   $('agentBack').onclick = () => {
     if (agentView && !agentDirect) { agentView = null; renderAgents(); } else { agentDirect = false; agentView = null; agentEl.classList.add('hidden'); }
@@ -1179,18 +1178,9 @@
   $('shareBack').onclick = () => shareEl.classList.add('hidden');
   $('projExport').onclick = () => openShare(projTarget); // 크루 설정 화면: 그 크루
 
-  // 📥 복사해 둔 크루 코드가 있으면 크루 고르기 맨 위에 알려 준다 (열 때 한 번만 확인)
+  // 복사한 크루 코드는 "친구가 보낸 크루 추가" 화면의 붙여넣기 버튼을 누를 때만 읽는다
+  // (추천 크루 화면을 열 때 몰래 읽으면 브라우저가 "클립보드 확인" 허용 창을 띄운다)
   let clipCrew = null;
-  async function peekClipboard() {
-    clipCrew = null;
-    if (!navigator.clipboard || !navigator.clipboard.readText) return;
-    try {
-      const t = await navigator.clipboard.readText();
-      if (!t || !t.includes(CREW_PREFIX)) return;
-      clipCrew = crewDecode(t);
-      if (!agentView && !agentEl.classList.contains('hidden')) renderAgents();
-    } catch { /* 권한이 없거나 코드가 아니면 조용히 넘어간다 */ }
-  }
 
   agentBody.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');

@@ -731,8 +731,8 @@ html, body { touch-action: pan-x pan-y; }
 .fr-star { display: inline-block; font-style: normal; color: #f5c400; }
 .fr-star .gi-s { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
 .fr-star .gi-s .a, .sheet-chips button.on .gi-s .a { fill: #f5c400; stroke: #f5c400; }
-.fr-make { background: var(--me); color: var(--me-fg); font-weight: 800; font-size: 15px; --gi-line: currentColor; --gi-a-line: currentColor; }
-.fr-make span { color: var(--me-fg); opacity: .7; }
+.fr-join.fr-make { background: var(--me); color: var(--me-fg); font-weight: 800; font-size: 15px; --gi-line: currentColor; --gi-a-line: currentColor; }
+.fr-join.fr-make span { color: var(--me-fg); opacity: .7; }
 .fr-sec + .fr-shelf { margin-top: 10px; }
 .sheet-chips button .gi-lead { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
 .fr-more { border: 0; background: none; color: var(--ui-sub); font-size: 13px; font-weight: 700; }
@@ -772,7 +772,7 @@ html, body { touch-action: pan-x pan-y; }
 .sheet-card h4 { margin: 0; font-size: 20px; }
 .sheet-card p { margin: 6px 0 14px; color: var(--ui-sub); font-size: 14px; line-height: 1.4; }
 .sheet-chips { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
-.sheet-chips span, .sheet-chips button { padding: 5px 11px; border: 0; border-radius: 13px; background: var(--ui-bg); color: var(--ui-sub); font-size: 12px; font-weight: 700; }
+.sheet-chips > span, .sheet-chips > button { padding: 5px 11px; border: 0; border-radius: 13px; background: var(--ui-bg); color: var(--ui-sub); font-size: 12px; font-weight: 700; }
 .sheet-chips button.on { color: #b8860b; }
 .sheet-main { display: block; width: 100%; height: 52px; border: 0; border-radius: 14px; background: var(--me); color: var(--me-fg); font-size: 17px; font-weight: 800; }
 .sheet-sub { display: flex; gap: 10px; margin-top: 10px; }
