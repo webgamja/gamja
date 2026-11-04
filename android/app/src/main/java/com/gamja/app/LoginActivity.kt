@@ -30,6 +30,7 @@ class LoginActivity : Activity() {
     private lateinit var p: Paths
     private lateinit var terminal: TerminalView
     private lateinit var session: TerminalSession
+    private lateinit var guideStep: TextView
     private lateinit var guideTitle: TextView
     private lateinit var guideText: TextView
     private lateinit var guideButton: Button
@@ -47,18 +48,39 @@ class LoginActivity : Activity() {
         val proot = Proot(this)
         val dp = resources.displayMetrics.density
 
-        // 안내 카드
-        guideTitle = TextView(this).apply { textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.BLACK) }
-        guideText = TextView(this).apply { textSize = 14f; setTextColor(0xFF444444.toInt()); setPadding(0, (4 * dp).toInt(), 0, (8 * dp).toInt()) }
-        guideButton = Button(this).apply { isAllCaps = false; textSize = 16f }
+        // 키보드는 처음부터 띄우지 않는다 (안내 카드의 버튼과 아래 키 줄로 모두 할 수 있다). 화면을 눌렀을 때만 키보드가 올라온다
+        window.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+        )
+        window.statusBarColor = 0xFFF2F4F6.toInt()
+        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        fun rounded(color: Int, r: Int) = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = r * dp }
+
+        // 안내 카드 (감자 콘솔 더보기와 같은 느낌: 흰 카드, 노란 버튼)
+        guideStep = TextView(this).apply { textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF6B7684.toInt()) }
+        guideTitle = TextView(this).apply { textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF191F28.toInt()); setPadding(0, (4 * dp).toInt(), 0, 0) }
+        guideText = TextView(this).apply { textSize = 14f; setTextColor(0xFF4E5968.toInt()); setPadding(0, (6 * dp).toInt(), 0, (12 * dp).toInt()); setLineSpacing(0f, 1.15f) }
+        guideButton = Button(this).apply {
+            isAllCaps = false; textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(0xFF191919.toInt())
+            stateListAnimator = null
+            background = rounded(0xFFFEE500.toInt(), 16)
+        }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFFFFF6C2.toInt())
-            val pad = (14 * dp).toInt()
-            setPadding(pad, pad, pad, pad)
+            background = rounded(Color.WHITE, 20)
+            val pad = (18 * dp).toInt()
+            setPadding(pad, (16 * dp).toInt(), pad, pad)
+            addView(guideStep)
             addView(guideTitle)
             addView(guideText)
-            addView(guideButton)
+            addView(guideButton, LinearLayout.LayoutParams(-1, (52 * dp).toInt()))
+        }
+        val cardWrap = LinearLayout(this).apply {
+            setPadding((12 * dp).toInt(), (12 * dp).toInt(), (12 * dp).toInt(), (8 * dp).toInt())
+            addView(card, LinearLayout.LayoutParams(-1, -2))
         }
 
         // 공식 Claude Code 터미널 (어두운 바탕)
@@ -68,6 +90,13 @@ class LoginActivity : Activity() {
             setBackgroundColor(0xFF1C1C1E.toInt())
             isFocusableInTouchMode = true
             setTerminalViewClient(viewClient)
+        }
+        val terminalWrap = LinearLayout(this).apply {
+            background = rounded(0xFF1C1C1E.toInt(), 16)
+            clipToOutline = true
+            val m = (8 * dp).toInt()
+            setPadding(m, m, m, m)
+            addView(terminal, LinearLayout.LayoutParams(-1, -1))
         }
         val cmd = proot.command("/bin/bash", "-lc", "claude")
         session = TerminalSession(
@@ -81,30 +110,38 @@ class LoginActivity : Activity() {
         // 휴대폰 키보드에 없는 키
         val keys = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xFF2C2C2E.toInt())
+            setPadding((8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
             addView(key("↑") { session.write("\u001b[A") })
             addView(key("↓") { session.write("\u001b[B") })
             addView(key("Enter") { session.write("\r") })
             addView(key("Esc") { session.write("\u001b") })
             addView(key("붙여넣기") { paste(submit = false) })
+            addView(key("키보드") { showKeyboard() })
         }
 
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF1C1C1E.toInt())
-            addView(card)
-            addView(terminal, LinearLayout.LayoutParams(-1, 0, 1f))
+            setBackgroundColor(0xFFF2F4F6.toInt())
+            fitsSystemWindows = true
+            addView(cardWrap)
+            addView(terminalWrap, LinearLayout.LayoutParams(-1, 0, 1f).apply {
+                setMargins((12 * dp).toInt(), 0, (12 * dp).toInt(), 0)
+            })
             addView(keys)
         })
         showStage(Stage.STARTING)
-        terminal.requestFocus()
     }
 
     private fun key(label: String, onClick: () -> Unit) = Button(this).apply {
+        val d = resources.displayMetrics.density
         text = label
         isAllCaps = false
+        textSize = 13f
+        setTextColor(0xFF191F28.toInt())
+        stateListAnimator = null
+        background = android.graphics.drawable.GradientDrawable().apply { setColor(0xFFE5E8EB.toInt()); cornerRadius = 12 * d }
         setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        layoutParams = LinearLayout.LayoutParams(0, (44 * d).toInt(), 1f).apply { setMargins((3 * d).toInt(), 0, (3 * d).toInt(), 0) }
     }
 
     // ---------- 단계 판단 (화면 글자를 읽어서) ----------
@@ -142,27 +179,28 @@ class LoginActivity : Activity() {
     private fun showStage(s: Stage) {
         stage = s
         when (s) {
-            Stage.STARTING -> guide("Claude Code를 여는 중...", "잠시만 기다려 주세요.", null, null)
-            Stage.THEME -> guide("1. 화면 스타일 고르기", "아래 화면에서 원하는 스타일을 고르는 단계예요. 기본값 그대로 넘어가도 돼요.", "다음 (Enter)") {
+            Stage.STARTING -> guide("준비 중", "Claude Code를 여는 중...", "잠시만 기다려 주세요. 아래 검은 화면이 Claude 공식 화면이에요.", null, null)
+            Stage.THEME -> guide("로그인 1/4", "화면 스타일 고르기",
+                "아래 검은 화면에 글자 스타일(테마)을 고르는 목록이 보여요. 어느 것이든 괜찮아요. 그대로 두고 아래 버튼을 눌러 넘어가세요.", "다음") {
                 session.write("\r")
             }
-            Stage.METHOD -> guide("2. 로그인 방법 고르기", "'Claude account with subscription'(Claude 구독 계정)이 선택된 상태에서 넘어가요.", "구독 계정으로 로그인 (Enter)") {
+            Stage.METHOD -> guide("로그인 2/4", "로그인 방법 고르기",
+                "아래 검은 화면의 목록에서 'Claude account with subscription'(Claude 구독 계정) 줄 앞에 ❯ 표시가 있는지 보세요. 다른 줄에 있으면 키 줄의 ↑ ↓ 로 옮긴 뒤 버튼을 누르세요.", "구독 계정으로 로그인") {
                 session.write("\r")
             }
-            Stage.BROWSER, Stage.CODE -> guide(
-                "3. 브라우저에서 로그인",
-                "버튼을 눌러 Claude 공식 페이지에서 로그인하세요. 로그인이 끝나면 나오는 코드를 복사한 뒤 이 앱으로 돌아오세요.",
-                "🌐 브라우저에서 로그인",
-            ) { openLoginUrl() }
+            Stage.BROWSER, Stage.CODE -> guide("로그인 3/4", "브라우저에서 로그인",
+                "버튼을 눌러 Claude 공식 페이지에서 로그인하세요. 끝나면 코드가 나와요. 그 코드를 복사하고 이 앱으로 돌아오세요.",
+                "브라우저에서 로그인") { openLoginUrl() }
             Stage.SUCCESS -> {
-                guide("✅ 로그인 완료!", "채팅 화면으로 이동해요...", null, null)
+                guide("완료", "로그인 완료!", "감자 홈 화면으로 이동해요...", null, null)
                 finishWhenSaved()
             }
-            Stage.READY -> guide("이미 로그인돼 있어요", "다른 계정으로 바꾸려면 아래 화면에 /login 을 입력하세요.", "완료") { done() }
+            Stage.READY -> guide("완료", "이미 로그인돼 있어요", "다른 계정으로 바꾸려면 아래 검은 화면에 /login 을 입력하세요.", "완료") { done() }
         }
     }
 
-    private fun guide(title: String, text: String, button: String?, onClick: (() -> Unit)?) {
+    private fun guide(step: String, title: String, text: String, button: String?, onClick: (() -> Unit)?) {
+        guideStep.text = step
         guideTitle.text = title
         guideText.text = text
         guideButton.visibility = if (button == null) android.view.View.GONE else android.view.View.VISIBLE
@@ -176,7 +214,7 @@ class LoginActivity : Activity() {
         if (!hasFocus || (stage != Stage.CODE && stage != Stage.BROWSER)) return
         val code = clipboardText()?.trim() ?: return
         if (code.length in 20..400 && !code.contains(Regex("\\s")) && !code.startsWith("http")) {
-            guide("4. 코드 붙여넣기", "복사한 로그인 코드를 찾았어요. 버튼을 누르면 Claude Code에 붙여 넣고 완료해요.", "📋 코드 붙여넣고 완료") {
+            guide("로그인 4/4", "코드 붙여넣기", "복사한 로그인 코드를 찾았어요. 버튼을 누르면 Claude Code에 붙여 넣고 완료해요.", "코드 붙여넣고 완료") {
                 paste(submit = true)
             }
         }
