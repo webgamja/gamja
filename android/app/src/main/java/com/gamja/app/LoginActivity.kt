@@ -149,7 +149,13 @@ class LoginActivity : Activity() {
         val d = resources.displayMetrics.density
         text = label
         isAllCaps = false
-        textSize = 13f
+        textSize = 12f
+        setSingleLine(true) // 글자가 두 줄로 나뉘어 잘리지 않게 한 줄로
+        includeFontPadding = false
+        minWidth = 0
+        minHeight = 0
+        setPadding(0, 0, 0, 0)
+        gravity = android.view.Gravity.CENTER
         setTextColor(0xFF191F28.toInt())
         stateListAnimator = null
         background = android.graphics.drawable.GradientDrawable().apply { setColor(0xFFE5E8EB.toInt()); cornerRadius = 12 * d }
@@ -227,7 +233,7 @@ class LoginActivity : Activity() {
         if (!hasFocus || (stage != Stage.CODE && stage != Stage.BROWSER)) return
         val code = clipboardText()?.trim() ?: return
         if (code.length in 20..400 && !code.contains(Regex("\\s")) && !code.startsWith("http")) {
-            guide("로그인 4/4", "코드 붙여넣기", "복사한 로그인 코드를 찾았어요. 버튼을 누르면 Claude Code에 붙여 넣고 완료해요.", "코드 붙여넣고 완료") {
+            guide("로그인 4/4", "코드 붙여넣기", "복사한 로그인 코드를 찾았어요. 버튼을 누르면 Claude Code에 붙여 넣고 Enter까지 눌러 완료해요.", "코드 붙여넣고 완료하기") {
                 paste(submit = true)
             }
         }
@@ -248,7 +254,8 @@ class LoginActivity : Activity() {
     private fun paste(submit: Boolean) {
         val text = clipboardText()?.let { if (submit) it.trim() else it } ?: return
         session.write(text)
-        if (submit) session.write("\r")
+        // 붙여 넣은 글과 Enter를 한꺼번에 보내면 Claude Code가 Enter를 붙여 넣은 글의 일부로 받아서 완료가 안 될 수 있다 → 잠깐 뒤에 따로 보낸다
+        if (submit) ui.postDelayed({ if (session.isRunning) session.write("\r") }, 500)
     }
 
     /** 로그인 정보가 저장될 때까지 잠깐 기다렸다가 닫는다 (/exit 를 칠 필요 없음) */
