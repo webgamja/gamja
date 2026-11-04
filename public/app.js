@@ -161,6 +161,8 @@
   }
   let bootId = null; // 이 화면을 받아 올 때 감자알의 켜진 시각 (/api/me)
   let loadSeq = 0;
+  let historyRev = ''; // 지금 화면의 기록(history)에 해당하는 서버 기록 버전. 같은 값이면 서버가 대화 전체를 다시 보내지 않는다
+  let historyRevProject = null;
   let loadedProject = null; // 화면에 그려 둔 대화의 프로젝트 (null = 아직 한 번도 안 그림)
 
   // ---------- 🔍 대화 글자 크기 ----------
@@ -1224,8 +1226,14 @@
     if (!els.messages.children.length) showLoading(); // 처음 열 때도 빈 화면 대신 "불러오는 중"을 보여 준다
     let data;
     try {
-      data = isGone(project) ? await api('/api/history?archive=' + encodeURIComponent(project.slice(1)))
-        : await migrateLocal(await api('/api/history' + q()));
+      if (isGone(project)) data = await api('/api/history?archive=' + encodeURIComponent(project.slice(1)));
+      else {
+        // 화면에 그려 둔 기록의 rev를 보내면, 기록이 그대로일 때 서버가 대화 전체 대신 "같음"만 알려 준다
+        const sendRev = loadedProject === project && historyRev && historyRevProject === project;
+        data = await api('/api/history' + q() + (sendRev ? `&rev=${encodeURIComponent(historyRev)}` : ''));
+        if (data.same) data.messages = history;
+        data = await migrateLocal(data);
+      }
     } catch (err) {
       if (err.message === 'unauthorized') return;
       if (isGone(project) || (project && err.message === '알 수 없는 프로젝트')) { // 지워진 방(보관 대화·다른 기기에서 지운 방)이면 감자 톡톡으로 돌아간다
@@ -1275,6 +1283,8 @@
     liveView = null;
     sessionId = data.sessionId;
     history = data.messages;
+    historyRev = data.rev || '';
+    historyRevProject = project;
     els.messages.innerHTML = '';
     if (!history.length && !data.running && !data.archived) showEmpty();
     // 큰 방은 맨 아래로 열 때 가장 최근 대화부터 그려서 바로 보여 주고, 오래된 대화는 위로 올려 읽을 때 조금씩 위에 붙인다 (화면이 얼지 않게)
@@ -1602,7 +1612,7 @@
       }
       setTimeout(() => { btn.disabled = false; }, UPDATE_BTN_COOLDOWN); // 확인이 끝난 뒤 1초 쉬었다가 다시 누를 수 있다
     };
-    const ups = (d.info.updates || []).slice(-3).reverse(); // 최근 3개만, 새것이 위로
+    const ups = (d.info.updates || []).slice(0, 3); // 최근 3개만. 감자알이 이미 새것이 먼저 오게 보내 준다
     $('updateHistory').innerHTML = ups.length
       ? ups.map((u) => `<p class="settings-row"><span>${escapeHtml(u.version)}</span><b>${escapeHtml(new Date(u.ts).toLocaleString(LOCALE, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b></p>`).join('')
       : '<p class="settings-note">아직 기록이 없어요.</p>';

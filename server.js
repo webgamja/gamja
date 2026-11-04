@@ -1910,10 +1910,15 @@ const server = http.createServer(async (req, res) => {
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
         const conv = loadConv(project);
         const run = projectRuns.get(project);
+        // 기록이 화면이 이미 가진 것과 같으면(rev가 같으면) 대화 전체를 다시 보내지 않는다. 긴 방에서 답을 기다리는 동안 1.5초마다 수백 KB를 주고받아 느려지던 것을 막는다
+        const rev = `${conv.updatedAt || 0}:${conv.messages.length}:${Object.keys(TOOLKITS).filter((k) => kitInstalled(k)).join(',')}`;
+        const same = url.searchParams.get('rev') === rev;
         // 이미 설치된 도구의 "설치" 버튼은 보여 주지 않는다
-        const messages = conv.messages.map((m) => (m.install ? { ...m, install: m.install.filter((k) => TOOLKITS[k.id] && !kitInstalled(k.id)) } : m));
+        const messages = same ? undefined : conv.messages.map((m) => (m.install ? { ...m, install: m.install.filter((k) => TOOLKITS[k.id] && !kitInstalled(k.id)) } : m));
         return send(res, 200, {
           sessionId: conv.sessionId,
+          rev,
+          same,
           messages,
           running: !!run,
           runId: run ? run.runId : null,
@@ -2291,6 +2296,13 @@ function purgeTrash() {
     return m ? stampTime(m[1]) : 0;
   });
   sweep(ARCHIVE_DIR, (n) => (/^\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d__/.test(n) ? stampTime(n) : 0));
+}
+
+// 예전에 설치한 폰(.env에 PORT=3000)은 새 앱이 기본 포트 26514로 붙어도 열리도록, 같은 감자알을 26514에서도 연다 (앱이 .env를 못 읽은 경우 대비)
+if (PORT === 3000) {
+  const alt = http.createServer(server.listeners('request')[0]);
+  alt.on('error', (e) => console.error(`보조 포트 26514를 열지 못했어요: ${e.message}`));
+  alt.listen(26514, HOST);
 }
 
 server.listen(PORT, HOST, () => {
