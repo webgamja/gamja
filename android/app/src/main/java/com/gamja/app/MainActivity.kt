@@ -1,27 +1,12 @@
 package com.gamja.app
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Typeface
-import android.media.ExifInterface
-import android.provider.MediaStore
-import android.provider.OpenableColumns
-import android.util.Base64
-import java.io.ByteArrayOutputStream
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -32,14 +17,6 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.webkit.CookieManager
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import android.webkit.JavascriptInterface
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -48,20 +25,16 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.Inet4Address
-import java.net.NetworkInterface
 import java.net.URL
-import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
- * 화면 흐름: 준비(첫 실행) → Claude 로그인(공식 화면) → 채팅(감자 웹 화면).
+ * 화면 흐름: 준비(첫 실행) → 배터리 설정 → Claude 로그인(공식 화면) → 홈.
+ * 감자 콘솔(채팅 화면)은 앱 안이 아니라 폰의 브라우저로 연다.
  */
 class MainActivity : Activity() {
     private lateinit var p: Paths
     private val ui = Handler(Looper.getMainLooper())
-    private var web: WebView? = null
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var installing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,7 +55,7 @@ class MainActivity : Activity() {
     }
 
     // ---------- 3. 홈 화면: 감자는 폰의 브라우저(크롬 등)로 연다 ----------
-    // 앱 안의 화면(WebView)은 폰마다 버전이 달라 화면이 안 뜨는 일이 있어서, 기본은 브라우저로 열고 앱은 감자알을 켜 두는 일과 설정을 맡는다.
+    // 앱 안의 화면(WebView)은 폰마다 버전이 달라 화면이 안 뜨는 일이 있어서, 브라우저로 열고 앱은 감자알을 켜 두는 일과 설정을 맡는다.
     /**
      * 예전에 설치한 폰의 .env가 PORT=3000이면 26514로 바꾼다. 감자알 0.1.127부터 3000과 26514를 함께 열 수 있어서,
      * 그보다 새 감자알일 때만 바꾼다 (옛 감자알은 3000만 열어서 앱이 못 붙는다). 감자알은 다음에 다시 켜질 때 26514로 뜬다.
@@ -147,11 +120,11 @@ class MainActivity : Activity() {
         root.addView(sectionLabel("정보"))
         val eggBuild = runCatching { java.io.File(p.appDir, "BUILD").readText().trim() }.getOrNull()
         root.addView(card().apply {
-            addView(infoRow("감자 버전", Updater.currentName(this@MainActivity)) { checkUpdate(silentIfLatest = false) })
+            addView(versionRow("감자 버전", Updater.currentName(this@MainActivity)) { checkUpdate(silentIfLatest = false) })
             addView(divider())
-            addView(infoRow("감자알 버전", if (eggBuild.isNullOrBlank()) "-" else "0.1.$eggBuild"))
+            addView(versionRow("감자알 버전", if (eggBuild.isNullOrBlank()) "-" else "0.1.$eggBuild") { checkEggUpdate() })
         })
-        root.addView(label("감자 버전을 누르면 새 버전을 확인해요", 12f, HOME_SUB).apply { setPadding(dp(4), dp(2), 0, 0) })
+        root.addView(label("↻를 누르면 새 버전을 확인해요", 12f, HOME_SUB).apply { setPadding(dp(4), dp(2), 0, 0) })
 
         // 설정
         root.addView(sectionLabel("설정"))
@@ -162,7 +135,7 @@ class MainActivity : Activity() {
         root.addView(card().apply {
             addView(infoRow("배터리 설정", "", batteryValue) { openBatterySettings() })
             addView(divider())
-            addView(infoRow("알림 허용", "", notifValue) { askNotifOrSettings() })
+            addView(infoRow("알림 허용", "", notifValue, caption = "지금 나만의 Claude Code 서버로 동작되고 있어요.") { askNotifOrSettings() })
         })
         refreshBatteryValue()
         refreshNotifValue()
@@ -243,13 +216,17 @@ class MainActivity : Activity() {
         setBackgroundColor(HOME_LINE)
         layoutParams = LinearLayout.LayoutParams(-1, dp(1))
     }
-    /** 왼쪽 이름, 오른쪽 값. onClick이 있으면 눌러서 쓰는 줄 */
-    private fun infoRow(name: String, value: String, valueView: TextView? = null, onClick: (() -> Unit)? = null): View =
+    /** 왼쪽 이름(아래에 작은 설명), 오른쪽 값. onClick이 있으면 눌러서 쓰는 줄 */
+    private fun infoRow(name: String, value: String, valueView: TextView? = null, caption: String? = null, onClick: (() -> Unit)? = null): View =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(15), 0, dp(15))
-            addView(label(name, 16f, HOME_INK), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(label(name, 16f, HOME_INK))
+                if (caption != null) addView(label(caption, 12f, HOME_SUB).apply { setPadding(0, dp(3), dp(8), 0) })
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             addView((valueView ?: TextView(this@MainActivity)).apply {
                 text = value
                 textSize = 16f
@@ -261,6 +238,26 @@ class MainActivity : Activity() {
                 setOnClickListener { onClick() }
             }
         }
+
+    /** 버전 줄: 오른쪽에 버전과 ↻ 아이콘. 누르면 새 버전을 확인하고, 1초 동안은 다시 눌러도 반응하지 않는다 */
+    private fun versionRow(name: String, version: String, onCheck: () -> Unit): View {
+        val icon = TextView(this).apply {
+            text = "↻"
+            textSize = 22f
+            setTextColor(HOME_INK)
+            setPadding(dp(14), 0, 0, 0)
+        }
+        var locked = false
+        val row = infoRow(name, version) {
+            if (locked) return@infoRow
+            locked = true
+            icon.alpha = 0.3f
+            ui.postDelayed({ locked = false; icon.alpha = 1f }, 1000)
+            onCheck()
+        }
+        (row as LinearLayout).addView(icon)
+        return row
+    }
 
     private var notifValueView: TextView? = null
     private fun notifAllowed() = Build.VERSION.SDK_INT < 33 ||
@@ -278,6 +275,14 @@ class MainActivity : Activity() {
     }
     private fun refreshNotifValue() {
         notifValueView?.text = if (notifAllowed()) "허용됨  ›" else "허용 필요  ›"
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIF) {
+            if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) getPreferences(MODE_PRIVATE).edit().putBoolean("notifDenied", true).apply()
+            refreshNotifValue()
+        }
     }
 
     /** 감자알을 스스로 다시 시작하게 하고(start.sh 루프가 다시 띄운다), 다시 켜질 때까지 기다린 뒤 홈 화면을 새로 그린다 */
@@ -299,6 +304,43 @@ class MainActivity : Activity() {
                 if (isFinishing || isDestroyed) return@post
                 Toast.makeText(this, if (ok) "다시 시작했어요" else "다시 시작하지 못했어요. 잠시 뒤에 다시 눌러 주세요", Toast.LENGTH_LONG).show()
                 showHome()
+            }
+        }
+    }
+
+    /**
+     * 감자알 업데이트를 지금 확인한다 (감자알은 3시간마다 스스로도 확인한다).
+     * 새 감자알이 있으면 받아서 스스로 다시 시작하므로, 다시 켜질 때까지 기다린 뒤 홈 화면을 새로 그린다.
+     */
+    private fun checkEggUpdate() {
+        Toast.makeText(this, "감자알 업데이트를 확인하는 중...", Toast.LENGTH_SHORT).show()
+        thread {
+            val status = runCatching {
+                val cookie = loginCookie()?.substringBefore(';') ?: return@runCatching "error"
+                val conn = URL("$BASE/api/update-check").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 3000; conn.readTimeout = 120_000 // 새 감자알을 내려받는 시간을 기다린다
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Cookie", cookie)
+                conn.outputStream.use { it.write("{}".toByteArray()) }
+                if (conn.responseCode != 200) return@runCatching "error"
+                JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("status", "error")
+            }.getOrDefault("error")
+            if (status == "restart") { Thread.sleep(2500); waitForServer() }
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                val build = runCatching { java.io.File(p.appDir, "BUILD").readText().trim() }.getOrNull()
+                val msg = when (status) {
+                    "latest" -> "지금 최신 감자알이에요 (0.1.$build)"
+                    "restart" -> "새 감자알로 바뀌었어요"
+                    "busy" -> "답변이 진행 중이라 끝난 뒤에 받아요"
+                    "checking" -> "이미 확인하는 중이에요"
+                    "off" -> "개발용 감자알은 자동 업데이트가 꺼져 있어요"
+                    else -> "확인하지 못했어요. 잠시 뒤에 다시 눌러 주세요"
+                }
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                if (status == "restart") showHome()
             }
         }
     }
@@ -526,74 +568,9 @@ class MainActivity : Activity() {
     @Deprecated("Activity 결과 API (minSdk 26, AndroidX 없이 사용)")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_PICK) { // ＋ 사진 첨부: 고른 사진을 줄여서 웹 화면에 보낸다
-            if (resultCode == RESULT_OK) handlePicked(data)
-            return
-        }
-        if (requestCode == REQ_FILE) { // 사진 선택 결과를 웹 화면에 돌려준다 (고르지 않고 닫으면 null)
-            fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
-            fileCallback = null
-            return
-        }
         if (requestCode == REQ_LOGIN) {
             if (p.isLoggedIn()) getPreferences(MODE_PRIVATE).edit().remove("skipLogin").apply()
             route()
-        }
-    }
-
-    // ---------- 3. 채팅 화면 ----------
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun showChat() {
-        syncChatCode()
-        GamjaService.start(this)
-        val loading = text("🥔 감자를 깨우는 중...", 16f).apply { gravity = Gravity.CENTER }
-        setContentView(loading)
-
-        val wv = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            webViewClient = WebViewClient()
-            // alert/confirm/prompt 표시 + 입력창의 ＋(사진 첨부)가 폰의 사진 선택 화면을 열 수 있게 한다
-            webChromeClient = object : WebChromeClient() {
-                override fun onShowFileChooser(
-                    webView: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?,
-                ): Boolean {
-                    fileCallback?.onReceiveValue(null) // 이전 선택이 끝나지 않았으면 취소로 처리
-                    fileCallback = callback
-                    val intent = runCatching { params?.createIntent() }.getOrNull()
-                        ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "image/*"
-                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                        }
-                    return try {
-                        startActivityForResult(intent, REQ_FILE)
-                        true
-                    } catch (e: Exception) {
-                        fileCallback = null
-                        callback?.onReceiveValue(null)
-                        false
-                    }
-                }
-            }
-            addJavascriptInterface(Bridge(), "GamjaApp") // 설정 → 고급·정보 → 감자 앱 에서 앱 기능을 부른다
-        }
-        web = wv
-        thread {
-            val ready = waitForServer()
-            val cookie = if (ready) runCatching { loginCookie() }.getOrNull() else null
-            ui.post {
-                if (!ready) {
-                    // 화면을 못 열었으니 설정 화면의 로그를 볼 수 없다 → 여기서 바로 보여 준다
-                    val log = runCatching { p.serverLog.readText().takeLast(1500) }.getOrDefault("")
-                    loading.text = "감자알이 아직 안 떠요.\n잠시 후 앱을 다시 열어 보세요.\n\n[감자알 로그]\n$log"
-                    return@post
-                }
-                cookie?.let { CookieManager.getInstance().setCookie(BASE, it) }
-                setContentView(wv)
-                wv.loadUrl(chatUrl(intent))
-            }
         }
     }
 
@@ -613,18 +590,10 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 🔔 완료 알림에서 열었으면 그 프로젝트 화면으로 */
-    private fun chatUrl(i: Intent?): String {
-        val project = i?.getStringExtra(EXTRA_PROJECT) ?: return BASE
-        return "$BASE/?project=${Uri.encode(project)}"
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.hasExtra(EXTRA_PROJECT)) {
-            if (web != null) web?.loadUrl(chatUrl(intent)) else handleProjectIntent(intent)
-        }
+        handleProjectIntent(intent)
         handleUpdateIntent(intent)
     }
 
@@ -685,7 +654,7 @@ class MainActivity : Activity() {
         if (!packageManager.canRequestPackageInstalls()) {
             AlertDialog.Builder(this)
                 .setTitle("설치 허용이 필요해요")
-                .setMessage("다음 화면에서 'GAMJA'의 '이 출처 허용'을 켜고, 뒤로 가기로 돌아온 뒤 ⚙️ 설정 아래쪽 ℹ️ 정보에서 감자 버전 옆의 🔄을 다시 눌러 주세요. 처음 한 번만 하면 돼요.")
+                .setMessage("다음 화면에서 'GAMJA'의 '이 출처 허용'을 켜고, 뒤로 가기로 돌아온 뒤 홈 화면의 감자 버전 옆 ↻를 다시 눌러 주세요. 처음 한 번만 하면 돼요.")
                 .setPositiveButton("설정 열기") { _, _ ->
                     startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
                 }
@@ -709,293 +678,7 @@ class MainActivity : Activity() {
     }
     override fun onPause() {
         visible = false
-        // 앱을 떠나면 듣기를 멈춘다. 단, 마이크 권한 창이 떠서 잠깐 멈추는 경우(아직 인식기를 안 만든 상태)는 그대로 기다린다
-        if (recognizer != null) voiceStopNow(abort = true)
         super.onPause()
-    }
-    override fun onDestroy() {
-        recognizer?.destroy(); recognizer = null
-        tts?.shutdown(); tts = null
-        super.onDestroy()
-    }
-
-    // ---------- 📷 사진 첨부 (입력창 ＋) ----------
-    // WebView의 파일 선택 기능에 기대지 않고, 앱이 사진을 직접 골라 읽어서 웹 화면에 넘긴다.
-    // 사진은 긴 변 1800px 이하 JPEG로 줄이고, 휴대폰 사진의 회전 정보도 바로잡는다 (HEIC도 열 수 있다).
-    private var pickMax = 4
-
-    private fun pickImages(max: Int) {
-        pickMax = max.coerceAtLeast(1)
-        // 안드로이드 13 이상: 폰의 "사진 선택" 화면에 최대 장수를 알려 주면, 그 화면이 스스로 한도를 지켜 주고
-        // 한도를 넘게 고르려 할 때 그 자리에서 안내해 준다. 그보다 옛 폰은 일반 선택 화면을 쓰고 고른 뒤에 안내한다
-        val system = if (Build.VERSION.SDK_INT >= 33) {
-            Intent(MediaStore.ACTION_PICK_IMAGES).apply {
-                if (pickMax > 1) putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, pickMax.coerceAtMost(MediaStore.getPickImagesMaxLimit()))
-            }
-        } else null
-        val ok = system != null && runCatching { startActivityForResult(system, REQ_PICK) }.isSuccess
-        if (ok) return
-        val general = Intent(Intent.ACTION_GET_CONTENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, pickMax > 1)
-        }
-        runCatching { startActivityForResult(general, REQ_PICK) }
-            .onFailure { Toast.makeText(this, "사진 선택 화면을 열 수 없어요", Toast.LENGTH_LONG).show() }
-    }
-
-    private fun handlePicked(data: Intent?) {
-        val uris = mutableListOf<Uri>()
-        data?.clipData?.let { c -> for (i in 0 until c.itemCount) uris.add(c.getItemAt(i).uri) }
-        if (uris.isEmpty()) data?.data?.let { uris.add(it) }
-        if (uris.isEmpty()) return
-        if (uris.size > pickMax) {
-            Toast.makeText(this, "사진은 12장까지 첨부할 수 있어요", Toast.LENGTH_LONG).show()
-        }
-        thread {
-            for (uri in uris.take(pickMax)) {
-                val img = runCatching { readImage(uri) }.getOrNull()
-                ui.post {
-                    val call = if (img == null) "window.__gamjaPicked&&window.__gamjaPicked('','','')"
-                    else "window.__gamjaPicked&&window.__gamjaPicked(${JSONObject.quote(img.first)},${JSONObject.quote(img.second)},${JSONObject.quote(img.third)})"
-                    web?.evaluateJavascript(call, null)
-                }
-            }
-        }
-    }
-
-    /** 사진 하나를 읽어 (이름, 종류, base64)로. 움직이는 GIF와 작은 PNG는 그대로 두고 나머지는 줄인 JPEG로 만든다 */
-    private fun readImage(uri: Uri): Triple<String, String, String> {
-        val mime = contentResolver.getType(uri) ?: "image/jpeg"
-        val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "photo.jpg"
-        if (mime == "image/gif" || mime == "image/png") {
-            val raw = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-            if (mime == "image/gif" && raw.size <= 8_000_000 || mime == "image/png" && raw.size <= 800_000) {
-                return Triple(name, mime, Base64.encodeToString(raw, Base64.NO_WRAP))
-            }
-        }
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 3600) sample *= 2 // 먼저 크게 줄여 메모리를 아낀다
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        var bmp = contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, opts) }
-            ?: throw IllegalStateException("사진을 열 수 없어요")
-        val degrees = runCatching {
-            contentResolver.openInputStream(uri)!!.use { s ->
-                when (ExifInterface(s).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
-                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
-                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
-                    else -> 0
-                }
-            }
-        }.getOrDefault(0)
-        val scale = minOf(1f, 1800f / maxOf(bmp.width, bmp.height))
-        if (degrees != 0 || scale < 1f) {
-            val m = Matrix().apply {
-                if (degrees != 0) postRotate(degrees.toFloat())
-                if (scale < 1f) postScale(scale, scale)
-            }
-            bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
-        }
-        val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.JPEG, 88, out)
-        return Triple(name.substringBeforeLast('.') + ".jpg", "image/jpeg", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
-    }
-
-    // ---------- 🔊 답변 읽어주기 ----------
-    // WebView의 speechSynthesis는 소리가 안 나거나 없는 폰이 있어서, 폰의 TextToSpeech로 읽고 끝났는지를 웹 화면(voice-app.js)에 알려 준다.
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private val ttsWaiting = mutableListOf<Pair<String, () -> Unit>>() // 엔진이 준비되길 기다리는 읽기 (id, 실행)
-
-    private fun ttsJs(id: String?, type: String) {
-        web?.evaluateJavascript(
-            "window.__gamjaTTS&&window.__gamjaTTS.event(${JSONObject.quote(id ?: "")},${JSONObject.quote(type)})", null)
-    }
-
-    private fun ttsEnsure(id: String, run: () -> Unit) {
-        if (ttsReady) { run(); return }
-        ttsWaiting.add(id to run)
-        if (tts != null) return
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { ui.post { ttsJs(utteranceId, "start") } }
-                    override fun onDone(utteranceId: String?) { ui.post { ttsJs(utteranceId, "end") } }
-                    @Deprecated("이전 버전용 (새 버전은 오류 번호가 있는 쪽)")
-                    override fun onError(utteranceId: String?) { ui.post { ttsJs(utteranceId, "error") } }
-                    override fun onStop(utteranceId: String?, interrupted: Boolean) { ui.post { ttsJs(utteranceId, "end") } }
-                })
-                ttsReady = true
-                val queued = ttsWaiting.toList()
-                ttsWaiting.clear()
-                queued.forEach { it.second() }
-            } else {
-                // 엔진을 못 켰으면 기다리던 읽기를 오류로 끝내서 화면이 영원히 기다리지 않게 한다
-                tts = null
-                val queued = ttsWaiting.toList()
-                ttsWaiting.clear()
-                queued.forEach { ttsJs(it.first, "error") }
-            }
-        }
-    }
-
-    private fun ttsSpeakNow(id: String, text: String, lang: String, rate: Double) = ttsEnsure(id) {
-        val t = tts ?: return@ttsEnsure
-        runCatching { t.language = Locale.forLanguageTag(lang) }
-        t.setSpeechRate(rate.toFloat().coerceIn(0.5f, 2f))
-        t.speak(text, TextToSpeech.QUEUE_ADD, null, id)
-    }
-
-    // ---------- 🎤 음성 입력 ----------
-    // 안드로이드 WebView에는 음성 인식이 없어서, 폰의 SpeechRecognizer를 대신 쓰고 결과를 웹 화면(voice-app.js)에 알려 준다.
-    // 웹 화면은 크롬의 SpeechRecognition처럼 쓰므로 🎤·음성 대화 코드는 그대로다.
-    private var recognizer: SpeechRecognizer? = null
-    private var voiceLang = "ko-KR"
-    private var voiceOpen = false // 웹이 시작을 불렀고 아직 "끝났다"고 알려 주지 않은 상태
-
-    private fun voiceJs(type: String, text: String = "", isFinal: Boolean = false) {
-        web?.evaluateJavascript(
-            "window.__gamjaSR&&window.__gamjaSR.event(${JSONObject.quote(type)},${JSONObject.quote(text)},$isFinal)", null)
-    }
-
-    private fun voiceEnd() {
-        if (!voiceOpen) return
-        voiceOpen = false
-        voiceJs("end")
-    }
-
-    private fun voiceBegin(lang: String) {
-        voiceLang = lang
-        voiceOpen = true
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC) // 처음 한 번 "마이크를 써도 될까요?"
-            return
-        }
-        startRecognizer()
-    }
-
-    /**
-     * 말을 글자로 바꿔 줄 수 있는 폰의 음성 인식 서비스 목록 (앞쪽부터 시도).
-     * 폰의 기본 서비스가 Google 텍스트 변환 앱(com.google.android.tts)으로 잡혀 있으면 "연결이 끊어졌어요(오류 11)"가 나는 폰이 있어서,
-     * 널리 쓰는 Google 앱의 인식기를 먼저 쓰고, 안 되면 다른 것, 마지막으로 폰의 기본값을 쓴다. 전에 잘 됐던 것은 맨 앞으로 올린다.
-     */
-    private fun voiceCandidates(): List<ComponentName?> {
-        val found = runCatching {
-            packageManager.queryIntentServices(Intent("android.speech.RecognitionService"), 0)
-                .map { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
-        }.getOrDefault(emptyList())
-        val google = found.filter { it.packageName == "com.google.android.googlequicksearchbox" }
-        val rest = found.filter { it.packageName != "com.google.android.googlequicksearchbox" }
-        val liked = getSharedPreferences("voice", MODE_PRIVATE).getString("service", null)
-        val ordered = (google + rest).sortedBy { if (it.flattenToString() == liked) 0 else 1 }
-        return ordered + listOf<ComponentName?>(null) // null = 폰의 기본 서비스
-    }
-
-    private var voiceCands: List<ComponentName?> = listOf(null)
-    private var voiceUsing = "기본"
-
-    private fun startRecognizer(index: Int = 0) {
-        if (index == 0) voiceCands = voiceCandidates()
-        val cand = voiceCands.getOrNull(index)
-        voiceUsing = cand?.packageName ?: "기본"
-        recognizer?.destroy()
-        val r = runCatching {
-            if (cand != null) SpeechRecognizer.createSpeechRecognizer(this, cand) else SpeechRecognizer.createSpeechRecognizer(this)
-        }.getOrNull() ?: SpeechRecognizer.createSpeechRecognizer(this)
-        recognizer = r
-        var heard = false // 이 인식기가 말소리를 한 번이라도 들었는지 (들었으면 서비스 문제가 아니다)
-        fun worked() {
-            heard = true
-            if (cand != null) getSharedPreferences("voice", MODE_PRIVATE).edit().putString("service", cand.flattenToString()).apply()
-        }
-        r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { if (recognizer === r) voiceJs("start") }
-            override fun onBeginningOfSpeech() { if (recognizer === r) { worked(); voiceJs("speechstart") } }
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onPartialResults(partialResults: Bundle?) {
-                if (recognizer !== r) return
-                worked()
-                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    ?.let { voiceJs("result", it, false) }
-            }
-            override fun onResults(results: Bundle?) {
-                if (recognizer !== r) return
-                worked()
-                results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    ?.let { voiceJs("result", it, true) }
-                voiceEnd()
-            }
-            override fun onError(error: Int) {
-                if (recognizer !== r) return
-                // 서비스가 연결되지 않았거나(11) 시작도 못 한(5, 3) 경우에는 화면에 알리지 않고 다음 서비스로 조용히 다시 시도한다
-                val broken = error == 11 || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_SERVER
-                if (broken && !heard && index + 1 < voiceCands.size) {
-                    ui.post { if (voiceOpen && recognizer === r) startRecognizer(index + 1) }
-                    return
-                }
-                val name = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "no-speech"
-                    // 감자의 마이크 권한은 있는데 이 오류가 나면, 말을 글자로 바꿔 주는 폰의 음성 인식 서비스(보통 Google 앱)에 마이크 권한이 없는 것이다
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) "service-permission" else "not-allowed"
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network"
-                    SpeechRecognizer.ERROR_CLIENT -> "aborted"
-                    else -> "error-$error" // 번호를 같이 알려 줘서 원인을 찾기 쉽게 한다
-                }
-                voiceJs("error", "$name|${voiceDiag(error)}")
-                voiceEnd()
-            }
-        })
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, voiceLang)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-        }
-        r.startListening(intent)
-    }
-
-    /** abort: 지금까지 들은 것을 버리고 바로 멈춤 / 아니면 말을 마친 것으로 보고 결과를 받는다 */
-    private fun voiceStopNow(abort: Boolean) {
-        val r = recognizer
-        if (abort || r == null) {
-            recognizer = null
-            r?.cancel()
-            r?.destroy()
-            voiceEnd()
-        } else r.stopListening()
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_NOTIF) {
-            if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) getPreferences(MODE_PRIVATE).edit().putBoolean("notifDenied", true).apply()
-            refreshNotifValue()
-            return
-        }
-        if (requestCode != REQ_MIC) return
-        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            if (voiceOpen) startRecognizer()
-        } else {
-            voiceJs("error", "not-allowed|${voiceDiag(-1)}")
-            voiceEnd()
-        }
-    }
-
-    /** 오류가 났을 때 화면에 같이 보여 줄 진단 글: 오류 번호, 감자의 마이크 권한, 폰의 기본 음성 인식 서비스 */
-    private fun voiceDiag(code: Int): String {
-        val granted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val svc = runCatching { Settings.Secure.getString(contentResolver, "voice_recognition_service") }.getOrNull()
-            ?.substringBefore('/')?.ifBlank { null } ?: "없음"
-        return "오류 $code · 감자 마이크 ${if (granted) "허용" else "거부"} · 기본 서비스 $svc · 사용한 서비스 $voiceUsing"
     }
 
     private fun waitForServer(): Boolean {
@@ -1024,81 +707,21 @@ class MainActivity : Activity() {
         return JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("ticket").ifBlank { null }
     }
 
-    /** 이 폰에서 여는 화면은 비밀번호 없이 바로 들어가도록 앱이 대신 로그인 */
+    /** 앱이 감자알에 직접 요청할 때 쓰는 로그인 쿠키 (감자알 업데이트 확인) */
     private fun loginCookie(): String? {
         val pw = p.password() ?: return null
         val conn = URL("$BASE/api/login").openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
+        conn.connectTimeout = 3000; conn.readTimeout = 3000
         conn.setRequestProperty("Content-Type", "application/json")
         conn.outputStream.use { it.write(JSONObject().put("password", pw).toString().toByteArray()) }
         return if (conn.responseCode == 200) conn.getHeaderField("Set-Cookie") else null
     }
 
-    @Deprecated("뒤로 가기: 웹 화면에 열려 있는 창(설정 등)부터 닫는다")
+    @Deprecated("뒤로 가기: 앱을 끄지 않고 뒤로 보낸다")
     override fun onBackPressed() {
-        val wv = web
-        if (wv == null) { moveTaskToBack(true); return }
-        wv.evaluateJavascript("(window.gamjaBack ? window.gamjaBack() : false)") { handled ->
-            if (handled == "true") return@evaluateJavascript // 웹 화면이 열려 있던 창을 닫았다
-            if (wv.canGoBack()) wv.goBack() else moveTaskToBack(true)
-        }
-    }
-
-    // ---------- 웹 화면과 이어 주는 통로 (설정 → 고급·정보 → 감자 앱) ----------
-    // 감자 화면에서만 동작하고, 크루가 만든 페이지 미리보기(/preview/)에서 부른 것은 무시한다
-    inner class Bridge {
-        private fun guarded(block: () -> Unit) = runOnUiThread {
-            val url = web?.url ?: return@runOnUiThread
-            if (url.startsWith("$BASE/") && !url.startsWith("$BASE/preview/")) block()
-        }
-        @JavascriptInterface fun appVersion(): String = Updater.currentName(this@MainActivity)
-        @JavascriptInterface fun showAddress() = guarded { this@MainActivity.showAddress() }
-        @JavascriptInterface fun openLogin() = guarded { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) }
-        @JavascriptInterface fun batterySettings() = guarded { this@MainActivity.openBatterySettings() }
-        @JavascriptInterface fun showLog() = guarded { this@MainActivity.showLog() }
-        @JavascriptInterface fun checkUpdate() = guarded { this@MainActivity.checkUpdate(silentIfLatest = false) }
-        @JavascriptInterface fun showLicenses() = guarded { this@MainActivity.showLicenses() }
-        @JavascriptInterface fun setBarColor(hex: String) = guarded { applyBarColor(hex) }
-        // 🎤 음성 입력 (웹 화면의 voice-app.js가 부른다)
-        @JavascriptInterface fun voiceAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(this@MainActivity)
-        @JavascriptInterface fun voiceStart(lang: String) = guarded { voiceBegin(lang) }
-        @JavascriptInterface fun voiceStop() = guarded { voiceStopNow(abort = false) }
-        @JavascriptInterface fun voiceAbort() = guarded { voiceStopNow(abort = true) }
-        /**
-         * 결과물(웹페이지·이미지·음악·영상)을 앱 기능 통로가 없는 따로 떨어진 화면(PreviewActivity)에서 연다.
-         * url은 감자 안의 결과물 주소(/preview/)만 받고, html은 감자 화면이 직접 만든 이미지·음악·영상 재생용 작은 페이지다.
-         */
-        @JavascriptInterface fun openPreview(url: String, html: String, title: String) = guarded {
-            if (url.isNotEmpty() && !url.startsWith("$BASE/preview/")) return@guarded
-            if (url.isEmpty() && html.isEmpty()) return@guarded
-            startActivity(Intent(this@MainActivity, PreviewActivity::class.java)
-                .putExtra(PreviewActivity.EXTRA_URL, url)
-                .putExtra(PreviewActivity.EXTRA_HTML, html)
-                .putExtra(PreviewActivity.EXTRA_TITLE, title.take(80)))
-        }
-        /** 결과물(PDF·워드·엑셀 등)을 폰의 브라우저로 연다. 감자 안의 결과물 주소(/preview/)만 열 수 있다 */
-        @JavascriptInterface fun openExternal(url: String) = guarded {
-            if (url.startsWith("$BASE/preview/")) runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        }
-        // 📷 입력창 ＋ : 폰의 사진 선택 화면을 열고, 고른 사진을 줄여서 웹 화면(__gamjaPicked)에 보낸다
-        @JavascriptInterface fun pickImages(max: Int) = guarded { this@MainActivity.pickImages(max) }
-        // 🔊 답변 읽어주기 (웹 화면의 voice-app.js가 부른다)
-        @JavascriptInterface fun ttsAvailable(): Boolean = true
-        @JavascriptInterface fun ttsSpeak(id: String, text: String, lang: String, rate: Double) = guarded { ttsSpeakNow(id, text, lang, rate) }
-        @JavascriptInterface fun ttsStop() = guarded { tts?.stop() }
-        /** 마이크를 거부해 둔 사람을 폰의 GAMJA 앱 정보 화면(권한 → 마이크)으로 데려간다 */
-        @JavascriptInterface fun appSettings() = guarded { openAppDetails(packageName) }
-        /** 말을 글자로 바꿔 주는 폰의 음성 인식 서비스(보통 Google 앱)의 앱 정보 화면으로 데려간다 */
-        @JavascriptInterface fun recognizerSettings() = guarded {
-            val fromSetting = runCatching {
-                Settings.Secure.getString(contentResolver, "voice_recognition_service")?.substringBefore('/')
-            }.getOrNull()?.takeIf { it.isNotBlank() }
-            val fromQuery = runCatching {
-                packageManager.queryIntentServices(Intent("android.speech.RecognitionService"), 0).firstOrNull()?.serviceInfo?.packageName
-            }.getOrNull()
-            openAppDetails(fromSetting ?: fromQuery ?: packageName)
-        }
+        moveTaskToBack(true)
     }
 
     private fun openAppDetails(pkg: String) {
@@ -1109,17 +732,6 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("감자알 로그")
             .setMessage(runCatching { p.serverLog.readText().takeLast(4000) }.getOrDefault("(없음)"))
             .setPositiveButton("닫기", null).show()
-    }
-
-    /** 위쪽 상태 표시줄 색을 웹 화면의 위쪽 줄 색에 맞춘다 (밝은 색이면 아이콘은 어둡게) */
-    private fun applyBarColor(hex: String) {
-        val c = runCatching { Color.parseColor(hex.trim()) }.getOrNull() ?: return
-        window.statusBarColor = c
-        val lum = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255
-        val dv = window.decorView
-        dv.systemUiVisibility =
-            if (lum > 0.6) dv.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-            else dv.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
     }
 
     /** 감자에 들어 있는 오픈소스와 라이선스 (GPL 프로그램은 소스를 받을 수 있는 주소를 함께 알려야 한다) */
@@ -1156,23 +768,6 @@ class MainActivity : Activity() {
             .setPositiveButton("닫기", null).show()
     }
 
-    private fun showAddress() {
-        val ips = NetworkInterface.getNetworkInterfaces().toList()
-            .flatMap { it.inetAddresses.toList() }
-            .filter { it is Inet4Address && !it.isLoopbackAddress }
-            .map { "http://${it.hostAddress}:${Ports.current()}" }
-        val pw = p.password() ?: "(없음)"
-        AlertDialog.Builder(this)
-            .setTitle("다른 기기에서 접속")
-            .setMessage("같은 와이파이에 연결된 기기의 브라우저에서 아래 주소로 접속하세요.\n\n" +
-                (ips.joinToString("\n").ifEmpty { "(와이파이 주소를 찾지 못했어요)" }) + "\n\n비밀번호: $pw")
-            .setPositiveButton("비밀번호 복사") { _, _ ->
-                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("감자 비밀번호", pw))
-            }
-            .setNegativeButton("닫기", null)
-            .show()
-    }
-
     private fun askBatteryOptimization() {
         val pm = getSystemService(PowerManager::class.java)
         if (pm.isIgnoringBatteryOptimizations(packageName)) return
@@ -1192,7 +787,7 @@ class MainActivity : Activity() {
         if (!pm.isIgnoringBatteryOptimizations(packageName)) { askBatteryOptimization(); return }
         AlertDialog.Builder(this)
             .setTitle("배터리 설정")
-            .setMessage("✅ 이미 허용돼 있어요.\n화면이 꺼져 있어도 감자알이 계속 돌아요.\n\n폰의 배터리 설정에서 바꾸고 싶으면 아래 버튼을 눌러 주세요.")
+            .setMessage("✅ 이미 허용돼 있어요.\n화면이 꺼져 있어도 감자알이 계속 돌아가요.\n\n폰의 배터리 설정에서 바꾸고 싶으면 아래 버튼을 눌러 주세요.")
             .setPositiveButton("폰 배터리 설정 열기") { _, _ ->
                 runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }.onFailure {
                     runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
@@ -1200,20 +795,6 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("닫기", null)
             .show()
-    }
-
-    // ---------- 작은 화면 도우미 ----------
-    private fun column() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        val pad = (20 * resources.displayMetrics.density).toInt()
-        setPadding(pad, pad, pad, pad)
-    }
-
-    private fun text(s: String, size: Float, bold: Boolean = false) = TextView(this).apply {
-        text = s
-        textSize = size
-        if (bold) setTypeface(typeface, Typeface.BOLD)
-        setPadding(0, 8, 0, 8)
     }
 
     companion object {
@@ -1230,9 +811,6 @@ class MainActivity : Activity() {
         /** 감자 화면이 지금 보이는지 (보이면 완료 알림을 띄우지 않음) */
         @Volatile var visible = false
         private const val REQ_LOGIN = 1
-        private const val REQ_MIC = 2
-        private const val REQ_FILE = 3
-        private const val REQ_PICK = 4
         private const val REQ_NOTIF = 5
     }
 }

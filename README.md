@@ -95,7 +95,7 @@ Phone (Android app)                                   Claude Code
 │  ├─ foreground service                    │        └──────▲────────┘
 │  ├─ proot + Ubuntu                        │               │ spawn (cwd = crew folder)
 │  │    └─ gamja-egg (server.js, Node.js) ──┼───────────────┘
-│  └─ WebView ──► http://127.0.0.1:26514 ◄──┘  chat UI (public/), streamed with SSE
+│  └─ phone browser ► http://127.0.0.1:26514 ◄─┘  console (public/), SSE
 └──────────────────────────────────────────┘
 ```
 

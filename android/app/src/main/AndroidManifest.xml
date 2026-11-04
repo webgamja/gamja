@@ -10,16 +10,6 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- 음성 입력(🎤·음성 대화): 폰의 음성 인식 서비스로 말을 글자로 바꾼다 -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- 안드로이드 11 이상에서 앱이 폰의 음성 인식 서비스를 찾을 수 있게 한다 -->
-    <queries>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-    </queries>
-
     <application
         android:label="GAMJA"
         android:icon="@drawable/ic_launcher"
@@ -43,12 +33,6 @@
             android:label="Claude 로그인"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize" />
-
-        <!-- 결과물 보기 (앱 기능 통로가 없는 따로 떨어진 화면) -->
-        <activity
-            android:name=".PreviewActivity"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
 
         <service
             android:name=".GamjaService"
