@@ -86,7 +86,7 @@ const HELP = `gamja-make 사용법 (이 크루 폴더 안의 파일만 다룰 �
   image <그림.svg> <결과.png> [가로픽셀]    SVG 그림을 PNG로 (기본 가로 1080)
   video <결과.mp4> <한장당초> <소리파일|-> <사진1> <사진2> ...   사진을 이어 붙인 슬라이드 영상 (소리가 필요 없으면 -)
   audio <악보.json> <결과.wav>             악보 JSON을 소리로. 예) {"bpm":120,"notes":[{"note":"C4","beats":1},{"note":"E4","beats":1},{"note":"rest","beats":0.5}]}
-  saju <YYYY-MM-DD> <HH:MM|모름> [남|여]    사주(년·월·일·시 기둥, 오행, 십성, 대운)를 계산. 양력만. 예) saju 1990-05-15 14:30 남  (옵션: --lon 127 --tz 9 --zasi yaja|jo --no-correction)
+  saju <YYYY-MM-DD> <HH:MM|모름> [남|여]    사주(년·월·일·시 기둥, 오행, 십성, 대운)를 계산. 양력이 기본, 음력이면 --lunar (윤달은 --leap도). 예) saju 1990-05-15 14:30 남 / saju 1990-04-21 14:30 여 --lunar  (옵션: --lon 127 --tz 9 --zasi yaja|jo --no-correction)
   help                                     이 설명
 
 재료 파일(.md .csv .svg .json)은 먼저 Write로 만든 뒤 위 명령을 실행하세요.`;

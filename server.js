@@ -1504,7 +1504,7 @@ function toolsPrompt() {
   kit('docs', '- 문서: doc 글.md 결과.docx|pdf|html|pptx / sheet 표.csv 결과.xlsx');
   kit('image', '- 그림: image 그림.svg 결과.png [가로픽셀]');
   kit('media', '- 영상: video 결과.mp4 한장당초 소리파일또는- 사진1 사진2 … / 소리: audio 악보.json 결과.wav');
-  lines.push('- 사주 계산(도구 설치 없이 항상 가능, 양력만): saju 1990-05-15 14:30 남  (시각을 모르면 14:30 대신 모름, 여자는 여. 옵션 --zasi jo|yaja --no-correction)');
+  lines.push('- 사주 계산(도구 설치 없이 항상 가능): saju 1990-05-15 14:30 남  (시각을 모르면 14:30 대신 모름, 여자는 여. 음력이면 날짜 뒤에 --lunar, 윤달이면 --lunar --leap. 옵션 --zasi jo|yaja --no-correction)');
   lines.push('만든 파일은 이 크루의 "결과물"에 자동으로 보여요.');
   if (missing.length) {
     lines.push(`아직 설치되지 않은 도구: ${missing.map((id) => `${TOOLKITS[id].name}(${id})`).join(', ')}. 이 중 하나가 꼭 필요한 일이면 쓰려고 하지 말고, 답변 맨 끝에 정확히 [[gamja-install:도구id]] 한 줄만 쓰세요. 예: [[gamja-install:image]]. 그러면 화면에 "설치하고 이어서 하기" 버튼이 나와요. 사용자에게는 "이 일에는 OO 도구가 필요해요. 아래 버튼을 누르면 설치하고 이어서 할게요"라고 쉬운 말로 한 문장만 설명하세요.`);

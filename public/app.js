@@ -471,7 +471,7 @@
         if (!shut[g.id]) html += list(names);
       }
       // 크루 스토어 추천: 아직 안 가진 템플릿
-      const rec = AGENTS.filter((a) => !projectList.includes(a.folder)).slice(0, 8);
+      const rec = window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => !projectList.includes(a.folder))).slice(0, 8);
       if (rec.length) {
         html += '<div class="fr-sec"><span>추천 크루</span><button class="fr-more" data-store="1" type="button">전체 보기 ›</button></div><div class="fr-shelf">' +
           rec.map((a) => `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.blurb)}</small>` +
@@ -899,7 +899,11 @@
       $('agentTitle').textContent = '추천 크루';
       agentBody.innerHTML = (clipCrew
         ? `<button class="pick-card pick-hot" data-clip="1"><span class="pick-icon">📥</span><span><b>복사한 크루 가져오기</b><small>${escapeHtml(clipCrew.icon)} ${escapeHtml(clipCrew.name)}</small></span></button>`
-        : '') + GROUPS.map((g) =>
+        : '') +
+        '<h3>⭐ 깊게 도와주는 전문가 크루</h3>' +
+        window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => a.featured)).map((a) =>
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('') +
+        '<h3>분야별로 보기</h3>' + GROUPS.map((g) =>
         `<button class="pick-card" data-group="${g.id}"><span class="pick-icon">${g.icon}</span><span><b>${g.name}</b><small>${g.desc}</small></span></button>`).join('') +
         makeButtonsHtml() +
         '<p class="settings-note">크루는 일마다 따로 일하는 AI 팀원이고, 각자 자기 방이 있어요. 고르면 그 일에 맞는 지침이 자동으로 들어가고, ⋯ → 📁 크루 설정에서 언제든 고칠 수 있어요.</p>';
@@ -1711,7 +1715,7 @@
     const shelf = (agents) => '<div class="fr-shelf">' + agents.map((a) =>
       `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small>` +
       `<button class="fr-pill" data-pick-agent="${escapeHtml(a.id)}" type="button">${escapeHtml(T('newchat.choose'))}</button></div>`).join('') + '</div>';
-    const rec = AGENTS.filter((a) => !projectList.includes(a.folder));
+    const rec = window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => !projectList.includes(a.folder)));
     const q = ncQuery.trim().toLowerCase();
     if (ncAll) { // 추천 크루 전체 보기: 묶음별로 모두 보여 준다 (고르면 크루 탭에 추가될 크루로 정해진다)
       const agentRow = (a) => `<button class="fr-row" data-pick-agent="${escapeHtml(a.id)}" type="button"><i class="fr-av">${escapeHtml(a.icon)}</i>` +

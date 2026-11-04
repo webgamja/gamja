@@ -52,6 +52,79 @@ function termJd(year, target) {
 }
 const fmt = (p) => `${p[0]}-${String(p[1]).padStart(2, '0')}-${String(p[2]).padStart(2, '0')} ${String(p[3]).padStart(2, '0')}:${String(p[4]).padStart(2, '0')}`;
 
+// ---------- 음력 ----------
+// 달의 위치(삭)를 직접 계산해서 음력을 만든다. 규칙: ① 삭(초하루)이 든 한국 날짜가 그 달의 1일 ② 동지가 든 달이 11월 ③ 11월에서 다음 11월까지 13달이면 중기(태양 황경이 30도의 배수가 되는 날)가 없는 첫 달이 윤달
+// 한국 표준시(UTC+9)로 계산한다. 1908~1911년과 1954~1961년처럼 표준시가 달랐던 때의 달 경계는 하루 어긋날 수 있다.
+const KST = 9;
+function newMoonJde(k) { // 천문 계산의 표준식(Meeus)으로 k번째 삭의 시각(지구시 율리우스일)
+  const T = k / 1236.85, rad = Math.PI / 180, T2 = T * T, T3 = T2 * T;
+  const jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.00000015 * T3 + 0.00000000073 * T3 * T;
+  const E = 1 - 0.002516 * T - 0.0000074 * T2;
+  const M = (2.5534 + 29.1053567 * k - 0.0000014 * T2 - 0.00000011 * T3) * rad;
+  const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T3 * T) * rad;
+  const F = (160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T3 * T) * rad;
+  const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) * rad;
+  const s = Math.sin;
+  const c = -0.4072 * s(Mp) + 0.17241 * E * s(M) + 0.01608 * s(2 * Mp) + 0.01039 * s(2 * F) + 0.00739 * E * s(Mp - M) - 0.00514 * E * s(Mp + M) +
+    0.00208 * E * E * s(2 * M) - 0.00111 * s(Mp - 2 * F) - 0.00057 * s(Mp + 2 * F) + 0.00056 * E * s(2 * Mp + M) - 0.00042 * s(3 * Mp) +
+    0.00042 * E * s(M + 2 * F) + 0.00038 * E * s(M - 2 * F) - 0.00024 * E * s(2 * Mp - M) - 0.00017 * s(Om) - 0.00007 * s(Mp + 2 * M) +
+    0.00004 * s(2 * Mp - 2 * F) + 0.00004 * s(3 * M) + 0.00003 * s(Mp + M - 2 * F) + 0.00003 * s(2 * Mp + 2 * F) - 0.00003 * s(Mp + M + 2 * F) +
+    0.00003 * s(Mp - M + 2 * F) - 0.00002 * s(Mp - M - 2 * F) - 0.00002 * s(3 * Mp + M) + 0.00002 * s(4 * Mp);
+  const A = [[299.77, 0.107408, 0.000325], [251.88, 0.016321, 0.000165], [251.83, 26.651886, 0.000164], [349.42, 36.412478, 0.000126],
+    [84.66, 18.206239, 0.00011], [141.74, 53.303771, 0.000062], [207.14, 2.453732, 0.00006], [154.84, 7.30686, 0.000056],
+    [34.52, 27.261239, 0.000047], [207.19, 0.121824, 0.000042], [291.34, 1.844379, 0.00004], [161.72, 24.198154, 0.000037],
+    [239.56, 25.513099, 0.000035], [331.55, 3.592518, 0.000023]];
+  let extra = 0;
+  A.forEach(([a0, a1, amp], i) => { extra += amp * s((a0 + a1 * k - (i === 0 ? 0.009173 * T2 : 0)) * rad); });
+  return jde + c + extra;
+}
+const localDay = (jdUt) => Math.floor(jdUt + KST / 24 + 0.5); // 세계시 → 한국 날짜(정수 율리우스 일수)
+const newMoonDay = (k) => localDay(newMoonJde(k) - 69 / 86400);
+const sunAtMidnight = (day) => sunLongitude(day - 0.5 - KST / 24);
+const yearCache = new Map();
+// 음력 Y년의 달들: 앞 해 11월부터 Y년 10월(윤달 포함)까지. 각 달 { year, num, leap, start(1일의 날짜), days }
+function buildYear(Y) {
+  if (yearCache.has(Y)) return yearCache.get(Y);
+  const dz0 = localDay(termJd(Y - 1, 270)), dz1 = localDay(termJd(Y, 270)); // 동지가 든 날
+  const starts = [];
+  for (let k = Math.floor((dz0 - 0.5 - 2451550.09766) / 29.530588861) - 2; ; k++) {
+    const d = newMoonDay(k);
+    starts.push(d);
+    if (d > dz1 + 40) break;
+  }
+  let a = 0, b = 0;
+  for (let i = 0; i < starts.length - 1; i++) { if (starts[i] <= dz0) a = i; if (starts[i] <= dz1) b = i; }
+  const hasTerm = (i) => Math.floor(sunAtMidnight(starts[i + 1]) / 30) !== Math.floor(sunAtMidnight(starts[i]) / 30);
+  let leapIdx = -1;
+  if (b - a === 13) for (let i = a + 1; i < b; i++) if (!hasTerm(i)) { leapIdx = i; break; }
+  const months = [];
+  let num = 11, label = Y - 1;
+  for (let i = a; i < b; i++) {
+    let leap = false;
+    if (i === a) num = 11;
+    else if (i === leapIdx) leap = true; // 윤달의 번호는 앞달과 같다
+    else num = (num % 12) + 1;
+    if (!leap && num === 1) label = Y;
+    months.push({ year: label, num, leap, start: starts[i], days: starts[i + 1] - starts[i] });
+  }
+  yearCache.set(Y, months);
+  return months;
+}
+function lunarToSolar(y, m, d, leap) {
+  if (y < 1901 || y > 2099) throw new Error('음력은 1901~2099년만 바꿔요.');
+  const mon = [...buildYear(y), ...buildYear(y + 1)].find((x) => x.year === y && x.num === m && x.leap === !!leap);
+  if (!mon) throw new Error(`음력 ${y}년에는 ${leap ? '윤' : ''}${m}월이 없어요.`);
+  if (d < 1 || d > mon.days) throw new Error(`음력 ${y}년 ${leap ? '윤' : ''}${m}월은 ${mon.days}일까지 있어요.`);
+  return fromJd(mon.start + d - 1).slice(0, 3);
+}
+function solarToLunar(Y, M, D) {
+  const day = jdn(Y, M, D);
+  for (const yy of [Y - 1, Y, Y + 1]) {
+    for (const mon of buildYear(yy)) if (day >= mon.start && day < mon.start + mon.days) return { year: mon.year, month: mon.num, leap: mon.leap, day: day - mon.start + 1 };
+  }
+  return null;
+}
+
 // 십성: 일간을 기준으로 다른 글자가 어떤 관계인지
 function tenGod(dayStem, other) {
   const same = dayStem % 2 === other % 2;
@@ -157,7 +230,9 @@ function compute(opts) {
     for (let k = 1; k <= 9; k++) luck.push({ age: startYears + (k - 1) * 10, name: pillarName(mod(monthIdx + (forward ? k : -k), 60)) });
     out.luck = { forward, start: `${startYears}세 ${startMonths}개월`, list: luck, from: `${edge.name} ${fmt(toWall(edge.jd))}` };
   }
-  out.header = `양력 ${opts.date}${known ? ` ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}` : ' (시간 모름)'} · 성별 ${opts.gender === 'M' ? '남' : opts.gender === 'F' ? '여' : '모름'}` +
+  let lunarText = '';
+  try { const lu = solarToLunar(Y, Mo, D); if (lu) lunarText = ` (음력 ${lu.year}-${String(lu.month).padStart(2, '0')}-${String(lu.day).padStart(2, '0')}${lu.leap ? ' 윤달' : ''})`; } catch (e) { /* 음력 표시는 참고용이라 실패해도 계산은 계속한다 */ }
+  out.header = `${opts.fromLunar ? `음력 ${opts.fromLunar} → ` : ''}양력 ${opts.date}${lunarText}${known ? ` ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}` : ' (시간 모름)'} · 성별 ${opts.gender === 'M' ? '남' : opts.gender === 'F' ? '여' : '모름'}` +
     (known && corr ? ` · 진태양시 보정 ${corr}분` : '') + ` (표준시 UTC${tz >= 0 ? '+' : ''}${tz})`;
   out.yearBase = `${sajuYear}년(입춘 ${out.lichun} 기준)`;
   return out;
@@ -188,9 +263,18 @@ function run(args) {
     else if (a === '--tz') o.tz = parseFloat(args[++i]);
     else if (a === '--zasi') o.zasi = args[++i];
     else if (a === '--no-correction') o.correction = false;
+    else if (a === '--lunar') o.lunar = true;
+    else if (a === '--leap') o.leap = true;
     else pos.push(a);
   }
   o.date = pos[0];
+  if (o.lunar) { // 음력으로 적었으면 먼저 양력으로 바꾼다 (--leap은 윤달)
+    const lm = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(o.date || '');
+    if (!lm) throw new Error('음력 날짜도 YYYY-MM-DD 모양으로 적어 주세요. 윤달이면 --leap을 함께 적어요. (예: 1990-04-21 --lunar)');
+    const s = lunarToSolar(+lm[1], +lm[2], +lm[3], !!o.leap);
+    o.fromLunar = `${o.date}${o.leap ? ' 윤달' : ''}`;
+    o.date = `${s[0]}-${String(s[1]).padStart(2, '0')}-${String(s[2]).padStart(2, '0')}`;
+  }
   o.time = pos[1] && !/^(모름|-|unknown|\?)$/i.test(pos[1]) ? pos[1] : null;
   const g = String(pos[2] || '').toUpperCase();
   o.gender = ['M', '남', '남자'].includes(g) || pos[2] === '남' ? 'M' : ['F', '여', '여자'].includes(g) || pos[2] === '여' ? 'F' : null;
@@ -198,4 +282,4 @@ function run(args) {
   return format(compute(o));
 }
 
-module.exports = { compute, format, run, sunLongitude, termJd, jdn, fromJd };
+module.exports = { compute, format, run, sunLongitude, termJd, jdn, fromJd, lunarToSolar, solarToLunar };
