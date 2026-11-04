@@ -890,8 +890,9 @@
       icons.map((ic) => `<button type="button" data-ic="${ic}"${noVs(ic) === noVs(v.icon) ? ' class="on"' : ''}>${ic}</button>`).join('') + '</div>' +
       `<label>${escapeHtml(t('cf.name'))}<input id="${p}Name" maxlength="30" value="${escapeHtml(v.name)}" placeholder="${escapeHtml(t('cf.namePh'))}" autocomplete="off"></label>` +
       `<label>${escapeHtml(t('cf.blurb'))}<input id="${p}Blurb" maxlength="40" value="${escapeHtml(v.blurb)}" placeholder="${escapeHtml(t('cf.blurbPh'))}" autocomplete="off"></label>` +
-      `<h3>${escapeHtml(t('cf.group'))}</h3><div class="radio-list seg">` +
-      GROUPS.map((g) => `<label><input type="radio" name="${p}Group" value="${g.id}"${v.group === g.id ? ' checked' : ''}> ${escapeHtml(g.name)}</label>`).join('') + '</div>';
+      `<h3>${escapeHtml(t('cf.group'))}</h3>` +
+      `<button type="button" class="cf-group" data-grpsel="${p}"><span>${escapeHtml((GROUPS.find((g) => g.id === v.group) || { name: '' }).name)}</span><i>›</i></button>` +
+      `<input type="hidden" id="${p}Group" value="${escapeHtml(v.group || '')}">`;
     return info + `<label>${escapeHtml(t('cf.job'))}<textarea id="${p}Job" rows="${jobRows}" placeholder="${escapeHtml(t('cf.jobPh'))}">${escapeHtml(v.job || '')}</textarea></label>`;
   }
   // 양식에서 값을 읽는다 (아이콘은 눌려 있는 버튼, 묶음은 고른 칸)
@@ -901,7 +902,7 @@
       icon: on ? on.dataset.ic : null,
       name: root.querySelector(`#${p}Name`) ? root.querySelector(`#${p}Name`).value.trim() : null,
       blurb: root.querySelector(`#${p}Blurb`) ? root.querySelector(`#${p}Blurb`).value.trim() : null,
-      group: (root.querySelector(`input[name=${p}Group]:checked`) || {}).value || null,
+      group: (root.querySelector(`#${p}Group`) || {}).value || null,
       job: root.querySelector(`#${p}Job`).value,
     };
   }
@@ -1023,6 +1024,32 @@
   }
   const cfReady = () => { const b = $('cfMake'); if (b) b.disabled = !($('cfName').value.trim() && $('cfJob').value.trim()); };
   agentBody.addEventListener('input', (e) => { if (e.target.id === 'cfName' || e.target.id === 'cfJob') cfReady(); });
+  // 묶음 고르기: 양식의 "묶음" 줄을 누르면 아래에서 올라오는 시트로 고른다 (두 양식 공통)
+  const groupSheetEl = $('groupSheet');
+  let groupTarget = null; // 지금 고르는 양식의 숨은 칸
+  const closeGroupSheet = () => { groupSheetEl.classList.add('hidden'); groupTarget = null; };
+  function openGroupSheet(btn) {
+    const input = $(`${btn.dataset.grpsel}Group`);
+    if (!input) return;
+    groupTarget = { input, btn };
+    $('gpTitle').textContent = t('cf.group');
+    $('gpList').innerHTML = GROUPS.map((g) =>
+      `<button type="button" class="gp-item${g.id === input.value ? ' on' : ''}" data-gp="${g.id}"><i class="pick-icon">${g.icon}</i>` +
+      `<span><b>${escapeHtml(g.name)}</b><small>${escapeHtml(g.desc)}</small></span><em>${g.id === input.value ? '✅' : ''}</em></button>`).join('');
+    groupSheetEl.classList.remove('hidden');
+  }
+  groupSheetEl.addEventListener('click', (e) => {
+    const it = e.target.closest('[data-gp]');
+    if (it && groupTarget) {
+      const g = GROUPS.find((x) => x.id === it.dataset.gp);
+      groupTarget.input.value = g.id;
+      groupTarget.btn.querySelector('span').textContent = g.name;
+      groupTarget.input.dispatchEvent(new Event('change', { bubbles: true })); // 크루 설정 화면은 고르는 순간 저장된다
+      return closeGroupSheet();
+    }
+    if (e.target === groupSheetEl) closeGroupSheet();
+  });
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-grpsel]'); if (b) openGroupSheet(b); });
   // 아이콘 고르기: 두 양식(만들기·설정) 공통. 글 입력칸은 다시 그리지 않고 눌린 표시만 바꾼다
   function pickIcon(btn) {
     for (const b of btn.parentElement.querySelectorAll('[data-ic]')) b.classList.toggle('on', b === btn);
@@ -2025,6 +2052,7 @@
   // 감자 앱의 뒤로 가기 버튼: 열려 있는 창부터 하나씩 닫는다 (닫았으면 true). 위에 있는 창부터 확인
   window.gamjaBack = () => {
     if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
+    if (!groupSheetEl.classList.contains('hidden')) { closeGroupSheet(); return true; }
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
     for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['installPanel', 'installBack'], ['trashPanel', 'trashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {

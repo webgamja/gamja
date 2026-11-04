@@ -72,6 +72,7 @@
     yinyang: '<circle class="a" cx="12" cy="12" r="9"/><path d="M12 3a4.5 4.5 0 0 1 0 9 4.5 4.5 0 0 0 0 9"/><circle class="d" cx="12" cy="7.5" r=".9"/>',
     tarot: '<rect class="a" x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 8l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 14l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4z"/>',
     shield: '<path class="a" d="M12 3l7 3v5.5c0 4.4-3 7.8-7 9.5-4-1.7-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.6"/>',
+    phone: '<rect class="a" x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
     grad: '<path class="a" d="M2 9l10-5 10 5-10 5z"/><path d="M6 11.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-4.5M22 9v6"/>',
     rocket: '<path class="a" d="M12 3c3 2 4.5 5.5 4.5 9l-2 3h-5l-2-3c0-3.5 1.5-7 4.5-9z"/><circle cx="12" cy="10" r="1.5"/><path d="M9.5 15L7 19l3-1M14.5 15L17 19l-3-1"/>',
     coder: '<rect class="a" x="3" y="4" width="18" height="13" rx="2.5"/><path d="M10 8.5L7.5 10.5 10 12.5M14 8.5l2.5 2-2.5 2M2 20h20"/>',
@@ -90,7 +91,7 @@
     '🧑': 'person', '💼': 'suitcase', '👥': 'people', '🆕': 'spark', '🛠': 'wrench', '🔧': 'wrench', '🗑': 'trash',
     '🖼': 'image', '🔔': 'bell', '📜': 'doc', '🎲': 'dice', '🌙': 'moon', '☀': 'sun', '🌓': 'theme', '⬇': 'down',
     '❌': 'fail', '📝': 'pencil', '📖': 'book', '💻': 'laptop', '📂': 'folder', '🗒': 'note', '🔗': 'link', '⏹': 'stop', '☆': 'starline',
-    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'crystal', '🎓': 'grad', '🚀': 'rocket', '⭐': 'star', '🧑‍💻': 'coder', '🎴': 'tarot',
+    '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'crystal', '📲': 'phone', '📱': 'phone', '🎓': 'grad', '🚀': 'rocket', '⭐': 'star', '🧑‍💻': 'coder', '🎴': 'tarot',
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');
@@ -99,9 +100,9 @@
   const iconFor = (emoji) => (BY_EMOJI[clean(emoji).trim()] ? svg(BY_EMOJI[clean(emoji).trim()]) : null);
 
   // 안이 이모지 하나뿐인 곳 (버튼·로고·이름표)
-  const WHOLE = '.pick-icon, .home-ico, .login-logo, .welcome-logo, .avatar, .icon-btn, .cbtn, .send-btn, .to-bottom, .attach button, .speak-btn, .share-icon, .ver-btn, .av, .cl-av, .tab-acts button, .fr-av, .sheet-big, .cf-icons button, .cl-pen';
+  const WHOLE = '.pick-icon, .home-ico, .login-logo, .welcome-logo, .avatar, .icon-btn, .cbtn, .send-btn, .to-bottom, .attach button, .speak-btn, .share-icon, .ver-btn, .av, .cl-av, .tab-acts button, .fr-av, .sheet-big, .cf-icons button, .cl-pen, .gp-item em';
   // 글 사이에 이모지가 섞여 있는 곳. 채팅 말풍선(대화 내용)은 일부러 넣지 않는다
-  const INLINE = '.menu-item, .crew-btn, .made-btn, .settings-body h3, .settings-bar h2, .ui-title, .settings-note, .settings-row span, .share-check, ' +
+  const INLINE = '.menu-item, .crew-btn, .made-btn, .settings-body h3, .settings-bar h2, .ui-title, .settings-note, .settings-row span, .settings-row b, .share-check, ' +
     '.notice, .toast, .settings-ghost, .settings-save, .settings-danger, .home-add, .welcome-btn, .chip, .welcome h2, .welcome p, ' +
     '.tools summary, .tools div, .interim, .cl-mid b, .cl-mid small, .row.error .bubble, .voice-text, .fr-join, .sheet-main, .sheet-sub button, .sheet-chips button, .pick-card b, .pick-card small, .set-row b, .set-row small, .status, .voice-state, .resume-form button, .perm-card b, .perm-card small, .install-card b, .conn-bar span';
   const ALL = WHOLE + ', ' + INLINE;

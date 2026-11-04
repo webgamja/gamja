@@ -696,6 +696,17 @@ html, body { touch-action: pan-x pan-y; }
 /* 직접 만들기 화면: 아이콘 고르기 */
 .cf-icons { display: grid; grid-template-rows: repeat(2, 46px); grid-auto-flow: column; grid-auto-columns: 46px; gap: 6px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .cf-icons::-webkit-scrollbar { display: none; }
+.cf-group { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 14px; padding: 14px 16px; border: 0; border-radius: 14px; background: var(--ui-card); color: var(--ui-text); font: inherit; font-size: 15px; text-align: left; }
+.cf-group i { font-style: normal; color: var(--ui-sub); }
+.gp-list { margin-top: 12px; text-align: left; }
+.gp-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 6px; border: 0; border-bottom: 1px solid var(--ui-line); background: none; color: var(--ui-text); font: inherit; text-align: left; }
+.gp-item:last-child { border-bottom: 0; }
+.gp-item span { flex: 1; min-width: 0; }
+.gp-item b { display: block; font-size: 15px; }
+.gp-item small { display: block; margin-top: 2px; color: var(--ui-sub); font-size: 12px; }
+.gp-item em { flex: none; width: 24px; font-style: normal; }
+.gp-item em .gi-s { width: 22px; height: 22px; }
+.gp-item.on b { color: var(--ui-text); }
 .cf-icons button { width: 46px; height: 46px; display: grid; place-items: center; padding: 0; border: 2px solid transparent; border-radius: 12px; background: var(--ui-card); font-size: 20px; }
 .cf-icons button .gi-s { width: 24px; height: 24px; }
 .cf-icons button.on { border-color: var(--me); background: color-mix(in srgb, var(--me) 20%, var(--ui-card)); }
@@ -925,7 +936,7 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .vp-rate button.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
 .vp-sub { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--gs-sub); }
 /* 켜고 끄는 스위치 (더보기 > 자동 업데이트) */
-.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.settings-body .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
 .switch-row > span { flex: 1; min-width: 0; }
 .switch-row small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; opacity: .65; }
 input.switch { flex: none; appearance: none; -webkit-appearance: none; position: relative; width: 50px; height: 30px; margin: 0; border-radius: 15px; background: #c9ced6; transition: background .2s; cursor: pointer; }
