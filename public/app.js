@@ -1612,7 +1612,6 @@
     $('infoAppRow').classList.toggle('hidden', !window.GamjaApp);
     // 감자알 로그는 일반 사용자에게 필요 없어서 숨겨 둔다. 나중에 프로(개발자) 모드를 켰을 때만 보여 준다 (앱에서만)
     proUi = !!d.info.pro; // 개발자 모드 (Termux 설치 명령 등을 보여 줄지)
-    $('appLog').classList.toggle('hidden', !(window.GamjaApp && d.info.pro));
     $('installRowTitle').textContent = window.GAMJA_I18N.t('install.row');
     $('installRowSub').textContent = window.GAMJA_I18N.t('install.rowSub');
     $('permRowTitle').textContent = window.GAMJA_I18N.t('perm.rowTitle');
@@ -1639,7 +1638,11 @@
       : d.context === 0 ? '방금 압축했어요'
         : `약 ${Math.round(d.context / 1000)}천 토큰${limit ? ` (압축 시점의 ${Math.min(100, Math.round(d.context / limit * 100))}%)` : ''}`;
     $('infoGamja').textContent = d.info.build ? `0.1.${d.info.build}` : `v${d.info.gamjaVersion} (개발용)`;
-    $('infoAutoUpdate').textContent = d.info.build ? '켜짐 (3시간마다 확인)' : '꺼짐 (개발용)';
+    // 자동 업데이트 스위치: 개발용 감자알(빌드 번호 없음)은 원래 자동 업데이트가 없어서 끈 채로 잠가 둔다
+    const auto = $('autoUpdateToggle');
+    auto.disabled = !d.info.build;
+    auto.checked = !!d.info.build && d.settings.autoUpdate !== false;
+    setAutoUpdateNote(!!d.info.build, auto.checked);
     $('eggUpdate').onclick = async () => {
       const btn = $('eggUpdate');
       btn.disabled = true;
@@ -2009,7 +2012,7 @@
 
   // 감자 앱 기능 (앱 안에서만): 앱이 안드로이드 화면을 띄워 준다
   for (const [id, fn] of [['appUpdate', 'checkUpdate'], ['appLogin', 'openLogin'],
-    ['appBattery', 'batterySettings'], ['appLog', 'showLog'], ['appLicense', 'showLicenses']]) {
+    ['appBattery', 'batterySettings'], ['appLicense', 'showLicenses']]) {
     $(id).onclick = () => {
       try { window.GamjaApp[fn](); } catch { toast('감자 앱에서만 쓸 수 있어요'); }
       if (id === 'appUpdate') { // 업데이트 확인 버튼은 연달아 눌리지 않게 1초 동안 쉰다
@@ -2454,7 +2457,16 @@
     try { await navigator.clipboard.writeText(command); copied = true; } catch {}
     gCopy('다른 폰에 감자 설치', command, `${copied ? '명령을 복사했어요. ' : ''}새 폰에서 Termux를 열고 이 명령을 붙여 넣으세요. (30분 동안 유효, 두 폰이 같은 와이파이에 있어야 해요)`);
   };
-  $('rollbackBtn').onclick = () => adminAction('/api/admin/rollback', window.GAMJA_I18N.t('admin.rollbackTitle'), window.GAMJA_I18N.t('admin.rollbackMsg'), window.GAMJA_I18N.t('admin.rollbackOk'));
+  function setAutoUpdateNote(isRelease, on) {
+    const T = window.GAMJA_I18N.t;
+    $('autoUpdateNote').textContent = T(!isRelease ? 'update.autoDev' : on ? 'update.autoOn' : 'update.autoOff');
+  }
+  $('autoUpdateToggle').onchange = async () => {
+    const box = $('autoUpdateToggle');
+    const on = box.checked;
+    try { await api('/api/auto-update', { on }); setAutoUpdateNote(true, on); }
+    catch (err) { box.checked = !on; alert(err.message); }
+  };
   // ---------- 화면비율 (⋯ 메뉴): 크롬의 확대·축소 줄처럼 [−] 100% [＋] ----------
   function renderZoomRow() {
     const T = window.GAMJA_I18N.t;

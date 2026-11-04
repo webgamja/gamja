@@ -602,7 +602,7 @@ function startAutoUpdate() {
   if (!SUPERVISED || !fs.existsSync(BUILD_FILE)) return;
   const tick = async () => {
     let wait = 3 * 3600 * 1000; // 켤 때 한 번(2분 뒤), 이후 3시간마다
-    try { if ((await updateOnce()) === 'busy') wait = 10 * 60 * 1000; }
+    try { if (settings.autoUpdate !== false && (await updateOnce()) === 'busy') wait = 10 * 60 * 1000; }
     catch (e) { console.error('자동 업데이트 실패:', e.message); wait = 3600 * 1000; }
     setTimeout(tick, wait).unref();
   };
@@ -2167,6 +2167,13 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/github/disconnect' && req.method === 'POST') {
         gh = null; ghDevice = null; saveGh(); // 폰에 저장한 열쇠를 지운다. GitHub 쪽 승인 취소는 github.com/settings/applications 에서
         return send(res, 200, { ok: true });
+      }
+      if (p === '/api/auto-update' && req.method === 'POST') {
+        // 자동 업데이트 켜기·끄기 (끄면 3시간마다 하는 확인만 멈추고, 🔄로 직접 확인하는 것은 그대로 된다)
+        const b = await readBody(req);
+        settings = { ...settings, autoUpdate: !!b.on };
+        saveSettings();
+        return send(res, 200, { ok: true, autoUpdate: settings.autoUpdate });
       }
       if (p === '/api/update-check' && req.method === 'POST') {
         // 🔄 감자알 업데이트 지금 확인: 3시간을 기다리지 않고 바로 확인하고, 새 버전이 있으면 받아서 재시작한다

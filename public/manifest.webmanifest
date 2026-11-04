@@ -1,8 +1,12 @@
 {
-  "name": "GAMJA",
-  "short_name": "GAMJA",
+  "name": "감자",
+  "short_name": "감자",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1c1c1e",
-  "theme_color": "#1c1c1e"
+  "background_color": "#FEE500",
+  "theme_color": "#1c1c1e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }

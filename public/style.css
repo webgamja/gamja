@@ -925,3 +925,12 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .vp-rate button { flex: 1; height: 40px; border: 0; border-radius: 10px; background: var(--gs-line); color: var(--gs-text); font: inherit; font-size: 14px; font-weight: 700; }
 .vp-rate button.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
 .vp-sub { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--gs-sub); }
+/* 켜고 끄는 스위치 (더보기 > 자동 업데이트) */
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.switch-row > span { flex: 1; min-width: 0; }
+.switch-row small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; opacity: .65; }
+input.switch { flex: none; appearance: none; -webkit-appearance: none; position: relative; width: 50px; height: 30px; margin: 0; border-radius: 15px; background: #c9ced6; transition: background .2s; cursor: pointer; }
+input.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
+input.switch:checked { background: #fee500; }
+input.switch:checked::after { transform: translateX(20px); }
+input.switch:disabled { opacity: .5; cursor: default; }
