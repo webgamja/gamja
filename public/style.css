@@ -900,15 +900,16 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .reading-now { background: rgba(254, 229, 0, .38); border-radius: 6px; box-shadow: 0 0 0 3px rgba(254, 229, 0, .38); transition: background .2s; }
 
 /* 읽어주는 중 한 줄 박스 */
-.reader-bar { display: flex; align-items: center; justify-content: center; gap: 2px; width: fit-content; max-width: calc(100% - 20px); margin: 5px auto 0; padding: 3px 8px; border-radius: 999px; background: var(--ui-card, #fff); color: var(--ui-text, #191f28); box-shadow: 0 1px 6px rgba(0,0,0,.16); }
+.reader-bar { display: flex; align-items: center; justify-content: center; gap: 2px; width: fit-content; max-width: calc(100% - 20px); margin: 5px auto 0; padding: 3px 8px; border-radius: 999px; background: #fee500; color: #191919; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
 .reader-bar.hidden { display: none; }
 .rd-btn { flex: none; min-width: 34px; height: 34px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 800; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 .rd-btn:active { filter: brightness(.9); }
-.rd-play { background: var(--me, #fee500); color: var(--me-fg, #191919); font-size: 16px; }
-.rd-boost { background: rgba(127,127,127,.16); min-width: 44px; height: 28px; margin: 0 4px; font-size: 13px; }
-.rd-boost.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
-.rd-x { color: var(--muted, #8b95a1); }
-.rd-seek { flex: 1; min-width: 0; height: 28px; margin: 0 4px; accent-color: var(--me-fg, #191919); }
+.rd-play { background: #191919; color: #fee500; min-width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.rd-skip { display: inline-flex; align-items: center; justify-content: center; }
+.rd-btn svg { display: block; pointer-events: none; }
+.rd-boost { background: rgba(25,25,25,.12); min-width: 44px; height: 28px; margin: 0 4px; font-size: 13px; }
+.rd-boost.on { background: #191919; color: #fee500; }
+.rd-x { color: #191919; min-width: 30px; height: 30px; padding: 0; background: rgba(25,25,25,.12); font-size: 13px; }
 
 /* 읽어주는 목소리 고르기 (아래에서 올라오는 시트 안의 목록) */
 .vp-list { max-height: 46vh; overflow-y: auto; margin: 0 -6px 12px; padding: 0 6px; -webkit-overflow-scrolling: touch; }

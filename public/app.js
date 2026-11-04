@@ -3332,7 +3332,10 @@
     readerMark();
     if (!on) return;
     const T = window.GAMJA_I18N.t;
-    $('readerPlay').textContent = reader.paused ? '▶' : '⏸';
+    // 글자 ⏸·▶는 폰마다 그림 이모지로 보여서 모양이 달라지므로 직접 그린 아이콘을 쓴다
+    $('readerPlay').innerHTML = reader.paused
+      ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 4.5 L19 12 L8 19.5 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="6" y="4.5" width="4.4" height="15" rx="1.2" fill="currentColor"/><rect x="13.6" y="4.5" width="4.4" height="15" rx="1.2" fill="currentColor"/></svg>';
     $('readerPlay').setAttribute('aria-label', T(reader.paused ? 'reader.resume' : 'reader.pause'));
     $('readerBoost').classList.toggle('on', reader.boost);
   }
