@@ -149,10 +149,13 @@ function uploadDir(cwd) {
 }
 const isUploadName = (n) => typeof n === 'string' && /^\d+-[a-z0-9]+\.(jpg|png|webp|gif)$/.test(n);
 
+// 감자 톡톡(크루가 아닌 기본 대화)이 만든 결과물을 모아 두는 폴더. 크루 목록에는 나오지 않는다
+const TALK_DIR_NAME = 'gamjaTT';
+const TALK_DIR = path.join(PROJECTS_DIR, TALK_DIR_NAME);
 function listProjects() {
   try {
     return fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== TALK_DIR_NAME)
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b));
   } catch {
@@ -892,7 +895,7 @@ function handleChat(req, res, body, opts = {}) {
   // 생각 깊이: 음성 대화는 빨리 답해야 하므로 항상 low. 그 외에는 프로젝트 설정 → 전체 설정 순
   const effort = body.voice === true && !opts.label ? 'low' : (projectConf[crewOf(project)]?.effort || settings.effort);
   if (effort) args.push('--effort', effort);
-  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT].filter(Boolean).join('\n');
+  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT, crewOf(project) === '' ? TALK_PROMPT : ''].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
@@ -1375,7 +1378,7 @@ function servePreview(req, res, urlPath) {
   } catch { return send(res, 400, 'bad request'); }
   const notFound = () => send(res, 404, '찾을 수 없어요');
   if (!project || !verifyPreviewToken(segs[0], project)) return send(res, 403, '주소가 만료됐어요. 감자에서 "👀 결과물"을 다시 열어 주세요.');
-  const dir = resolveProject(project);
+  const dir = project === TALK_DIR_NAME ? TALK_DIR : resolveProject(project);
   if (!dir) return notFound();
   // 점(.)으로 시작하는 파일·폴더(.git, .gamja-uploads 등)와 상위 폴더 이동은 막는다
   if (rel.some((s) => s === '..' || s.startsWith('.') || s.includes('\0'))) return notFound();
@@ -1581,6 +1584,8 @@ function permRulesFor(crew) {
   permOnce.delete(crew);
   return [...(perms[crew] || []).map((x) => x.rule), ...(once && once.until > Date.now() ? once.rules : [])];
 }
+// 감자 톡톡은 ~/projects 전체가 작업 위치라서, 만든 파일이 여기저기 흩어지지 않게 한 폴더로 모은다
+const TALK_PROMPT = `지금은 특정 크루가 아닌 감자 톡톡 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
 const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요.';
 
 // 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
@@ -1698,8 +1703,10 @@ const server = http.createServer(async (req, res) => {
       if (!isAuthed(req)) return send(res, 401, { error: '로그인이 필요합니다' });
       if (p === '/api/preview-files' && req.method === 'GET') {
         const project = url.searchParams.get('project') || '';
-        const dir = project && resolveProject(project);
-        const crew = crewOf(project); // 결과물은 채팅방이 아니라 크루 폴더에 있다
+        const talk = crewOf(project) === ''; // 감자 톡톡: 결과물 전용 폴더(gamjaTT)
+        if (talk) fs.mkdirSync(TALK_DIR, { recursive: true });
+        const dir = talk ? TALK_DIR : resolveProject(project);
+        const crew = talk ? TALK_DIR_NAME : crewOf(project); // 결과물은 채팅방이 아니라 크루 폴더에 있다
         if (!dir || !crew) return send(res, 400, { error: '크루 방에서 열어 주세요' });
         return send(res, 200, { project: crew, files: listResults(dir), token: makePreviewToken(crew), lan: lanOrigins() });
       }

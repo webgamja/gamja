@@ -362,7 +362,7 @@
   function updateHomeBtn() {
     const members = roomMembers(project);
     $('homeBtn').textContent = `← ${crewParts(members.length > 1 ? members[0] : project).icon} ${roomText(project)}`; // ←를 누르면 채팅 목록으로
-    $('madeBtn').classList.toggle('hidden', !project || isGone(project)); // 결과물은 크루 방에서만
+    $('madeBtn').classList.toggle('hidden', isGone(project)); // 감자 톡톡도 결과물 폴더(gamjaTT)가 있다
     applyGone();
   }
   // 채팅방의 참여자(크루) 목록. 채팅 목록에서 받아 온 정보를 쓰고, 아직 모르면 그 방의 크루 한 명으로 본다
@@ -779,7 +779,6 @@
   const OFFICE_EXT = ['.docx', '.xlsx', '.pptx'];
   async function openMade() {
     els.menu.classList.add('hidden');
-    if (!crewOf(project)) return alert('크루 방에서 열어 주세요. 아래 메뉴의 크루 탭에서 크루를 고르거나 ＋로 만들 수 있어요.');
     let d;
     try { d = await api('/api/preview-files' + q()); } catch (err) { return alert(err.message); }
     // 다른 기기에서 열 주소: 이 폰 안(127.0.0.1)에서 보고 있으면 같은 와이파이 주소를 알려 준다
@@ -885,14 +884,14 @@
   // v = { icon, name, blurb, group, job }. withInfo=false면 아이콘·이름·소개·묶음은 빼고 맡은 일만 (감자 톡톡 등)
   const noVs = (s) => String(s).replace(/️/g, '');
   function crewFormHtml(p, v, { withInfo = true, jobRows = 4 } = {}) {
-    const icons = CUSTOM_ICONS.some((ic) => noVs(ic) === noVs(v.icon)) ? CUSTOM_ICONS : [v.icon, ...CUSTOM_ICONS];
+    const icons = !v.icon || CUSTOM_ICONS.some((ic) => noVs(ic) === noVs(v.icon)) ? CUSTOM_ICONS : [v.icon, ...CUSTOM_ICONS];
     const info = !withInfo ? '' :
       `<h3>${escapeHtml(t('cf.icon'))}</h3><div class="cf-icons">` +
       icons.map((ic) => `<button type="button" data-ic="${ic}"${noVs(ic) === noVs(v.icon) ? ' class="on"' : ''}>${ic}</button>`).join('') + '</div>' +
       `<label>${escapeHtml(t('cf.name'))}<input id="${p}Name" maxlength="30" value="${escapeHtml(v.name)}" placeholder="${escapeHtml(t('cf.namePh'))}" autocomplete="off"></label>` +
       `<label>${escapeHtml(t('cf.blurb'))}<input id="${p}Blurb" maxlength="40" value="${escapeHtml(v.blurb)}" placeholder="${escapeHtml(t('cf.blurbPh'))}" autocomplete="off"></label>` +
       `<h3>${escapeHtml(t('cf.group'))}</h3>` +
-      `<button type="button" class="cf-group" data-grpsel="${p}"><span>${escapeHtml((GROUPS.find((g) => g.id === v.group) || { name: '' }).name)}</span><i>›</i></button>` +
+      `<button type="button" class="cf-group" data-grpsel="${p}"><span>${escapeHtml((GROUPS.find((g) => g.id === v.group) || { name: t('cf.groupPick') }).name)}</span><i>›</i></button>` +
       `<input type="hidden" id="${p}Group" value="${escapeHtml(v.group || '')}">`;
     return info + `<label>${escapeHtml(t('cf.job'))}<textarea id="${p}Job" rows="${jobRows}" placeholder="${escapeHtml(t('cf.jobPh'))}">${escapeHtml(v.job || '')}</textarea></label>`;
   }
@@ -911,7 +910,7 @@
     if (agentView === '__custom') {
       $('agentTitle').textContent = t('cf.title');
       agentBody.innerHTML = `<p class="settings-note">${escapeHtml(t('cf.intro'))}</p>` +
-        crewFormHtml('cf', { icon: customIcon, name: '', blurb: '', group: 'personal', job: '' }) +
+        crewFormHtml('cf', { icon: '', name: '', blurb: '', group: '', job: '' }) + // 아이콘·묶음은 직접 고르게 비워 둔다
         `<button id="cfMake" class="settings-save" type="button" disabled>${escapeHtml(t('cf.make'))}</button>`;
       agentBody.scrollTop = 0;
       return;
@@ -1022,8 +1021,13 @@
       meta: { name, icon: customIcon, blurb, group, examples: [] },
     });
   }
-  const cfReady = () => { const b = $('cfMake'); if (b) b.disabled = !($('cfName').value.trim() && $('cfJob').value.trim()); };
+  // 이름·맡은 일을 적고 아이콘·묶음을 골라야 만들 수 있다
+  const cfReady = () => {
+    const b = $('cfMake');
+    if (b) b.disabled = !($('cfName').value.trim() && $('cfJob').value.trim() && agentBody.querySelector('.cf-icons .on') && $('cfGroup').value);
+  };
   agentBody.addEventListener('input', (e) => { if (e.target.id === 'cfName' || e.target.id === 'cfJob') cfReady(); });
+  agentBody.addEventListener('change', (e) => { if (e.target.id === 'cfGroup') cfReady(); });
   // 묶음 고르기: 양식의 "묶음" 줄을 누르면 아래에서 올라오는 시트로 고른다 (두 양식 공통)
   const groupSheetEl = $('groupSheet');
   let groupTarget = null; // 지금 고르는 양식의 숨은 칸
@@ -1203,7 +1207,7 @@
     }
     if (btn && btn.id === 'crewAdd') return addCrew();
     if (btn && btn.id === 'cfMake') return createCustomAgent();
-    if (btn && btn.dataset.ic) return pickIcon(btn);
+    if (btn && btn.dataset.ic) { pickIcon(btn); return cfReady(); }
     if (btn && btn.id === 'crewCancel') { pendingCrew = null; agentView = null; return renderAgents(); }
     // 직접 만들기·코드로 가져오기 (크루 탭과 같은 모양의 버튼)
     if (btn && btn.dataset.custom) { customIcon = '🙋'; agentView = '__custom'; return renderAgents(); }
