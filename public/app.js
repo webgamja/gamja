@@ -1012,12 +1012,8 @@
     const blurb = f.blurb || job.replace(/\s+/g, ' ').slice(0, 40);
     const group = f.group || 'personal';
     customIcon = f.icon || customIcon;
-    const existing = new Set(projectList);
-    const base = folderFromName(name);
-    let folder = base;
-    for (let n = 2; existing.has(folder); n++) folder = `${base}-${n}`; // 같은 이름이 있으면 새 이름으로
     return createAgent({
-      folder, instructions: customInstructions(name, job), tpl: 'custom',
+      folder: newCrewFolder(), instructions: customInstructions(name, job), tpl: 'custom',
       meta: { name, icon: customIcon, blurb, group, examples: [] },
     });
   }
@@ -1104,18 +1100,23 @@
     const low = c.instructions.toLowerCase();
     return { terms: WATCH_TERMS.filter((t) => low.includes(t)), hidden: c.hiddenRemoved };
   }
-  const folderFromName = (name) => name.replace(/[^\w가-힣-]+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36) || 'crew';
+  // 새 크루의 폴더 이름: 크루 이름과 상관없는 고유 아이디(crew-a1b2c3). 화면에 보이는 이름은 감자알의 크루 정보에 따로 저장된다
+  function newCrewFolder() {
+    const existing = new Set(projectList.map((n) => n.toLowerCase()));
+    const chars = 'abcdefghjkmnpqrstuvwxyz23456789'; // 헷갈리는 글자(0 o 1 l i)는 뺀다
+    for (;;) {
+      let id = 'crew-';
+      for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
+      if (!existing.has(id)) return id;
+    }
+  }
   async function addCrew() {
     const c = pendingCrew;
     if (!c) return;
     if (runId) return alert('응답이 끝난 뒤에 크루를 추가할 수 있어요.');
-    const existing = new Set(projectList);
-    const base = folderFromName(c.name);
-    let folder = base;
-    for (let n = 2; existing.has(folder); n++) folder = `${base}-${n}`; // 같은 이름이 있으면 새 이름으로 (기존 크루를 덮어쓰지 않는다)
     pendingCrew = null;
     await createAgent({
-      folder, instructions: c.instructions, tpl: 'crew',
+      folder: newCrewFolder(), instructions: c.instructions, tpl: 'crew',
       meta: { name: c.name, icon: c.icon, blurb: c.blurb, author: c.author, examples: c.examples },
     });
   }

@@ -164,6 +164,7 @@ function listProjects() {
 }
 // ---------- 프로젝트 관리 (만들기·이름 바꾸기·삭제·프로젝트별 설정) ----------
 const isProjectName = (n) => typeof n === 'string' && /^[\w가-힣-]{1,40}$/.test(n) && !n.startsWith('-');
+const isReservedCrewName = (n) => String(n).toLowerCase() === 'gamjatt'; // 감자 톡톡 결과물 폴더 이름(gamjaTT)은 크루 폴더로 쓸 수 없다
 // GAMJA 자신이 들어 있는 폴더는 이름 바꾸기·삭제 금지 (지금 돌고 있는 서버가 망가짐)
 const holdsApp = (dir) => __dirname === dir || __dirname.startsWith(dir + path.sep);
 function projectConfFile() { return path.join(DATA_DIR, 'projects.json'); }
@@ -286,6 +287,9 @@ function saveConv(project) {
   const conv = loadConv(project);
   if (conv.messages.length > MAX_MESSAGES) conv.messages = conv.messages.slice(-MAX_MESSAGES);
   conv.updatedAt = Date.now();
+  // 이 방이 어느 크루의 방인지 대화 파일에 적어 둔다 (기록용. 지금은 방 아이디에서 읽고, 나중에 방 아이디를 크루와 분리할 때 쓴다)
+  const ownerCrew = crewOf(project);
+  if (ownerCrew && !conv.crew) conv.crew = ownerCrew;
   try {
     fs.mkdirSync(CONV_DIR, { recursive: true });
     const file = convFile(project);
@@ -1878,6 +1882,7 @@ const server = http.createServer(async (req, res) => {
         if (!isProjectName(crew)) return send(res, 400, { error: '크루 이름을 알 수 없어요.' });
         const newName = b.newName === undefined || String(b.newName) === '' ? crew : String(b.newName);
         if (!isProjectName(newName)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
+        if (isReservedCrewName(newName)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
         const trashDir = path.join(PROJECTS_DIR, '.trash', `${crew}_${stamp}`);
         const dest = path.join(PROJECTS_DIR, newName);
         if (fs.existsSync(dest)) return send(res, 409, { error: `같은 이름('${newName}')의 크루가 이미 있어요.` });
@@ -2018,6 +2023,7 @@ const server = http.createServer(async (req, res) => {
         // 새 프로젝트 만들기
         const { name } = await readBody(req);
         if (!isProjectName(name)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
+        if (isReservedCrewName(name)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
         const dir = path.join(PROJECTS_DIR, name);
         if (fs.existsSync(dir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
         fs.mkdirSync(dir, { recursive: true });
@@ -2067,6 +2073,7 @@ const server = http.createServer(async (req, res) => {
         if (p === '/api/projects/rename') {
           const newName = String(b.newName || '');
           if (!isProjectName(newName)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
+          if (isReservedCrewName(newName)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
           const newDir = path.join(PROJECTS_DIR, newName);
           if (fs.existsSync(newDir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
           fs.renameSync(dir, newDir);
