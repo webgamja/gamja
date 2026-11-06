@@ -351,7 +351,20 @@
   // 이름 끝의 "크루"는 화면에서 뺀다 (너무 크루크루 하지 않게). 가져온 크루의 옛 이름에도 똑같이 적용한다
   const stripCrew = (s) => String(s || '').replace(/\s*크루$/, '');
   // 목록에 보이는 이름: 템플릿·가져온 크루는 "🍽️ 메뉴판·가격표", 직접 만든 폴더는 "📁 폴더이름"
-  const crewOf = (n) => String(n || '').split('@')[0]; // 채팅방 번호("크루@번호")에서 크루 이름만. 첫 방은 크루 이름 그대로
+  // 방이 어느 크루의 방인지. 옛 방("크루@번호")은 아이디 앞부분이 크루이고, 새 방("@번호")은 감자알이 알려 준 값을 이 기기에 기억해 둔다. 첫 방은 크루 이름 그대로
+  let roomCrews = {};
+  try { roomCrews = JSON.parse(localStorage.getItem('cc:roomCrew') || '{}') || {}; } catch { roomCrews = {}; }
+  const rememberRoomCrew = (room, crew) => {
+    if (roomCrews[room] === crew) return;
+    roomCrews[room] = crew;
+    try { localStorage.setItem('cc:roomCrew', JSON.stringify(roomCrews)); } catch {}
+  };
+  const crewOf = (n) => {
+    const s = String(n || '');
+    const at = s.indexOf('@');
+    if (at < 0) return s;
+    return at > 0 ? s.slice(0, at) : (roomCrews[s] || '');
+  };
   function crewLabel(room) {
     const p = crewOf(room);
     const meta = store.get(`cc:crew:${p}`, null) || window.GAMJA_TEMPLATES.AGENTS.find((a) => a.id === store.get(`cc:tpl:${p}`, ''));
@@ -593,6 +606,7 @@
     let d;
     try { d = await api('/api/chats'); } catch { return; }
     chats = d.chats || [];
+    for (const c of chats) if (c.name.startsWith('@')) rememberRoomCrew(c.name, c.crew || ''); // 새 방이 속한 크루
     // 처음 보는 크루는 지금까지의 답을 모두 읽은 것으로 시작한다 (처음부터 안 읽음이 쌓여 보이지 않게)
     // 크루 이름·★·채팅방 이름·고정·순서도 기기마다 달라지지 않게 감자알의 것을 받아 오고, 이 기기에서 바꾼 것은 올린다
     const uiChanged = uiApply(d.ui);
@@ -663,7 +677,16 @@
   }
   // 채팅방 이름: 직접 정한 이름이 있으면 그것, 없으면 크루 이름 (이 기기에 저장)
   const getRoomTitles = () => store.get('cc:roomTitle', {});
-  const roomText = (n) => { const t = getRoomTitles(); return t[n] || (isGone(n) && t[goneName(n)]) || crewParts(n).text; }; // 삭제된 크루의 방은 지워지기 전 방 번호로 정해 둔 이름도 찾는다
+  const roomText = (n) => {
+    const t = getRoomTitles();
+    if (t[n]) return t[n];
+    if (isGone(n)) { // 삭제된 크루의 방: 지워지기 전 방 번호로 정해 둔 이름을 찾는다 (새 방은 "@번호"로 정해 뒀다)
+      const g = goneName(n);
+      const at = g.indexOf('@');
+      if (t[g] || (at > 0 && t[g.slice(at)])) return t[g] || t[g.slice(at)];
+    }
+    return crewParts(n).text;
+  }; // 삭제된 크루의 방은 지워지기 전 방 번호로 정해 둔 이름도 찾는다
   // 방을 목록에서 지울 때 같이 비우는 이 기기의 기록: 만들어진 시각, 쓰던 글, 정해 둔 이름
   function forgetRoom(name) {
     const made = store.get('cc:roomMade', {}); delete made[name]; store.set('cc:roomMade', made);
@@ -1874,6 +1897,7 @@
     if (!ROOM_CREATE_ENABLED || !crews.length) return;
     let r;
     try { r = await api('/api/rooms', { crews }); } catch (err) { return alert(err.message); }
+    if (r.room.startsWith('@')) rememberRoomCrew(r.room, crews.length === 1 ? crews[0] : '');
     const d = new Date();
     const pad = (x) => String(x).padStart(2, '0');
     const titles = getRoomTitles();

@@ -184,12 +184,22 @@ const ROOM_SUFFIX = /^[a-z0-9]{3,8}$/;
 // 그룹 채팅(handleGroupChat·참여자 초대)은 다 만들어 뒀지만 고도화 전이라 막아 둔다. 열 때 true로 (화면 쪽 app.js의 GROUP_CHAT_ENABLED도 같이)
 const GROUP_CHAT_ENABLED = false;
 const MAX_ROOM_MEMBERS = 4; // 한 채팅방의 참여자 수 한도 (크루마다 Claude를 한 번씩 부르므로 사용량과 폰 부담 때문에 4명까지)
-const crewOf = (rid) => String(rid || '').split('@')[0];
+// 방이 어느 크루의 방인지. 옛 방은 아이디 앞부분("크루@번호")이 크루이고, 새 방("@번호")은 대화 파일의 crew 기록을 따른다.
+// 크루 칸이 비어 있는 방은 크루가 없다(감자 톡톡·그룹 방)
+function crewOf(rid) {
+  const s = String(rid || '');
+  const at = s.indexOf('@');
+  if (at < 0) return s;
+  if (at > 0) return s.slice(0, at);
+  if (!ROOM_SUFFIX.test(s.slice(1)) || !fs.existsSync(convFile(s))) return '';
+  const c = loadConv(s).crew;
+  return typeof c === 'string' ? c : '';
+}
 function resolveProject(name) {
   const s = String(name || '');
   const at = s.indexOf('@');
   if (at >= 0 && !ROOM_SUFFIX.test(s.slice(at + 1))) return null;
-  const crew = at >= 0 ? s.slice(0, at) : s;
+  const crew = crewOf(s);
   if (!crew) return PROJECTS_DIR;
   if (!listProjects().includes(crew)) return null;
   return path.join(PROJECTS_DIR, crew);
@@ -200,11 +210,19 @@ const resolveCrew = (name) => (String(name || '').includes('@') ? null : resolve
 function roomFilesOf(crew) {
   const out = [];
   if (fs.existsSync(convFile(crew))) out.push({ rid: crew, file: convFile(crew) });
-  const prefix = `p_${encodeURIComponent(crew)}%40`;
+  const oldPrefix = `p_${encodeURIComponent(crew)}%40`; // 옛 방: 크루@번호
+  const newPrefix = 'p_%40'; // 새 방: @번호 (어느 크루의 방인지는 대화 파일 안에 있다). 크루가 ''이면 크루 없는 방(그룹 방)
   try {
     for (const f of fs.readdirSync(CONV_DIR)) {
-      const code = f.startsWith(prefix) && f.endsWith('.json') ? f.slice(prefix.length, -5) : '';
-      if (ROOM_SUFFIX.test(code)) out.push({ rid: `${crew}@${code}`, file: path.join(CONV_DIR, f) });
+      if (!f.endsWith('.json')) continue;
+      if (crew && f.startsWith(oldPrefix)) {
+        const code = f.slice(oldPrefix.length, -5);
+        if (ROOM_SUFFIX.test(code)) out.push({ rid: `${crew}@${code}`, file: path.join(CONV_DIR, f) });
+      } else if (f.startsWith(newPrefix)) {
+        const code = f.slice(newPrefix.length, -5);
+        const rid = `@${code}`;
+        if (ROOM_SUFFIX.test(code) && crewOf(rid) === crew) out.push({ rid, file: path.join(CONV_DIR, f) });
+      }
     }
   } catch { /* 대화 폴더가 아직 없으면 방도 없다 */ }
   return out;
@@ -272,6 +290,7 @@ const ARCHIVE_DIR = path.join(CONV_DIR, 'archive'); // 크루를 지워도 남�
 const MAX_MESSAGES = 500;
 const ROLES = new Set(['user', 'bot', 'error', 'notice']);
 const convCache = new Map(); // project -> conv
+const archiveChatCache = new Map(); // 삭제된 크루의 보관 대화 파일 -> 채팅 목록에 보일 요약 (파일이 바뀌면 다시 읽는다)
 
 function convFile(project) {
   return path.join(CONV_DIR, (project ? 'p_' + encodeURIComponent(project) : '_root') + '.json');
@@ -1738,6 +1757,7 @@ const server = http.createServer(async (req, res) => {
           return {
             name,
             extra: name.includes('@'), // 크루의 첫 방이 아닌 방 (만들어진 순간부터 목록에 보인다)
+            crew: crewOf(name), // 이 방이 속한 크루 (새 방 "@번호"는 아이디에서 알 수 없어 알려 준다)
             members: Array.isArray(conv.participants) && conv.participants.length ? conv.participants : [crewOf(name)], // 참여자(크루) 목록
             ts: last ? last.ts : 0,
             last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null,
@@ -1746,7 +1766,35 @@ const server = http.createServer(async (req, res) => {
             botTs: conv.messages.filter((m) => m.role === 'bot' && m.ts).slice(-9).map((m) => m.ts),
           };
         });
-        // 삭제한 크루는 채팅 목록에 방으로 남기지 않는다. 크루 탭의 "삭제한 크루 복구하기"(/api/trash)에서 복구하거나 완전히 지운다
+        // 삭제된 크루의 남은 대화: 방은 그대로 목록에 남고 읽기만 된다. 대화가 한 번도 없던 크루(빈 보관 파일)와 휴지통 폴더가 없어진 크루는 방으로 만들지 않는다
+        // 크루 탭의 "삭제한 크루 복구하기"(/api/trash)에서도 복구하거나 완전히 지울 수 있다
+        try {
+          for (const f of fs.readdirSync(ARCHIVE_DIR)) {
+            const m = /^(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)__(.+)\.json$/.exec(f);
+            if (!m) continue;
+            let rid;
+            try { rid = decodeURIComponent(m[2]); } catch { continue; }
+            const crew = crewOf(rid);
+            if (!crew || !fs.existsSync(path.join(PROJECTS_DIR, '.trash', `${crew}_${m[1]}`))) continue;
+            const file = path.join(ARCHIVE_DIR, f);
+            let mtime = 0;
+            try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
+            let entry = archiveChatCache.get(f);
+            if (!entry || entry.mtime !== mtime) { // 보관 파일은 바뀌지 않으니 한 번만 읽는다
+              let conv;
+              try { conv = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+              const talk = (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot' || x.role === 'error');
+              const last = talk[talk.length - 1];
+              entry = { mtime, count: talk.length, ts: last ? last.ts : 0, last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null };
+              archiveChatCache.set(f, entry);
+            }
+            if (!entry.count) continue;
+            chats.push({
+              name: `~${f.slice(0, -5)}`, archive: f.slice(0, -5), crew,
+              ts: entry.ts, last: entry.last, running: false, status: '', botTs: [],
+            });
+          }
+        } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
         return send(res, 200, { chats, seen: seenMap, ui: uiState });
       }
       // 기기 간 공유 화면 정보 올리기: 항목마다 더 늦은 시각이 이긴다
@@ -1896,11 +1944,22 @@ const server = http.createServer(async (req, res) => {
           let r;
           try { r = decodeURIComponent(m[2]); } catch { continue; }
           if (crewOf(r) !== crew) continue;
-          const to = newName + r.slice(crew.length);
+          let to = newName + r.slice(crew.length);
+          let from = r;
+          let cv = null;
+          try { cv = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, f), 'utf8')); } catch { /* 깨진 기록은 옛 방 형식으로 */ }
+          const orig = cv && typeof cv.archivedFrom === 'string' && /^@[a-z0-9]{3,8}$/.test(cv.archivedFrom) ? cv.archivedFrom : '';
+          if (orig) { to = orig; from = orig; } // 새 방은 원래 아이디(@번호)로 되돌린다
           fs.rmSync(convFile(to), { force: true });
           fs.renameSync(path.join(ARCHIVE_DIR, f), convFile(to));
           convCache.delete(to);
-          rooms.push({ id: f.slice(0, -5), from: r, to });
+          if (orig && cv) { // 속한 크루를 복구한 이름으로 맞춘다
+            delete cv.archivedFrom;
+            cv.crew = newName;
+            if (Array.isArray(cv.participants)) cv.participants = cv.participants.map((c) => (c === crew ? newName : c));
+            try { fs.writeFileSync(convFile(to), JSON.stringify(cv)); } catch { /* 기록용이라 실패해도 복구는 계속 */ }
+          }
+          rooms.push({ id: f.slice(0, -5), from, to });
         }
         const confFile = path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(crew)}.conf`);
         try { projectConf[newName] = JSON.parse(fs.readFileSync(confFile, 'utf8')); saveProjectConf(); } catch { /* 보관한 설정이 없으면 기본값 */ }
@@ -1918,9 +1977,12 @@ const server = http.createServer(async (req, res) => {
         if (new Set(crews).size !== crews.length || crews.some((c) => c.includes('@') || !resolveProject(c))) return send(res, 400, { error: '알 수 없는 크루' });
         // 한 명이면 그 크루의 방, 여러 명이면 어느 크루에도 속하지 않는 그룹 방이다 (참여한 크루 하나를 지워도 방은 그대로 남는다)
         const crew = crews.length === 1 ? crews[0] : '';
-        const rid = `${crew}@${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`;
+        // 방 아이디는 크루 이름과 상관없는 "@번호"이고, 어느 크루의 방인지는 대화 파일의 crew에 적는다
+        let rid;
+        do { rid = `@${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`; } while (fs.existsSync(convFile(rid)));
         const conv = loadConv(rid);
         conv.participants = crews;
+        if (crew) conv.crew = crew;
         saveConv(rid); // 빈 대화 파일이 곧 방이다
         return send(res, 200, { room: rid, members: crews });
       }
@@ -2078,6 +2140,13 @@ const server = http.createServer(async (req, res) => {
           if (fs.existsSync(newDir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
           fs.renameSync(dir, newDir);
           for (const r of rooms) { // 대화 기록도 함께
+            if (r.rid.startsWith('@')) { // 새 방: 아이디는 그대로, 속한 크루만 새 이름으로
+              const cv = loadConv(r.rid);
+              cv.crew = newName;
+              if (Array.isArray(cv.participants)) cv.participants = cv.participants.map((c) => (c === project ? newName : c));
+              saveConv(r.rid);
+              continue;
+            }
             fs.renameSync(r.file, convFile(newName + r.rid.slice(project.length)));
             convCache.delete(r.rid);
           }
@@ -2094,7 +2163,10 @@ const server = http.createServer(async (req, res) => {
         if (rooms.length) {
           fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
           for (const r of rooms) {
-            fs.renameSync(r.file, path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(r.rid)}.json`));
+            // 보관 파일 이름에는 크루 이름이 들어가야 복구 때 알아본다: 새 방(@번호)은 "크루@번호"로 보관한다
+            const archived = r.rid.startsWith('@') ? project + r.rid : r.rid;
+            if (r.rid.startsWith('@')) { loadConv(r.rid).archivedFrom = r.rid; saveConv(r.rid); } // 복구하면 원래 아이디로 돌아온다
+            fs.renameSync(r.file, path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(archived)}.json`));
             convCache.delete(r.rid);
           }
           // 크루별 모델·생각 깊이 설정도 같이 보관해 둔다 (복구할 때 되살린다)

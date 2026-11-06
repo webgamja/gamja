@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="110" fill="#FFF4D6"/>
+  <ellipse cx="256" cy="448" rx="130" ry="18" fill="#E8D5A3"/>
+  <!-- 새싹 -->
+  <path d="M256 112 C256 90 252 78 244 66" stroke="#4E9B3E" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M246 70 C216 38 176 52 172 84 C204 96 236 90 246 70 Z" fill="#6CC04A"/>
+  <path d="M252 76 C274 40 318 44 332 76 C304 98 270 98 252 76 Z" fill="#58B03A"/>
+  <!-- 몸통 -->
+  <path d="M256 108 C340 100 420 160 424 270 C428 370 360 440 256 440 C152 440 84 372 90 272 C96 164 172 114 256 108 Z" fill="#E3B365" stroke="#B9833A" stroke-width="10" stroke-linejoin="round"/>
+  <!-- 하이라이트 -->
+  <path d="M150 190 C170 160 200 142 230 136" stroke="#F5D49A" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <!-- 점 -->
+  <circle cx="140" cy="320" r="7" fill="#C99448"/>
+  <circle cx="372" cy="214" r="7" fill="#C99448"/>
+  <circle cx="338" cy="390" r="6" fill="#C99448"/>
+  <circle cx="200" cy="396" r="5" fill="#C99448"/>
+  <!-- 눈 -->
+  <ellipse cx="200" cy="280" rx="17" ry="22" fill="#4A2F14"/>
+  <ellipse cx="312" cy="280" rx="17" ry="22" fill="#4A2F14"/>
+  <circle cx="206" cy="271" r="6" fill="#fff"/>
+  <circle cx="318" cy="271" r="6" fill="#fff"/>
+  <!-- 볼터치 -->
+  <ellipse cx="160" cy="324" rx="26" ry="16" fill="#F29A8B" opacity="0.7"/>
+  <ellipse cx="352" cy="324" rx="26" ry="16" fill="#F29A8B" opacity="0.7"/>
+  <!-- 입 -->
+  <path d="M236 322 Q256 346 276 322" stroke="#4A2F14" stroke-width="9" fill="none" stroke-linecap="round"/>
+</svg>
