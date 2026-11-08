@@ -602,10 +602,14 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .ui-title .gi-lead { width: 1.1em; height: 1.1em; vertical-align: -.15em; }
 /* 채팅: 보내는 쪽 이름표(아바타)는 노랑 바탕에 감자, 로고는 크게 */
 .avatar { background: var(--me); color: var(--me-fg); --gi-a: #fff; }
-.avatar .gi-s { width: 22px; height: 22px; }
+.avatar .gi-s { width: 30px; height: 30px; }
 .login-logo, .welcome-logo { color: var(--bot-fg); display: grid; place-items: center; }
-.login-logo .gi-s { width: 52px; height: 52px; }
-.welcome-logo .gi-s { width: 56px; height: 56px; }
+.login-logo .gi-s { width: 80px; height: 80px; }
+.welcome-logo .gi-s { width: 72px; height: 72px; }
+/* 감자 캐릭터는 다른 아이콘보다 크게, 감자 톡톡 아이콘 배경은 노란색 */
+.gi-n-potato { overflow: visible; transform: scale(1.3); }
+.avatar .gi-n-potato, .login-logo .gi-n-potato, .welcome-logo .gi-n-potato { transform: none; }
+.cl-av:has(.gi-n-potato), .fr-av:has(.gi-n-potato) { background: #FEE500; }
 .crew-btn .gi-lead { width: 1.3em; height: 1.3em; }
 .icon-btn, .to-bottom { display: grid; place-items: center; }
 /* 위쪽 줄의 "결과물" 알약 버튼: 크루 이름 바로 오른쪽, 줄의 세로 가운데. 나머지 버튼(⋯)은 맨 오른쪽 */
@@ -808,6 +812,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .cl-list { border-radius: 0; background: transparent; }
 .cl-row { padding: 9px 4px; border-bottom: 0; }
 .cl-av { width: 50px; height: 50px; border-radius: 18px; background: var(--ui-card); }
+.cl-row.root .cl-av { background: var(--me); color: var(--me-fg); --gi-line: currentColor; --gi-a-line: currentColor; } /* 감자 톡톡: 크루 탭의 내 프로필 자리처럼 노란 배경 */
 .cl-hd { margin: 12px 4px 2px; padding-top: 12px; border-top: 1px solid var(--ui-line); font-size: 13px; font-weight: 600; color: var(--ui-sub); }
 .cl-hd.first { margin-top: 4px; padding-top: 4px; border-top: 0; }
 .cl-row.gone { opacity: .6; }

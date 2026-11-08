@@ -3,7 +3,15 @@
 // 크루 아이콘(회사·가게·개인 등)은 크루 템플릿이 이모지로 들고 있어서 여기서 매겨 준다.
 (function () {
   const P = {
-    potato: '<path class="a" d="M5 13c0-5 4-8.5 8-8 4 .4 6.5 3.6 6 8-.5 4-3.5 6.5-7.5 6.5S5 17 5 13z"/><circle class="d" cx="10" cy="12" r=".9"/><circle class="d" cx="14.5" cy="14" r=".9"/>',
+    // 감자 대표 캐릭터 (여러 색, 512 좌표를 24칸에 맞춤): 다른 아이콘과 달리 화면 색을 따르지 않고 늘 같은 모습
+    potato: '<g transform="translate(12 12.4) scale(.0605) translate(-258 -254)"><g transform="rotate(-8 256 286)">' +
+      '<g transform="translate(0 12)"><path d="M256 128c0-30 6-52 24-66" fill="none" stroke="#5a8f3c" stroke-width="16" stroke-linecap="round"/>' +
+      '<path d="M280 64c26-14 52-4 58 18-26 10-52 2-58-18z" fill="#7ab648" stroke="none"/><path d="M252 96c-22-16-50-12-60 8 22 14 48 10 60-8z" fill="#8cc759" stroke="none"/></g>' +
+      '<path d="M92 292C92 202 160 140 256 140C360 140 424 206 424 292C424 374 350 432 256 432C160 432 92 374 92 292Z" fill="#d9a05b" stroke="#8a5a2b" stroke-width="18" stroke-linejoin="round"/>' +
+      '<path d="M140 250c10-40 44-66 84-70" fill="none" stroke="#f2c98f" stroke-width="18" stroke-linecap="round" opacity=".8"/>' +
+      '<circle cx="204" cy="272" r="22" fill="#3b2412" stroke="none"/><circle cx="308" cy="272" r="22" fill="#3b2412" stroke="none"/>' +
+      '<ellipse cx="164" cy="318" rx="28" ry="17" fill="#f08a7a" stroke="none" opacity=".65"/><ellipse cx="348" cy="318" rx="28" ry="17" fill="#f08a7a" stroke="none" opacity=".65"/>' +
+      '<path d="M236 314c10 16 30 16 40 0" fill="none" stroke="#3b2412" stroke-width="15" stroke-linecap="round"/></g></g>',
     home: '<path class="a" d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/>',
     globe: '<circle class="a" cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/>',
     menu: '<path d="M8 3v7M5.5 3v4a2.5 2.5 0 0 0 5 0V3M8 10v11"/><path class="a" d="M17 21V3c-2.5 1.5-3.5 5-3.5 8H17"/>',
@@ -95,7 +103,7 @@
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');
-  const svg = (name) => `<svg class="gi-s" viewBox="0 0 24 24" aria-hidden="true">${P[name]}</svg>`;
+  const svg = (name) => `<svg class="gi-s gi-n-${name}" viewBox="0 0 24 24" aria-hidden="true">${P[name]}</svg>`;
   // 이모지 하나 → 아이콘 SVG 글자 (없으면 null)
   const iconFor = (emoji) => (BY_EMOJI[clean(emoji).trim()] ? svg(BY_EMOJI[clean(emoji).trim()]) : null);
 
