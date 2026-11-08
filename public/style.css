@@ -806,6 +806,8 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 #ncPick { z-index: 32; }
 /* 새 채팅 시작: 아래 큰 버튼은 스크롤해도 화면 아래에 붙어 있다 */
 #newChat #newChatGo { position: sticky; bottom: 14px; margin-top: 18px; }
+/* 글을 쓰는 중(키보드가 올라온 때)에는 버튼이 입력칸을 가리지 않게 내용 맨 아래에 둔다 */
+#newChat:focus-within #newChatGo { position: static; }
 .fr-mid small.nc-tag { margin-top: 3px; color: var(--ui-sub); font-weight: 700; }
 
 /* 채팅 탭: 크루 탭과 같은 모양 (상자 없이 줄만, 둥근 사각형 아이콘, 작은 제목 줄) */
