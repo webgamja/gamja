@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 감자 대표 캐릭터 아이콘 (노란 원 + 웃는 감자) -->
+<!-- 감자 대표 캐릭터 아이콘 (배경 전체가 노란색 + 웃는 감자) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
@@ -7,7 +7,7 @@
     android:viewportHeight="512">
     <path
         android:fillColor="#FEE500"
-        android:pathData="M256,0a256,256 0 1,0 0.01,0z" />
+        android:pathData="M0,0h512v512h-512z" />
     <group
         android:pivotX="256"
         android:pivotY="254"

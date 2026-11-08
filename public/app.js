@@ -660,7 +660,7 @@
       const preview = c.archive ? `${window.GAMJA_I18N.t('chat.deletedCrew')} · ${plain(c.last && c.last.text)}` // 삭제된 크루의 남은 대화: 흐리게
         : c.running ? `작업 중… ${plain(c.status)}`.trim()
         : c.last ? `${c.last.role === 'user' ? '나: ' : ''}${plain(c.last.text)}` : '대화를 시작해 보세요';
-      return `<button class="cl-row${c.archive ? ' gone' : ''}" data-go="${escapeHtml(c.name)}"${c.archive ? ` data-archive="${escapeHtml(c.archive)}"` : ''}><i class="cl-av">${escapeHtml(icon)}</i>` +
+      return `<button class="cl-row${c.archive ? ' gone' : ''}${!c.archive && !(c.members && c.members.length > 1) && crewOf(c.name) === '' ? ' root' : ''}" data-go="${escapeHtml(c.name)}"${c.archive ? ` data-archive="${escapeHtml(c.archive)}"` : ''}><i class="cl-av">${escapeHtml(icon)}</i>` +
         `<span class="cl-mid"><b>${escapeHtml(text)}</b><small${c.running ? ' class="run"' : ''}>${escapeHtml(preview)}</small></span>` +
         `<span class="cl-end"><span>${escapeHtml(chatTime(c.ts))}</span>` +
         // 아래 줄: 쓰던 글이 있으면 연필 아이콘, 작업 중이면 노란 점, 안 읽은 답이 있으면 빨간 숫자
