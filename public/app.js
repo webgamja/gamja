@@ -773,7 +773,7 @@
   }
   const closeSheet = () => sheetEl.classList.add('hidden');
   sheetEl.addEventListener('click', (e) => { if (e.target === sheetEl) closeSheet(); });
-  $('shChat').onclick = () => { const n = sheetTarget; closeSheet(); selectProject(n); };
+  $('shChat').onclick = () => { const n = sheetTarget; closeSheet(); openNewChat(n); }; // 채팅 시작 화면이 열리고, 고른 크루가 참여자에 들어가 있다
   $('shShare').onclick = () => { const n = sheetTarget; closeSheet(); openShare(n); };
   $('shSet').onclick = () => { const n = sheetTarget; closeSheet(); openProjectSettings(n); };
   $('shFav').onclick = () => { toggleFav(sheetTarget); openSheet(sheetTarget); };
@@ -1906,10 +1906,10 @@
     renderNcPick();
     $('ncPick').classList.remove('hidden');
   }
-  function openNewChat() {
+  function openNewChat(crew) { // crew: 크루 탭에서 "채팅하기"로 왔을 때 처음부터 참여자로 넣어 둘 크루
     const T = window.GAMJA_I18N.t;
     ncMembers = [];
-    ncSel = null;
+    ncSel = typeof crew === 'string' ? { kind: 'crew', name: crew } : null;
     ncName = '';
     $('newChatH').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.title' : 'newchat.titleOne');
     $('newChatNote').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.note' : 'newchat.noteOne');
@@ -2655,7 +2655,8 @@
         `<div class="line"><div class="bubble"></div><span class="time"></span></div><div class="extra"></div></div>`;
     }
     // 그룹 채팅의 크루 말풍선은 Claude 대신 그 크루의 이름을 보여 준다 (사회자 정리는 "정리")
-    if (m.by !== undefined && m.role !== 'user') row.querySelector('.name').textContent = m.summary ? window.GAMJA_I18N.t('room.summary') : crewParts(m.by).text;
+    // 크루가 하나뿐인 채팅방은 "Claude" 대신 그 방의 크루 이름을 보여 준다
+    if (m.role !== 'user') row.querySelector('.name').textContent = m.summary ? window.GAMJA_I18N.t('room.summary') : crewParts(m.by !== undefined ? m.by : project).text;
     into.appendChild(row);
     const view = {
       row,

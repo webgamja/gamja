@@ -1050,12 +1050,13 @@ function handleChat(req, res, body, opts = {}) {
         if (ev.session_id) conv.sessionId = ev.session_id;
         const parts = [];
         if (ev.duration_ms) parts.push(`${(ev.duration_ms / 1000).toFixed(1)}초`);
-        // API 기준 환산 금액 (구독 사용자에게 추가로 청구되지 않음 — 설정 화면에 안내). 토큰 수는 기록만 한다
+        // 금액(달러) 대신 이번 답변에 쓴 토큰(입력+출력)을 보여 준다. 환산 금액은 기록만 한다
         const cost = typeof ev.total_cost_usd === 'number' ? ev.total_cost_usd : 0;
-        if (cost) parts.push(cost < 0.01 ? '약 $0.01 미만' : `약 $${cost.toFixed(2)}`);
-        bot.meta = parts.join(' · ');
         const u = ev.usage || {};
         const input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        const tokTotal = input + (u.output_tokens || 0);
+        if (tokTotal) parts.push(`토큰 ${tokTotal >= 10000 ? `${(tokTotal / 10000).toFixed(1)}만` : tokTotal >= 1000 ? `${(tokTotal / 1000).toFixed(1)}천` : tokTotal}`);
+        bot.meta = parts.join(' · ');
         // 사용량 누적: 이 대화 + 오늘 전체
         const cu = conv.usage || {};
         conv.usage = { in: (cu.in || 0) + input, out: (cu.out || 0) + (u.output_tokens || 0), cost: (cu.cost || 0) + cost };
