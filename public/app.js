@@ -13,8 +13,10 @@
   // 실제로 보이는 높이(visualViewport)에 맞추고, 밀린 스크롤은 되돌린다
   const vv = window.visualViewport;
   function fitViewport() {
-    document.documentElement.style.setProperty('--app-h', `${Math.round(vv ? vv.height : window.innerHeight)}px`);
-    if (window.scrollY) window.scrollTo(0, 0);
+    // 결과물을 두 손가락으로 확대하면 보이는 영역(vv.height)이 줄어든다. 확대 배율을 곱해서 실제 화면 높이는 그대로 둔다
+    const zoomed = vv && vv.scale > 1.01;
+    document.documentElement.style.setProperty('--app-h', `${Math.round(vv ? vv.height * (zoomed ? vv.scale : 1) : window.innerHeight)}px`);
+    if (window.scrollY && !zoomed) window.scrollTo(0, 0);
   }
   (vv || window).addEventListener('resize', fitViewport);
   fitViewport();
@@ -197,7 +199,7 @@
   const endPinch = (e) => { if (pinch && e.touches.length < 2) { pinch = null; store.set('cc:zoom', msgZoom); } };
   els.messages.addEventListener('touchend', endPinch, { passive: true });
   els.messages.addEventListener('touchcancel', endPinch, { passive: true });
-  document.addEventListener('gesturestart', (e) => e.preventDefault()); // iOS Safari: 화면 전체 확대 막기
+  document.addEventListener('gesturestart', (e) => { if (!document.documentElement.classList.contains('viewing')) e.preventDefault(); }); // iOS Safari: 화면 전체 확대 막기 (결과물을 보는 동안은 확대할 수 있다)
 
   // ---------- 테마 (auto / light / dark) — ⚙️ 설정 → 소리·화면에서 고른다 ----------
   function applyTheme(t) {
@@ -850,16 +852,46 @@
       }
     };
   }
+  // 이미지 보기 안에서 도는 확대·이동 기능: 두 손가락으로 확대·축소(손가락 사이 지점 기준), 확대하면 한 손가락으로 이동, 두 번 두드리면 확대/원래대로.
+  // 감자 화면 전체가 아니라 사진만 커져서 위쪽 줄은 그대로 있다
+  const IMG_ZOOM_JS = [
+    '(function(){var img=document.querySelector("img");if(!img)return;',
+    'var s=1,x=0,y=0,m=null,last=0,MAX=6;',
+    'function ap(){img.style.transform="translate("+x+"px,"+y+"px) scale("+s+")";}',
+    'function dist(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}',
+    'function mid(t){return t.length>1?{x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2}:{x:t[0].clientX,y:t[0].clientY};}',
+    'function limit(){if(s<=1){s=1;x=0;y=0;return;}var mx=img.offsetWidth*(s-1)/2+40,my=img.offsetHeight*(s-1)/2+40;x=Math.max(-mx,Math.min(mx,x));y=Math.max(-my,Math.min(my,y));}',
+    'function begin(t){var r=img.getBoundingClientRect(),p=mid(t),cx=r.left+r.width/2,cy=r.top+r.height/2;',
+    'm={d:t.length>1?dist(t):0,s:s,n:t.length,cx:cx-x,cy:cy-y,qx:(p.x-cx)/s,qy:(p.y-cy)/s};}',
+    'document.addEventListener("touchstart",function(e){e.preventDefault();',
+    'if(e.touches.length===1){var n=Date.now();if(n-last<300){s=s>1?1:2.5;if(s===1){x=0;y=0;}limit();ap();}last=n;}',
+    'begin(e.touches);},{passive:false});',
+    'document.addEventListener("touchmove",function(e){e.preventDefault();if(!m||!e.touches.length)return;',
+    'if(e.touches.length!==m.n){begin(e.touches);return;}',
+    'if(m.n>1)s=Math.max(1,Math.min(MAX,m.s*dist(e.touches)/m.d));',
+    'else if(s<=1)return;',
+    'var p=mid(e.touches);x=p.x-m.cx-s*m.qx;y=p.y-m.cy-s*m.qy;limit();ap();},{passive:false});',
+    'function end(e){e.preventDefault();if(e.touches.length){begin(e.touches);}else{m=null;if(s<1.03){s=1;x=0;y=0;}limit();ap();}}',
+    'document.addEventListener("touchend",end,{passive:false});document.addEventListener("touchcancel",end,{passive:false});})();',
+  ].join('');
+  // 웹페이지·글 안에서 도는 두 손가락 확대·축소 (한 손가락 스크롤은 그대로)
+  const PAGE_ZOOM_JS = '(function(){var z=1,m=null,h=document.documentElement;h.style.touchAction="pan-x pan-y";' +
+    'function d(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}' +
+    'addEventListener("touchstart",function(e){if(e.touches.length===2)m={d:d(e.touches),z:z};},{passive:true});' +
+    'addEventListener("touchmove",function(e){if(m&&e.touches.length===2){e.preventDefault();z=Math.max(.5,Math.min(4,m.z*d(e.touches)/m.d));h.style.zoom=z;}},{passive:false});' +
+    'addEventListener("touchend",function(e){if(e.touches.length<2)m=null;},{passive:true});})();';
   // 파일 하나 열기: 종류마다 보는 방법이 다르다
   function openResult(f) {
     const url = madeUrl(f);
     const abs = location.origin + url;
     const ext = fileExt(f.path);
-    const page = (inner) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>` +
+    const page = (inner, zoom) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>` +
       'html,body{margin:0;height:100%;background:#111;color:#eee;font:15px sans-serif}' +
       'body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:12px;box-sizing:border-box}' +
-      'img,video{max-width:100%;max-height:100%;border-radius:8px}audio{width:100%;max-width:480px}.n{opacity:.7;word-break:break-all;text-align:center}</style>' + inner;
-    if (f.kind === 'image') return openViewer({ doc: page(`<img src="${escapeHtml(abs)}" alt="">`) }, f.path);
+      'img,video{max-width:100%;max-height:100%;border-radius:8px}audio{width:100%;max-width:480px}.n{opacity:.7;word-break:break-all;text-align:center}' +
+      (zoom ? 'html,body{overflow:hidden;touch-action:none}img{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}' : '') +
+      '</style>' + inner + (zoom ? `<script>${IMG_ZOOM_JS}</script>` : '');
+    if (f.kind === 'image') return openViewer({ doc: page(`<img src="${escapeHtml(abs)}" alt="">`, true) }, f.path);
     if (f.kind === 'audio') return openViewer({ doc: page(`<div style="font-size:64px">🎵</div><div class="n">${escapeHtml(f.path)}</div><audio controls src="${escapeHtml(abs)}"></audio>`) }, f.path);
     if (f.kind === 'video') return openViewer({ doc: page(`<video controls playsinline src="${escapeHtml(abs)}"></video>`) }, f.path);
     // PDF·워드·엑셀·파워포인트: 감자 안의 화면(격리된 창)에서는 못 보여 줘서, 폰의 브라우저·다른 앱으로 열거나 내려받는다
@@ -871,7 +903,10 @@
       }
       return window.open(url, '_blank'); // 일반 브라우저: 새 창으로 열거나 내려받는다
     }
-    openViewer({ src: url }, f.path); // 웹페이지·글(txt·md·csv)
+    if (ext === '.html' || ext === '.htm') return openViewer({ src: url }, f.path); // 웹페이지 (감자알이 확대 기능을 덧붙여 보낸다)
+    // 글(txt·md·csv): 내용을 받아 와서 확대 기능이 있는 화면에 담아 연다
+    fetch(url).then((r) => r.text()).then((txt) => openViewer({ doc: `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:14px;font:15px/1.6 sans-serif;white-space:pre-wrap;word-break:break-word;background:#fff;color:#111}</style>${escapeHtml(txt)}<script>${PAGE_ZOOM_JS}</script>` }, f.path))
+      .catch(() => toast('파일을 열지 못했어요'));
   }
   // 결과물 보기: 화면 이동 없이 감자 안의 전체 화면 창에 띄운다 (← 로 언제든 돌아옴)
   const viewEl = $('viewPanel');
@@ -2645,8 +2680,7 @@
       (blocked ? '' : `<small>👍 ${escapeHtml(T('perm.good.' + d.risk))}</small>`) +
       `<small>⚠️ ${escapeHtml(T('perm.warn.' + d.risk))}</small>` +
       `<div class="perm-btns">${blocked ? btn('no', T('perm.ok'))
-        : btn('once', T('perm.once'), 'main') + (d.always ? btn('always', T('perm.always')) : '') + btn('no', T('perm.no'), 'ghost')}</div>` +
-      (d.always ? `<small class="perm-note">${escapeHtml(T('perm.alwaysNote'))}</small>` : '') + '</div>';
+        : btn('once', T('perm.once'), 'main') + btn('no', T('perm.no'), 'ghost')}</div></div>`;
   }
   function paint(view, m, streaming) {
     if (m.role === 'user' && (m.images || m.localImages)) {

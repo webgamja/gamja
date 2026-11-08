@@ -1,27 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="110" fill="#FFF4D6"/>
-  <ellipse cx="256" cy="448" rx="130" ry="18" fill="#E8D5A3"/>
-  <!-- 새싹 -->
-  <path d="M256 112 C256 90 252 78 244 66" stroke="#4E9B3E" stroke-width="10" fill="none" stroke-linecap="round"/>
-  <path d="M246 70 C216 38 176 52 172 84 C204 96 236 90 246 70 Z" fill="#6CC04A"/>
-  <path d="M252 76 C274 40 318 44 332 76 C304 98 270 98 252 76 Z" fill="#58B03A"/>
-  <!-- 몸통 -->
-  <path d="M256 108 C340 100 420 160 424 270 C428 370 360 440 256 440 C152 440 84 372 90 272 C96 164 172 114 256 108 Z" fill="#E3B365" stroke="#B9833A" stroke-width="10" stroke-linejoin="round"/>
-  <!-- 하이라이트 -->
-  <path d="M150 190 C170 160 200 142 230 136" stroke="#F5D49A" stroke-width="14" fill="none" stroke-linecap="round"/>
-  <!-- 점 -->
-  <circle cx="140" cy="320" r="7" fill="#C99448"/>
-  <circle cx="372" cy="214" r="7" fill="#C99448"/>
-  <circle cx="338" cy="390" r="6" fill="#C99448"/>
-  <circle cx="200" cy="396" r="5" fill="#C99448"/>
-  <!-- 눈 -->
-  <ellipse cx="200" cy="280" rx="17" ry="22" fill="#4A2F14"/>
-  <ellipse cx="312" cy="280" rx="17" ry="22" fill="#4A2F14"/>
-  <circle cx="206" cy="271" r="6" fill="#fff"/>
-  <circle cx="318" cy="271" r="6" fill="#fff"/>
-  <!-- 볼터치 -->
-  <ellipse cx="160" cy="324" rx="26" ry="16" fill="#F29A8B" opacity="0.7"/>
-  <ellipse cx="352" cy="324" rx="26" ry="16" fill="#F29A8B" opacity="0.7"/>
-  <!-- 입 -->
-  <path d="M236 322 Q256 346 276 322" stroke="#4A2F14" stroke-width="9" fill="none" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#FEE500"/>
+  <ellipse cx="256" cy="452" rx="132" ry="16" fill="#000" opacity=".12"/>
+  <g transform="translate(256 250) scale(0.96) translate(-258 -254)">
+    <g transform="rotate(-8 256 286)">
+      <g transform="translate(0 12)">
+        <path d="M256 128c0-30 6-52 24-66" fill="none" stroke="#5a8f3c" stroke-width="12" stroke-linecap="round"/>
+        <path d="M280 64c26-14 52-4 58 18-26 10-52 2-58-18z" fill="#7ab648"/>
+        <path d="M252 96c-22-16-50-12-60 8 22 14 48 10 60-8z" fill="#8cc759"/>
+      </g>
+      <path d="M92 292C92 202 160 140 256 140C360 140 424 206 424 292C424 374 350 432 256 432C160 432 92 374 92 292Z" fill="#d9a05b" stroke="#8a5a2b" stroke-width="12" stroke-linejoin="round"/>
+      <path d="M140 250c10-40 44-66 84-70" fill="none" stroke="#f2c98f" stroke-width="14" stroke-linecap="round" opacity=".8"/>
+      <circle cx="132" cy="336" r="9" fill="#b9803f"/><circle cx="388" cy="236" r="8" fill="#b9803f"/><circle cx="350" cy="388" r="10" fill="#b9803f"/><circle cx="200" cy="396" r="7" fill="#b9803f"/>
+      <circle cx="204" cy="272" r="17" fill="#3b2412"/><circle cx="308" cy="272" r="17" fill="#3b2412"/>
+      <circle cx="210" cy="265" r="6" fill="#fff"/><circle cx="314" cy="265" r="6" fill="#fff"/>
+      <ellipse cx="164" cy="316" rx="26" ry="16" fill="#f08a7a" opacity=".6"/><ellipse cx="348" cy="316" rx="26" ry="16" fill="#f08a7a" opacity=".6"/>
+      <path d="M236 312c10 16 30 16 40 0" fill="none" stroke="#3b2412" stroke-width="10" stroke-linecap="round"/>
+    </g>
+  </g>
 </svg>

@@ -897,6 +897,9 @@ function handleChat(req, res, body, opts = {}) {
   if (body.voice === true && !opts.label) message += `\n\n${VOICE_HINT}`;
   // 같은 세션을 동시에 두 번 돌리면 기록이 갈라지므로 프로젝트당 하나만
   if (projectRuns.has(project)) return send(res, 409, { error: '이 프로젝트에서 이미 응답이 진행 중이에요. 끝난 뒤에 보내 주세요.' });
+  // 허용 카드로 감자알이 대신 실행한 명령의 결과가 있으면 이번 메시지에 붙여 크루에게 전한다 (대화 기록에는 사용자가 쓴 글만 남는다)
+  const pendingResults = permResults.get(project);
+  if (pendingResults && pendingResults.length) { message = `${pendingResults.join('\n\n')}\n\n${message}`; permResults.delete(project); }
 
   const conv = loadConv(project);
   const sessionId = conv.sessionId;
@@ -1379,6 +1382,12 @@ function verifyPreviewToken(token, project) {
   const [exp, sig] = String(token).split('.');
   return Number(exp) > Date.now() && !!sig && safeEqual(sign(`preview.${project}.${exp}`), sig);
 }
+// 결과물 웹페이지·글에 넣는 두 손가락 확대·축소. 한 손가락 스크롤은 건드리지 않는다
+const PAGE_ZOOM_JS = '(function(){var z=1,m=null,h=document.documentElement;h.style.touchAction="pan-x pan-y";' +
+  'function d(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}' +
+  'addEventListener("touchstart",function(e){if(e.touches.length===2)m={d:d(e.touches),z:z};},{passive:true});' +
+  'addEventListener("touchmove",function(e){if(m&&e.touches.length===2){e.preventDefault();z=Math.max(.5,Math.min(4,m.z*d(e.touches)/m.d));h.style.zoom=z;}},{passive:false});' +
+  'addEventListener("touchend",function(e){if(e.touches.length<2)m=null;},{passive:true});})();';
 function previewHeaders(type, fileName) {
   const h = {
     'Content-Type': type,
@@ -1432,6 +1441,16 @@ function servePreview(req, res, urlPath) {
       if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
       code = 206;
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    }
+    // 웹페이지에는 두 손가락 확대·축소 기능을 덧붙인다 (감자 위쪽 줄은 그대로 두고 내용만 커지게)
+    if (/^\.html?$/i.test(path.extname(real)) && code === 200 && size < 5e6) {
+      return fs.readFile(real, (e2, buf) => {
+        if (e2) return notFound();
+        const body = Buffer.concat([buf, Buffer.from(`<script>${PAGE_ZOOM_JS}</script>`)]);
+        headers['Content-Length'] = body.length;
+        res.writeHead(200, headers);
+        res.end(body);
+      });
     }
     headers['Content-Length'] = size ? end - start + 1 : 0;
     res.writeHead(code, headers);
@@ -1567,11 +1586,26 @@ const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
 const PERM_READ = new Set(['ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'wc', 'du', 'df', 'pwd', 'echo', 'printf', 'date', 'which', 'whereis', 'file', 'stat', 'tree', 'sort', 'uniq', 'diff', 'cmp', 'cut', 'tr', 'basename', 'dirname', 'realpath', 'readlink', 'id', 'whoami', 'uname', 'hostname', 'true', 'false', 'test']);
 const PERM_WRITE = new Set(['mkdir', 'touch', 'cp', 'mv', 'chmod', 'rm', 'rmdir', 'tee', 'truncate', 'install', 'ln', 'zip', 'gzip', 'gunzip', 'bzip2', '7z', 'sed', 'tar', 'unzip']);
 // 명령 하나를 살펴서 { risk, once, always, rule }을 돌려준다. risk: read | write | run | net | critical | complex
+// 이어진 명령(&&, ;, |, 여러 줄 등)을 살핀다: 위험한 프로그램·비밀 파일이 하나라도 있으면 허용할 수 없다
+function screenComplex(text) {
+  if (text.length > 2000 || PERM_SECRET.test(text)) return false;
+  const re = /(^|[;&|`(\n]|\$\()\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*([^\s;&|`()<>]+)/g; // 명령 자리에 있는 프로그램 이름만 본다
+  let m;
+  while ((m = re.exec(text))) {
+    const prog = m[2].replace(/^.*\//, '');
+    if (prog !== '.' && PERM_CRITICAL.has(prog)) return false;
+  }
+  if (/(^|[\s;&|(])rm\s+(?:\S+\s+)*?(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive|--no-preserve-root)(\s|$)/.test(text)) return false;
+  if (/(^|[\s;&|(])chmod\s+(?:\S+\s+)*?(-[a-zA-Z]*R|777|a\+rwx)/.test(text)) return false;
+  return true;
+}
+// "항상 허용"은 어떤 명령에도 주지 않는다 (always는 늘 false). 이어진 명령은 direct: 허용하면 감자알이 그대로 실행하고 결과를 크루에게 전한다
 function classifyCommand(cmd) {
   const text = String(cmd || '').trim();
   const none = { risk: 'complex', once: false, always: false, rule: '', onceRule: '', prog: '' };
-  if (!text || text.length > 400) return none;
-  if (/[;&|`<>\n\r()*]|\$[({]/.test(text)) return none; // 이어진 명령·치환·글롭은 한 번에 허용할 수 없다 (규칙으로 정확히 표현할 수 없어서)
+  if (!text || text.length > 2000) return none;
+  if (/[;&|`<>\n\r()*]|\$[({]/.test(text)) return screenComplex(text) ? { ...none, once: true, direct: true } : { ...none, risk: 'critical' };
+  if (text.length > 400) return none;
   const tok = text.split(/\s+/);
   const prog = tok[0].replace(/^.*\//, '');
   const base = { ...none, prog };
@@ -1584,16 +1618,39 @@ function classifyCommand(cmd) {
   const onceRule = `Bash(${text})`; // 이번만 허용은 이 명령 그대로만
   const b2 = { ...base, rule, onceRule };
   if (PERM_NET.has(prog)) return { ...b2, risk: 'net', once: true };
-  if (PERM_READ.has(prog)) return { ...b2, risk: 'read', once: true, always: !exactOnly };
-  if (PERM_WRITE.has(prog)) return { ...b2, risk: 'write', once: true, always: !exactOnly && prog !== 'rm' && prog !== 'chmod' };
-  return { ...b2, risk: 'run', once: true, always: true };
+  if (PERM_READ.has(prog)) return { ...b2, risk: 'read', once: true };
+  if (PERM_WRITE.has(prog)) return { ...b2, risk: 'write', once: true };
+  return { ...b2, risk: 'run', once: true };
 }
+// 허용한 이어진 명령을 감자알이 직접 실행한다 (2분 제한, 결과는 앞뒤만 남긴다)
+function runApproved(cmd, cwd) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const add = (d) => { if (out.length < 40000) out += d.toString('utf8'); };
+    let child;
+    try { child = spawn('bash', ['-c', cmd], { cwd, env: childEnv(), stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (e) { return resolve({ code: -1, out: String(e.message) }); }
+    child.stdout.on('data', add);
+    child.stderr.on('data', add);
+    const fin = (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ code, out: out.length > 6000 ? `${out.slice(0, 3000)}\n…(중간 생략)…\n${out.slice(-3000)}` : out });
+    };
+    const timer = setTimeout(() => { out += '\n(2분이 지나 멈췄어요)'; try { child.kill('SIGKILL'); } catch {} }, 120000);
+    child.on('error', (e) => { out += String(e.message); fin(-1); });
+    child.on('close', (code) => fin(code));
+  });
+}
+const permResults = new Map(); // 프로젝트 -> 감자알이 대신 실행한 결과 글 (다음 메시지에 붙여 크루에게 전한다)
 // 막힌 Bash 명령 → 화면에 보여 줄 카드 (최대 3개, 같은 명령은 한 번만)
 function deniedCards(denials) {
   const out = [];
   for (const d of denials || []) {
     if (d.tool_name !== 'Bash' || !d.tool_input || !d.tool_input.command) continue;
-    const cmd = String(d.tool_input.command).trim().slice(0, 401);
+    const cmd = String(d.tool_input.command).trim().slice(0, 2001);
     if (out.some((x) => x.cmd === cmd)) continue;
     const c = classifyCommand(cmd);
     out.push({ id: crypto.randomBytes(6).toString('hex'), cmd, risk: c.risk, once: c.once, always: c.always });
@@ -1609,7 +1666,7 @@ function permRulesFor(crew) {
 }
 // 감자 톡톡은 ~/projects 전체가 작업 위치라서, 만든 파일이 여기저기 흩어지지 않게 한 폴더로 모은다
 const TALK_PROMPT = `지금은 특정 크루가 아닌 감자 톡톡 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
-const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요.';
+const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요. 여러 명령을 &&·;·|로 이은 명령도 카드로 물을 수 있어요. 사용자가 허용하면 감자알이 그 명령을 대신 실행하고 결과를 다음 메시지로 알려 주니, 같은 명령을 다시 실행하지 말고 그 결과로 이어서 일하세요.';
 
 // 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
 const LAN_OFF_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GAMJA</title>
@@ -1816,7 +1873,7 @@ const server = http.createServer(async (req, res) => {
         const project = String(b.project || '');
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
         const mode = String(b.mode || '');
-        if (!['once', 'always', 'no'].includes(mode)) return send(res, 400, { error: '알 수 없는 선택이에요.' });
+        if (!['once', 'no'].includes(mode)) return send(res, 400, { error: '알 수 없는 선택이에요.' }); // "항상 허용"은 없다
         const conv = loadConv(project);
         let entry = null;
         for (const m of conv.messages.slice(-60).reverse()) {
@@ -1828,14 +1885,19 @@ const server = http.createServer(async (req, res) => {
           const c = classifyCommand(entry.cmd); // 허용하는 순간에 한 번 더 살핀다
           if (mode === 'once' ? !c.once : !c.always) return send(res, 403, { error: '이 명령은 이 방식으로 허용할 수 없어요.' });
           const crew = crewOf(project);
-          if (mode === 'always') {
-            const list = perms[crew] || (perms[crew] = []);
-            if (!list.some((x) => x.rule === c.rule)) {
-              if (list.length >= PERM_MAX_RULES) return send(res, 400, { error: '허용한 명령이 너무 많아요. 더보기 → 허용한 명령에서 안 쓰는 것을 지워 주세요.' });
-              list.push({ rule: c.rule, cmd: entry.cmd, ts: Date.now() });
-              savePerms();
-            }
-          } else permOnce.set(crew, { rules: [c.onceRule], until: Date.now() + 10 * 60e3 });
+          if (c.direct) {
+            // 이어진 명령: 감자알이 사용자가 본 그대로 한 번 실행하고, 결과를 다음 메시지에 붙여 크루에게 전한다
+            entry.answered = mode; // 실행하는 동안 같은 카드를 또 누르지 못하게 먼저 표시
+            saveConv(project);
+            const r = await runApproved(entry.cmd, resolveProject(project));
+            const list = permResults.get(project) || [];
+            list.push(`[사용자가 허용한 명령을 감자알이 대신 실행했어요. 다시 실행하지 말고 이 결과로 이어서 일해 주세요]\n명령:\n${entry.cmd}\n종료 코드: ${r.code}\n결과:\n${r.out || '(출력 없음)'}`);
+            permResults.set(project, list.slice(-5));
+            return send(res, 200, { ok: true, ran: true });
+          }
+          const prev = permOnce.get(crew);
+          const rules = prev && prev.until > Date.now() ? prev.rules : []; // 카드를 여러 개 허용하면 규칙을 함께 쓴다
+          permOnce.set(crew, { rules: [...rules, c.onceRule], until: Date.now() + 10 * 60e3 });
         }
         entry.answered = mode;
         saveConv(project);

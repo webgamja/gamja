@@ -1,17 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 임시 아이콘: 감자 -->
+<!-- 감자 대표 캐릭터 아이콘 (노란 원 + 웃는 감자) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
-    android:viewportWidth="48"
-    android:viewportHeight="48">
+    android:viewportWidth="512"
+    android:viewportHeight="512">
     <path
         android:fillColor="#FEE500"
-        android:pathData="M24,0a24,24 0 1,0 0.01,0z" />
-    <path
-        android:fillColor="#B07A45"
-        android:pathData="M13,27c0,-9 6,-15 13,-15s10,5 10,11c0,8 -6,14 -13,14c-6,0 -10,-4 -10,-10z" />
-    <path
-        android:fillColor="#7A5230"
-        android:pathData="M20,22m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0M28,20m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0M24,29m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0" />
+        android:pathData="M256,0a256,256 0 1,0 0.01,0z" />
+    <group
+        android:pivotX="256"
+        android:pivotY="254"
+        android:scaleX="0.9"
+        android:scaleY="0.9"
+        android:translateX="-2"
+        android:translateY="2">
+        <group
+            android:pivotX="256"
+            android:pivotY="286"
+            android:rotation="-8">
+            <group android:translateY="12">
+                <path
+                    android:pathData="M256,128c0,-30 6,-52 24,-66"
+                    android:strokeColor="#5a8f3c"
+                    android:strokeWidth="12"
+                    android:strokeLineCap="round" />
+                <path
+                    android:fillColor="#7ab648"
+                    android:pathData="M280,64c26,-14 52,-4 58,18c-26,10 -52,2 -58,-18z" />
+                <path
+                    android:fillColor="#8cc759"
+                    android:pathData="M252,96c-22,-16 -50,-12 -60,8c22,14 48,10 60,-8z" />
+            </group>
+            <path
+                android:fillColor="#d9a05b"
+                android:pathData="M92,292C92,202 160,140 256,140C360,140 424,206 424,292C424,374 350,432 256,432C160,432 92,374 92,292Z"
+                android:strokeColor="#8a5a2b"
+                android:strokeWidth="12"
+                android:strokeLineJoin="round" />
+            <path
+                android:pathData="M140,250c10,-40 44,-66 84,-70"
+                android:strokeAlpha="0.8"
+                android:strokeColor="#f2c98f"
+                android:strokeWidth="14"
+                android:strokeLineCap="round" />
+            <path
+                android:fillColor="#b9803f"
+                android:pathData="M123,336a9,9 0 1,0 18,0a9,9 0 1,0 -18,0M380,236a8,8 0 1,0 16,0a8,8 0 1,0 -16,0M340,388a10,10 0 1,0 20,0a10,10 0 1,0 -20,0M193,396a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" />
+            <path
+                android:fillColor="#3b2412"
+                android:pathData="M187,272a17,17 0 1,0 34,0a17,17 0 1,0 -34,0M291,272a17,17 0 1,0 34,0a17,17 0 1,0 -34,0" />
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M204,265a6,6 0 1,0 12,0a6,6 0 1,0 -12,0M308,265a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
+            <path
+                android:fillAlpha="0.6"
+                android:fillColor="#f08a7a"
+                android:pathData="M138,316a26,16 0 1,0 52,0a26,16 0 1,0 -52,0M322,316a26,16 0 1,0 52,0a26,16 0 1,0 -52,0" />
+            <path
+                android:pathData="M236,312c10,16 30,16 40,0"
+                android:strokeColor="#3b2412"
+                android:strokeWidth="10"
+                android:strokeLineCap="round" />
+        </group>
+    </group>
 </vector>

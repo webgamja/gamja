@@ -408,6 +408,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* 대화 글자 크기: 대화 영역의 내용만 커지고, 위쪽 줄·입력창은 그대로. 두 손가락 확대는 앱이 직접 처리해서 화면 전체 확대는 막는다 */
 html, body { touch-action: pan-x pan-y; }
+html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 동안은 두 손가락 확대·축소를 허용 */
 .messages > * { zoom: var(--msg-zoom, 1); }
 #acctCard { margin-bottom: 14px; }
 
