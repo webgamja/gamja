@@ -184,6 +184,41 @@
     else m.scrollTop = anchor * m.scrollHeight - m.clientHeight / 2; // 아니면 보던 자리가 가운데 오게
     noteBox();
   }
+  // ---------- 방별 설정 (읽어주기·목소리·글자 크기) ----------
+  // 더보기의 설정은 감자 전체의 기본값(이 기기에 저장), 채팅방(⋯ 메뉴)에서 바꾼 값은 그 방에만 적용되고 기본값보다 우선한다 (감자알에 저장돼 모든 기기에서 같다).
+  // roomPrefs에 없는 항목은 "기본값 따르기"
+  let roomPrefs = {};
+  const gTts = () => !!store.get('cc:tts', false);
+  const gZoom = () => snapZoom(Number(store.get('cc:zoom', 1)) || 1);
+  const gVoice = () => store.get('cc:voice', '');
+  const curVoiceId = () => (roomPrefs.voice !== undefined ? roomPrefs.voice : gVoice());
+  // 지금 방에서 실제로 쓰는 값으로 화면을 맞춘다
+  function applyPrefs() {
+    ttsOn = roomPrefs.tts !== undefined ? !!roomPrefs.tts : gTts();
+    const z = roomPrefs.zoom !== undefined ? snapZoom(Number(roomPrefs.zoom) || 1) : gZoom();
+    if (z !== msgZoom) applyMsgZoom(z);
+    renderTts(); renderVoiceBtns(); renderZoomRow(); renderRoomPrefs();
+  }
+  // 이 방의 설정 하나를 바꾼다 (val이 undefined면 기본값 따르기). 감자알에 저장해서 다른 기기에서도 같게 보인다
+  function setRoomPref(key, val) {
+    if (val === undefined) delete roomPrefs[key]; else roomPrefs[key] = val;
+    applyPrefs();
+    if (!project || isGone(project)) return;
+    api('/api/room-prefs', { room: project, prefs: roomPrefs }).catch(() => {});
+  }
+  // 불러온 방의 설정이 지금과 다르면 적용 (다른 방으로 옮겼거나 다른 기기에서 바꿨을 때)
+  function loadRoomPrefs(p) {
+    p = p && typeof p === 'object' ? p : {};
+    if (JSON.stringify(p) === JSON.stringify(roomPrefs)) return;
+    roomPrefs = p;
+    applyPrefs();
+  }
+  function renderRoomPrefs() {
+    const T = window.GAMJA_I18N.t;
+    const has = Object.keys(roomPrefs).length > 0;
+    $('roomPrefsNote').textContent = T(has ? 'room.prefsSome' : 'room.prefsNone');
+    $('roomPrefsReset').classList.toggle('hidden', !has);
+  }
   let pinch = null;
   const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   els.messages.addEventListener('touchstart', (e) => {
@@ -196,7 +231,7 @@
       toast(`🔍 ${Math.round(msgZoom * 100)}%`); // 확대·축소하는 동안 지금 크기를 보여 준다
     }
   }, { passive: false });
-  const endPinch = (e) => { if (pinch && e.touches.length < 2) { pinch = null; store.set('cc:zoom', msgZoom); } };
+  const endPinch = (e) => { if (pinch && e.touches.length < 2) { pinch = null; setRoomPref('zoom', msgZoom); } };
   els.messages.addEventListener('touchend', endPinch, { passive: true });
   els.messages.addEventListener('touchcancel', endPinch, { passive: true });
   document.addEventListener('gesturestart', (e) => { if (!document.documentElement.classList.contains('viewing')) e.preventDefault(); }); // iOS Safari: 화면 전체 확대 막기 (결과물을 보는 동안은 확대할 수 있다)
@@ -393,10 +428,14 @@
     els.input.disabled = off;
     els.input.placeholder = gone ? T('gone.placeholder') : off ? T('room.groupOff') : group ? T('room.groupPh') : '메시지 입력';
     if (off) els.send.disabled = true; else updateSendState();
-    for (const id of ['compactBtn', 'newBtn', 'ttsBtn']) $(id).classList.toggle('hidden', gone);
+    for (const id of ['compactBtn', 'newBtn', 'ttsBtn', 'voiceBtn']) $(id).classList.toggle('hidden', gone);
     $('compactBtn').classList.toggle('hidden', gone || group);
     $('roomCompactNote').classList.toggle('hidden', gone || group);
+    const noContinue = gone || group || crewOf(project) === ''; // 감자 톡톡(크루 없는 방)에서는 이어가기를 숨긴다
+    $('continueBtn').classList.toggle('hidden', noContinue);
+    $('roomContinueNote').classList.toggle('hidden', noContinue);
     $('roomActions').classList.toggle('hidden', gone); // 삭제된 크루의 방에서는 대화 관리를 보여 주지 않는다
+    $('roomPrefs').classList.toggle('hidden', gone);
     $('attachBtn').classList.toggle('hidden', gone || group);
     if (!gone && !chats.some((c) => c.name === project)) refreshChats().then(() => { if (chats.some((c) => c.name === project)) applyGone(); }); // 참여자 정보를 아직 못 받았으면 받은 뒤에 다시 맞춘다
   }
@@ -1366,6 +1405,7 @@
     }
     awaitingRestart = pendingRestart;
     if (seq !== loadSeq || runId) return; // 그 사이 프로젝트를 바꿨거나 전송을 시작함
+    loadRoomPrefs(data.prefs); // 이 방만의 설정(읽어주기·목소리·글자 크기) 적용
     // 같은 대화를 다시 불러올 때(답이 끝났을 때 포함)는 화면을 절대 움직이지 않는다. 어느 곳을 보고 있었든 그 자리를 그대로 둔다.
     // 맨 아래로 가는 건: 내가 글을 보냈을 때, 다른 프로젝트·새 대화로 바뀌었을 때뿐. 페이지를 새로 열었으면 저장해 둔 위치로 돌아간다
     const sameConv = loadedProject === project && data.messages.length >= history.length;
@@ -1373,6 +1413,9 @@
     const keepTop = sameConv ? els.messages.scrollTop
       : saved && saved.project === project && !saved.bottom ? saved.top : null;
     loadedProject = project;
+    // 다시 그리면 전체 높이가 달라질 수 있으니(막 시작한 답 말풍선 등) "맨 아래까지 남은 거리"를 기억해 둔다
+    const distBottom = els.messages.scrollHeight - els.messages.scrollTop - els.messages.clientHeight;
+    const stayBottom = sameConv && distBottom <= 160;
     // 기록이 그대로면 다시 그리지 않는다 (위치·선택 영역 유지)
     if (sameConv && !data.running && !liveView && !awaitingRestart && data.messages.length === history.length &&
       data.messages.at(-1)?.ts === history.at(-1)?.ts && els.messages.children.length && !els.messages.querySelector('.loading')) {
@@ -1423,8 +1466,12 @@
         pollTimer = setTimeout(loadConversation, 2000);
       }
     }
-    if (keepTop === null) scrollBottom(true);
-    else { els.messages.scrollTop = keepTop; follow = false; noteBox(); } // 읽던 곳을 그대로 두고, 자동으로 따라 내려가지 않는다
+    if (keepTop === null || stayBottom) scrollBottom(true); // 맨 아래를 보고 있었으면 계속 맨 아래 (따라가기도 유지)
+    else {
+      const m = els.messages;
+      m.scrollTop = sameConv ? m.scrollHeight - m.clientHeight - distBottom : keepTop; // 위로 올려 읽던 중이면 맨 아래 기준 거리를 유지
+      follow = false; noteBox();
+    } // 읽던 곳을 그대로 두고, 자동으로 따라 내려가지 않는다
     if (tab === null) markSeen(); // 채팅방 안에서 받은 답은 읽은 것으로 친다 (채팅 목록의 안 읽음 숫자용)
     olderQueue = older; // 오래된 대화는 위로 올려 읽을 때 조금씩 붙인다
   }
@@ -1703,7 +1750,7 @@
     if (window.GamjaApp) $('infoApp').textContent = window.GamjaApp.appVersion();
     for (const r of settingsEl.querySelectorAll('input[name=theme]')) r.checked = r.value === theme;
     for (const r of settingsEl.querySelectorAll('input[name=lang]')) r.checked = r.value === window.GAMJA_I18N.pref;
-    for (const r of settingsEl.querySelectorAll('input[name=textSize]')) r.checked = Number(r.value) === msgZoom;
+    for (const r of settingsEl.querySelectorAll('input[name=textSize]')) r.checked = Number(r.value) === gZoom();
     renderTts();
     pwLocal = !!d.info.local; // 이 폰 안에서 연 화면이면 현재 비밀번호를 묻지 않는다
     $('pwCurRow').classList.toggle('hidden', pwLocal);
@@ -1770,11 +1817,16 @@
     const members = ((chats.find((c) => c.name === project) || {}).members || [crewOf(project)]);
     $('roomTitleH').textContent = T('room.title');
     // 대화 관리: 새 대화와 대화 압축은 ⋯ 메뉴가 아니라 여기서 한다
+    $('roomPrefsH').textContent = T('room.prefsTitle');
+    $('roomPrefsReset').textContent = T('room.prefsReset');
+    renderRoomPrefs();
     $('roomManageH').textContent = T('room.manage');
     $('newBtn').textContent = T('room.new');
     $('roomNewNote').textContent = T('room.newNote');
     $('compactBtn').textContent = T('room.compact');
     $('roomCompactNote').textContent = T('room.compactNote');
+    $('continueBtn').textContent = T('room.continue');
+    $('roomContinueNote').textContent = T('room.continueNote');
     $('roomForm').innerHTML =
       `<h3>${escapeHtml(T('room.name'))}</h3><input id="roomName" maxlength="40" placeholder="${escapeHtml(p.text)}" value="${escapeHtml(getRoomTitles()[project] || '')}" autocomplete="off">` +
       `<p class="settings-note">${escapeHtml(T('room.nameNote'))}</p>` +
@@ -1938,7 +1990,7 @@
     const titles = getRoomTitles();
     // 이름을 안 적으면 같은 크루의 방끼리 구분되게 시각을 붙인다 (채팅방 설정에서 바꿀 수 있다)
     titles[r.room] = ncName.trim() || (crews.length > 1 ? crews.map((c) => crewParts(c).text).join(', ')
-      : `${crewParts(crews[0]).text} · ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+      : `${crewParts(crews[0]).text}(${pad(d.getFullYear() % 100)}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())})`);
     store.set('cc:roomTitle', titles);
     newChatEl.classList.add('hidden');
     selectProject(r.room);
@@ -2215,8 +2267,8 @@
   $('setStyle').addEventListener('change', autoSaveSettings);
   for (const r of settingsEl.querySelectorAll('input[name=textSize]')) {
     r.addEventListener('change', () => {
-      applyMsgZoom(Number(r.value));
-      store.set('cc:zoom', msgZoom);
+      store.set('cc:zoom', snapZoom(Number(r.value))); // 더보기의 값은 앱 기본값. 방에서 따로 정한 방은 그 방의 값이 우선한다
+      applyPrefs();
       toast('✅ 바꿨어요');
     });
   }
@@ -2244,6 +2296,33 @@
     try { await api('/api/compact', { project }); } catch (err) { return alert(err.message); }
     roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫는다
     loadConversation(); // 진행 상황을 따라가며 보여 준다
+  };
+
+  // 새 채팅으로 이어가기: 서버가 대화를 요약하고 결과물을 복사한 새 방을 만들면, 그 방을 연다
+  $('continueBtn').onclick = async () => {
+    const T = window.GAMJA_I18N.t;
+    els.menu.classList.add('hidden');
+    if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
+    if (!history.length) return alert('아직 이어갈 대화가 없어요.');
+    let legacy = false;
+    try { legacy = !!(await api('/api/rooms/continue', { room: project, check: true })).legacy; } catch (err) { return alert(err.message); }
+    if (!(await gSheet({ title: T('room.continue'), message: T(legacy ? 'room.continueConfirmLegacy' : 'room.continueConfirm'), ok: T('room.continueOk') }))) return;
+    const btn = $('continueBtn');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('busy'); // 돌아가는 동그라미로 멈춘 게 아님을 보여 준다
+    btn.textContent = T('room.continueBusy');
+    let r;
+    try { r = await api('/api/rooms/continue', { room: project }); } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
+    const crew = r.members && r.members[0];
+    if (r.room.startsWith('@')) rememberRoomCrew(r.room, crew || '');
+    const titles = getRoomTitles();
+    const oldName = titles[project] || crewParts(project).text;
+    titles[r.room] = T('room.continueTitle', { name: oldName }).slice(0, 40);
+    store.set('cc:roomTitle', titles);
+    roomEl.classList.add('hidden');
+    if (r.skippedBig) alert(T('room.continueSkippedBig'));
+    selectProject(r.room);
   };
 
   // ---------- 🌐 외부 접속 주소 (https 터널) ----------
@@ -2558,13 +2637,11 @@
   }
   function stepZoom(dir) {
     const i = Math.max(0, Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(msgZoom) + dir));
-    applyMsgZoom(ZOOM_STEPS[i]);
-    store.set('cc:zoom', msgZoom);
-    renderZoomRow();
+    setRoomPref('zoom', ZOOM_STEPS[i]); // 이 방만의 설정으로 저장
   }
   $('zoomOut').onclick = () => stepZoom(-1);
   $('zoomIn').onclick = () => stepZoom(1);
-  $('zoomVal').onclick = () => { applyMsgZoom(1); store.set('cc:zoom', msgZoom); renderZoomRow(); }; // 가운데 숫자를 누르면 100%로
+  $('zoomVal').onclick = () => setRoomPref('zoom', 1); // 가운데 숫자를 누르면 이 방을 100%로
   els.menuBtn.onclick = (e) => { e.stopPropagation(); renderZoomRow(); els.menu.classList.toggle('hidden'); };
   document.addEventListener('click', (e) => { if (!els.menu.contains(e.target)) els.menu.classList.add('hidden'); });
 
@@ -3313,24 +3390,24 @@
   const synth = window.speechSynthesis;
   // 읽어주기 켜기·끄기: ⋯ 메뉴의 답변 읽어주기 항목과 ⚙️ 설정 → 소리·화면의 스위치가 같은 설정이다
   function renderTts() {
-    $('setTts').checked = ttsOn;
-    const b = $('ttsBtn');
+    $('setTts').checked = gTts(); // 더보기의 스위치는 앱 기본값
+    const b = $('ttsBtn'); // ⋯ 메뉴는 이 방의 설정
     b.textContent = ttsOn ? '🔊 답변 읽어주기: 켜짐' : '🔇 답변 읽어주기: 꺼짐';
     b.setAttribute('aria-pressed', String(ttsOn));
     b.style.opacity = synth ? '' : '.35';
   }
-  function setTtsOn(on) {
+  // scope 'room': ⋯ 메뉴에서 바꾸면 이 방만, 'global': 더보기에서 바꾸면 앱 기본값
+  function setTtsOn(on, scope = 'room') {
     if (on && !synth) { renderTts(); return alert('이 브라우저는 음성 합성을 지원하지 않아요.'); }
-    ttsOn = on;
-    store.set('cc:tts', ttsOn);
-    renderTts();
-    if (ttsOn) synth.speak(new SpeechSynthesisUtterance('')); // iOS: 사용자 동작으로 잠금 해제
+    if (scope === 'room') setRoomPref('tts', on);
+    else { store.set('cc:tts', on); applyPrefs(); }
+    if (on) synth.speak(new SpeechSynthesisUtterance('')); // iOS: 사용자 동작으로 잠금 해제
     else stopSpeaking();
-    toast(ttsOn ? '🔊 답변을 읽어 드릴게요' : '🔇 읽어주기를 껐어요');
+    toast((on ? '🔊 답변을 읽어 드릴게요' : '🔇 읽어주기를 껐어요') + (scope === 'room' ? window.GAMJA_I18N.t('room.prefsOnly') : ''));
   }
   renderTts();
-  $('setTts').onchange = (e) => setTtsOn(e.target.checked);
-  $('ttsBtn').onclick = () => { els.menu.classList.add('hidden'); setTtsOn(!ttsOn); };
+  $('setTts').onchange = (e) => setTtsOn(e.target.checked, 'global');
+  $('ttsBtn').onclick = () => { els.menu.classList.add('hidden'); setTtsOn(!ttsOn, 'room'); };
   function stopSpeaking() {
     if (typeof readerClose === 'function' && reader.chunks.length) readerClose();
     if (synth) synth.cancel();
@@ -3352,15 +3429,19 @@
   const voiceBase = () => LOCALE.slice(0, 2);
   const voiceList = () => (synth ? synth.getVoices() : []).filter((v) => v.lang && v.lang.replace('_', '-').toLowerCase().startsWith(voiceBase()))
     .sort((a, b) => (a.localService === b.localService ? a.name.localeCompare(b.name) : a.localService ? 1 : -1));
-  const savedVoice = () => { const id = store.get('cc:voice', ''); return id ? voiceList().find((v) => v.voiceURI === id) : null; };
+  // 목소리 id로 폰에 설치된 목소리 찾기 (다른 기기에서 정한 목소리가 이 폰에 없으면 기본 목소리로 읽는다)
+  const findVoice = (id) => (id ? voiceList().find((v) => v.voiceURI === id) : null);
+  const savedVoice = () => findVoice(curVoiceId());
   function renderVoiceBtns() {
     const T = window.GAMJA_I18N.t;
-    const cur = savedVoice();
-    $('voiceBtn').textContent = T('voice.menu') + (cur ? `: ${cur.name}` : '');
-    $('setVoiceBtn').textContent = `${T('voice.menu')}: ${cur ? cur.name : T('voice.auto')}`;
+    const cur = savedVoice(), glob = findVoice(gVoice());
+    if (!$('voiceBtn').firstElementChild && window.GAMJA_ICONS) $('voiceBtn').innerHTML = window.GAMJA_ICONS.svg('speak');
+    $('voiceBtn').title = $('voiceBtn').ariaLabel = T('voice.title') + (cur ? `: ${cur.name}` : '');
+    $('setVoiceBtn').textContent = `${T('voice.menu')}: ${glob ? glob.name : T('voice.auto')}`;
     for (const id of ['voiceBtn', 'setVoiceBtn']) $(id).style.opacity = synth ? '' : '.35';
   }
-  function openVoicePicker() {
+  // scope 'room': ⋯ 메뉴에서 열면 이 방만의 목소리, 'global': 더보기에서 열면 앱 기본 목소리
+  function openVoicePicker(scope = 'room') {
     const T = window.GAMJA_I18N.t;
     els.menu.classList.add('hidden');
     if (!synth) return toast(T('voice.unsupported'));
@@ -3388,19 +3469,24 @@
       synth.speak(u);
     };
     const drawList = () => {
-      const vs = voiceList(), cur = store.get('cc:voice', '');
+      const vs = voiceList();
+      const inRoom = scope === 'room';
+      const follow = inRoom && roomPrefs.voice === undefined; // 이 방은 더보기의 기본 목소리를 따르는 중
+      const cur = inRoom ? curVoiceId() : gVoice();
       list.innerHTML = '';
-      const row = (label, tag, on, v) => {
+      const row = (label, tag, on, pick, v) => {
         const b = document.createElement('button');
         b.type = 'button'; b.className = `vp-row${on ? ' on' : ''}`;
         const n = document.createElement('span'); n.className = 'vp-name'; n.textContent = label;
         b.appendChild(n);
         if (tag) { const s = document.createElement('small'); s.textContent = tag; b.appendChild(s); }
-        b.onclick = () => { store.set('cc:voice', v ? v.voiceURI : ''); renderVoiceBtns(); drawList(); preview(v || pickVoice()); };
+        b.onclick = () => { pick(); renderVoiceBtns(); drawList(); preview(v || pickVoice()); };
         list.appendChild(b);
       };
-      row(T('voice.auto'), '', !cur, null);
-      for (const v of vs) row(v.name, v.localService ? T('voice.offline') : T('voice.online'), v.voiceURI === cur, v);
+      const choose = (v) => () => { const id = v ? v.voiceURI : ''; if (inRoom) setRoomPref('voice', id); else { store.set('cc:voice', id); applyPrefs(); } };
+      if (inRoom) row(T('voice.follow'), '', follow, () => setRoomPref('voice', undefined), findVoice(gVoice()));
+      row(T('voice.auto'), '', !follow && !cur, choose(null), null);
+      for (const v of vs) row(v.name, v.localService ? T('voice.offline') : T('voice.online'), !follow && v.voiceURI === cur, choose(v), v);
       if (!vs.length) { const p = document.createElement('p'); p.className = 'settings-note'; p.textContent = T('voice.none'); list.appendChild(p); }
     };
     const drawRates = () => {
@@ -3419,8 +3505,14 @@
     gsOpen = { bg, close };
     synth.onvoiceschanged = () => { drawList(); renderVoiceBtns(); }; // 목소리 목록이 늦게 도착하는 브라우저를 위해
   }
-  $('voiceBtn').onclick = openVoicePicker;
-  $('setVoiceBtn').onclick = openVoicePicker;
+  $('roomPrefsReset').onclick = () => { // 이 방의 설정을 모두 지우고 더보기의 기본값을 따르게 한다
+    roomPrefs = {};
+    applyPrefs();
+    if (project && !isGone(project)) api('/api/room-prefs', { room: project, prefs: {} }).catch(() => {});
+    toast(window.GAMJA_I18N.t('room.prefsResetDone'));
+  };
+  $('voiceBtn').onclick = () => openVoicePicker('room');
+  $('setVoiceBtn').onclick = () => openVoicePicker('global');
   if (synth) synth.addEventListener('voiceschanged', renderVoiceBtns);
   renderVoiceBtns();
   function pickVoice() {
@@ -3535,17 +3627,13 @@
   $('readerBack').onclick = () => { if (reader.chunks.length) readerFrom(readerSkip(-5)); };
   $('readerFwd').onclick = () => { if (!reader.chunks.length) return; const i = readerSkip(5); if (i >= reader.chunks.length) readerClose(); else readerFrom(i); };
   $('readerClose').onclick = readerClose;
-  // ×2: 누르고 있는 동안만 2배 빠르게
-  const boostBtn = $('readerBoost');
-  const boostSet = (on) => {
-    if (reader.boost === on || !reader.chunks.length) return;
-    reader.boost = on;
+  // ×2: 한 번 누르면 2배 빠르게, 다시 누르면 1배로 (눌러서 켜고 끄는 스위치)
+  $('readerBoost').onclick = () => {
+    if (!reader.chunks.length) return;
+    reader.boost = !reader.boost;
     renderReader();
     if (!reader.paused) readerFrom(reader.i);
   };
-  boostBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); try { boostBtn.setPointerCapture(e.pointerId); } catch (_) { /* 일부 브라우저는 지원하지 않는다 */ } boostSet(true); });
-  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) boostBtn.addEventListener(ev, () => boostSet(false));
-  boostBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // 길게 눌러도 메뉴가 뜨지 않게
 
   function speak(md, force, bubble) {
     if (!synth || (!ttsOn && !force)) return;

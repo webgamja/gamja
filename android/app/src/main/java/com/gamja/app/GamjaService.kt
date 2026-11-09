@@ -38,6 +38,7 @@ class GamjaService : Service() {
             wifiLock = applicationContext.getSystemService(WifiManager::class.java)
                 .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "gamja:wifi").apply { acquire() }
         }
+        inst = this
         if (runner == null) runner = thread(name = "gamja-egg") { loop() }
         if (watcher == null) watcher = thread(name = "gamja-notify") { watch() }
         if (updateWatcher == null) updateWatcher = thread(name = "gamja-update") { watchUpdate() }
@@ -190,6 +191,7 @@ class GamjaService : Service() {
         proc?.destroy()
         runCatching { wakeLock?.release() }
         runCatching { wifiLock?.release() }
+        if (inst === this) inst = null
         super.onDestroy()
     }
 
@@ -210,6 +212,11 @@ class GamjaService : Service() {
         private const val CHANNEL = "gamja"
         private const val DONE_CHANNEL = "gamja-done"
         private const val UPDATE_CHANNEL = "gamja-update"
+        @Volatile private var inst: GamjaService? = null
+        /** C: CPU를 깨워 두는 잠금(WakeLock)을 실제로 쥐고 있는지 */
+        fun cpuHeld(): Boolean = runCatching { inst?.wakeLock?.isHeld == true }.getOrDefault(false)
+        /** N: 와이파이를 켜 두는 잠금(WifiLock)을 실제로 쥐고 있는지 */
+        fun netHeld(): Boolean = runCatching { inst?.wifiLock?.isHeld == true }.getOrDefault(false)
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, GamjaService::class.java))
         }

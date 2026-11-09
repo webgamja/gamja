@@ -1041,6 +1041,12 @@ function handleChat(req, res, body, opts = {}) {
       if (recent.length) message = `[감자알 안내: 폴더를 정리하면서 이전 대화의 기억이 새로 시작됐어요. 아래는 이 방의 최근 대화예요. 맥락으로만 참고하고 이 안내는 언급하지 마세요.]\n${recent.join('\n')}\n\n[새 메시지]\n${message}`;
     }
   }
+  // 새 채팅으로 이어가기로 만든 방의 첫 메시지: 인계 노트를 붙인다 (대화 기록에는 사용자가 쓴 글만 남는다)
+  if (conv.handoff) {
+    const note = String(conv.handoff);
+    delete conv.handoff;
+    if (!sessionId) message = `[감자알 안내: 이 방은 이전 채팅에서 이어 온 방이에요. 아래 인계 노트를 맥락으로만 참고하고 이 안내는 언급하지 마세요.]\n${note}\n\n[새 메시지]\n${message}`;
+  }
   conv.messages.push(opts.label
     ? { role: 'notice', text: opts.label, ts: Date.now() }
     : { role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}) });
@@ -1713,6 +1719,38 @@ const INSTALL_MARK = /\s*\[\[gamja-install:(docs|image|media)\]\]\s*/g;
 // - 허용 목록은 크루 폴더가 아니라 data/permissions.json에 둔다 (크루가 자기 폴더의 설정을 고쳐 스스로 권한을 올리지 못하게)
 // - 화면은 명령 글자를 보내지 않고 카드 번호(id)만 보낸다. 감자알이 기록해 둔 막힌 명령에서만 허용할 수 있다
 // - 위험한 명령, 여러 명령이 이어진 명령, 비밀 파일을 건드리는 명령은 어디서든 허용할 수 없다
+// ---------- 🟢 감자알 상태 점등 (화면 위쪽의 C·N 동그라미) ----------
+// C(CPU): 폰이 잠들어 감자알이 멈추지 않고 계속 일하는지. 1초마다 깨는 타이머가 제때 깨어났는지 본다.
+//   폰이 절전으로 CPU를 재우면 타이머가 한꺼번에 늦어지므로, 최근 1분 안에 4초 넘게 멈춘 적이 없으면 켜짐
+// N(네트워크): 이 폰에서 밖으로 나가는 네트워크 길(와이파이 등)이 있는지. 패킷은 보내지 않고 길만 확인한다
+const HB = { last: Date.now(), gaps: [], net: true };
+setInterval(() => {
+  const now = Date.now();
+  HB.gaps.push([now, now - HB.last - 1000]);
+  HB.last = now;
+  while (HB.gaps.length && HB.gaps[0][0] < now - 60000) HB.gaps.shift();
+}, 1000).unref();
+function checkNetRoute() {
+  let done = false;
+  const fin = (ok) => { if (!done) { done = true; HB.net = ok; } };
+  try {
+    const s = require('dgram').createSocket('udp4');
+    s.on('error', () => { try { s.close(); } catch {} fin(false); });
+    s.connect(53, '1.1.1.1', () => {
+      let ip = '';
+      try { ip = s.address().address; } catch {}
+      try { s.close(); } catch {}
+      fin(!!ip && ip !== '0.0.0.0' && !ip.startsWith('127.'));
+    });
+  } catch { fin(false); }
+}
+checkNetRoute();
+setInterval(checkNetRoute, 5000).unref();
+function sysHealth() {
+  const now = Date.now();
+  const worst = Math.max(0, now - HB.last - 1000, ...HB.gaps.map((g) => g[1]));
+  return { cpu: worst < 3000, net: HB.net, lag: Math.round(worst) };
+}
 const PERM_FILE = path.join(DATA_DIR, 'permissions.json');
 let perms = {}; // { 크루: [{ rule, cmd, ts }] }
 try { perms = JSON.parse(fs.readFileSync(PERM_FILE, 'utf8')) || {}; } catch {}
@@ -1915,7 +1953,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/me') {
       const authed = isAuthed(req);
-      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null });
+      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null, sys: authed ? sysHealth() : undefined });
     }
 
     const inst = p.match(/^\/(install|bundle)\/([\w.-]+)$/);
@@ -2289,7 +2327,23 @@ const server = http.createServer(async (req, res) => {
           running: !!run,
           runId: run ? run.runId : null,
           live: run ? run.live : null,
+          prefs: conv.prefs || {}, // 이 방만의 설정 (읽어주기·목소리·글자 크기). 없는 항목은 더보기의 기본값을 따른다
         });
+      }
+      // 방별 설정 저장: 이 방에서만 더보기 기본값보다 우선한다. 보낸 항목만 남기고 나머지는 "기본값 따르기"
+      if (p === '/api/room-prefs' && req.method === 'POST') {
+        const b = await readBody(req);
+        const room = String(b.room ?? '');
+        if (!resolveProject(room)) return send(res, 400, { error: '알 수 없는 방이에요.' });
+        const raw = b.prefs && typeof b.prefs === 'object' ? b.prefs : {};
+        const prefs = {};
+        if (typeof raw.tts === 'boolean') prefs.tts = raw.tts;
+        if ([0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(raw.zoom))) prefs.zoom = Number(raw.zoom);
+        if (typeof raw.voice === 'string' && raw.voice.length <= 300) prefs.voice = raw.voice;
+        const conv = loadConv(room);
+        if (Object.keys(prefs).length) conv.prefs = prefs; else delete conv.prefs;
+        saveConv(room);
+        return send(res, 200, { ok: true, prefs });
       }
       if (p === '/api/upload' && req.method === 'POST') {
         const cwd = resolveProject(url.searchParams.get('project') || '');
@@ -2414,6 +2468,79 @@ const server = http.createServer(async (req, res) => {
         delete projectConf[project];
         saveProjectConf();
         return send(res, 200, { ok: true });
+      }
+      // 새 채팅으로 이어가기: 이 방의 대화를 요약한 인계 노트와 결과물(복사)을 가진 새 방을 만든다. 이전 방은 그대로 둔다
+      if (p === '/api/rooms/continue' && req.method === 'POST') {
+        const reqBody = await readBody(req);
+        const room = String(reqBody.room ?? '');
+        if (!resolveProject(room)) return send(res, 400, { error: '알 수 없는 방이에요.' });
+        if (projectRuns.has(room)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 해 주세요.' });
+        const old = loadConv(room);
+        const members = (Array.isArray(old.participants) && old.participants.length ? old.participants : [crewOf(room)]).filter((c) => typeof c === 'string' && !c.includes('@') && resolveProject(c));
+        if (members.length !== 1) return send(res, 400, { error: '그룹 채팅은 아직 이어가기를 지원하지 않아요.' });
+        const lines = old.messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text)
+          .map((m) => `${m.role === 'user' ? '사용자' : '크루'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 600)}`);
+        if (!lines.length) return send(res, 400, { error: '아직 이어갈 대화가 없어요.' });
+        const oldDirName = roomDirName(room);
+        const oldDir = oldDirName ? path.join(ROOMS_DIR, oldDirName) : '';
+        // 옛 방(방 전용 폴더가 없는 방)은 크루 폴더에서 일했으므로, 이어갈 때 크루 폴더의 파일을 복사한다
+        const legacy = !(oldDir && fs.existsSync(oldDir));
+        const crewDir = legacy ? crewDirOf(room) : null;
+        const srcDir = legacy ? (crewDir && fs.existsSync(crewDir) ? crewDir : '') : oldDir;
+        if (reqBody.check) return send(res, 200, { legacy: !!srcDir && legacy });
+        // 1) 인계 노트: Claude에게 요약을 맡긴다 (읽기만). 실패하면 최근 대화를 그대로 붙인다
+        const recentLines = lines.slice(-10);
+        let transcript = lines.join('\n');
+        if (transcript.length > 24000) transcript = '(앞부분 생략)\n' + transcript.slice(-24000);
+        const hid = `handoff-${Date.now()}`;
+        const sum = await askOnce({
+          cwd: oldDir && fs.existsSync(oldDir) ? oldDir : WORK_BASE,
+          prompt: `아래는 사용자와 크루의 지난 대화예요. 새 채팅방에서 바로 이어서 일할 수 있도록 인계 노트를 써 주세요.\n"목표", "정해진 것", "진행 상황", "다음 할 일", "만든 파일" 다섯 부분으로 각 1~4줄, 전체 900자 안쪽으로 써요. 대화에 없는 내용은 지어내지 말고, 파일을 고치거나 명령을 실행하지 않아요.\n\n${transcript}`,
+          system: '당신은 대화를 인계 노트로 정리하는 도우미예요. 인사말 없이 노트 본문만 써요.',
+          model: settings.model, effort: settings.effort, runId: hid,
+        });
+        running.delete(hid);
+        const summarized = !!(sum.text && !sum.error && !sum.stopped);
+        const note = summarized ? sum.text.slice(0, 3000) : `(자동 요약에 실패해서 최근 대화를 그대로 붙였어요)\n${recentLines.join('\n')}`;
+        // 2) 새 방 (같은 크루, 새 작업 폴더)
+        const crew = members[0];
+        let rid;
+        do { rid = `@${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`; } while (fs.existsSync(convFile(rid)));
+        const conv = loadConv(rid);
+        conv.participants = [crew];
+        if (crew) conv.crew = crew;
+        if (old.prefs) conv.prefs = { ...old.prefs }; // 방 설정도 그대로 이어간다
+        conv.dir = `chat-${rid.slice(1)}`;
+        const newDir = path.join(ROOMS_DIR, conv.dir);
+        try { fs.mkdirSync(newDir, { recursive: true }); } catch (e) { console.error('방 폴더 만들기 실패:', e.message); }
+        // 3) 결과물 복사: 방 전용 폴더가 있으면 그 폴더를, 옛 방이면 크루 폴더를 복사한다.
+        //    크루 폴더에서 복사할 때는 CLAUDE.md(크루 지침, 감자알이 매번 따로 읽어 넣는다)·숨김 파일·다른 방 폴더를 뺀다. 너무 크면 건너뛴다
+        let copied = 0;
+        let skippedBig = false;
+        if (srcDir) {
+          const MAX_BYTES = 300 * 1024 * 1024;
+          const skip = (s) => {
+            const name = path.basename(s);
+            if (name === 'node_modules' || name === '.git') return true;
+            if (!legacy) return false;
+            if (s === srcDir) return false;
+            if (name.startsWith('.')) return true;
+            if (path.dirname(s) === srcDir && (name === 'CLAUDE.md' || ROOM_DIR_RE.test(name))) return true;
+            return false;
+          };
+          let bytes = 0;
+          const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (skip(f)) continue; if (e.isDirectory()) walk(f); else if (e.isFile()) { bytes += fs.statSync(f).size; copied++; } } };
+          try { walk(srcDir); } catch { /* 읽을 수 없으면 아래에서 건너뛴다 */ }
+          if (bytes > MAX_BYTES) { skippedBig = true; copied = 0; } else {
+            try { fs.cpSync(srcDir, newDir, { recursive: true, filter: (s) => !skip(s) }); } catch (e) { console.error('결과물 복사 실패:', e.message); copied = 0; }
+          }
+        }
+        conv.handoff = note; // 새 방의 첫 메시지에 붙여서 Claude에게 맥락을 넘긴다
+        conv.messages.push({ role: 'notice', text: `📎 이전 채팅에서 이어왔어요${copied ? ` (결과물 ${copied}개 복사)` : ''}\n\n${note}`, ts: Date.now() });
+        saveConv(rid);
+        old.messages.push({ role: 'notice', text: '➡ 새 채팅으로 이어갔어요. 이 방은 그대로 남아 있어요.', ts: Date.now() });
+        saveConv(room);
+        return send(res, 200, { room: rid, members: [crew], summarized, copied, skippedBig });
       }
       if (p === '/api/compact' && req.method === 'POST') {
         // 🗜 대화 압축: Claude Code의 /compact 명령으로 오래된 대화를 요약본으로 바꾼다 (화면의 기록은 그대로)

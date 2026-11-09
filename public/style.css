@@ -101,6 +101,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border-radius: 8px; color: var(--bot-fg); font-size: 14px; text-decoration: none;
 }
 .menu-item:active { background: rgba(0,0,0,.06); }
+/* 답변 읽어주기 줄 오른쪽 끝의 목소리 고르기 아이콘 (감자 모양) */
+.menu-row { display: flex; align-items: center; gap: 4px; }
+.menu-row .menu-item { flex: 1; min-width: 0; }
+.menu-voice { flex: none; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--bot-fg); display: grid; place-items: center; }
+.menu-voice:active { background: rgba(0,0,0,.06); }
+.menu-voice .gi-s { width: 24px; height: 24px; }
 /* 화면비율: 크롬의 확대·축소 줄처럼 [−] 100% [＋] */
 .menu-zoom { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 4px 6px 8px; }
 .menu-zoom:active { background: none; }
@@ -488,6 +494,13 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .ui .settings-ghost {
   height: 50px; padding: 0; border: 0; border-radius: 14px; background: var(--ui-line); color: var(--ui-text); font-size: 16px; font-weight: 700;
 }
+/* 새 채팅으로 이어가기: 메인 컬러(노랑) 버튼. 요약하는 동안(.busy)에는 돌아가는 동그라미로 움직임을 보여 준다 */
+.ui #continueBtn { background: var(--me); color: var(--me-fg); font-weight: 800; }
+.ui #continueBtn:disabled { opacity: 1; }
+#continueBtn.busy::before { content: ''; display: inline-block; width: 15px; height: 15px; margin-right: 9px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -3px; animation: cont-spin .8s linear infinite; }
+#continueBtn.busy { animation: cont-breathe 1.6s ease-in-out infinite; }
+@keyframes cont-spin { to { transform: rotate(360deg); } }
+@keyframes cont-breathe { 50% { filter: brightness(.9); } }
 .ui .settings-danger { height: 50px; padding: 0; border-radius: 14px; border: 0; background: transparent; color: var(--danger); font-size: 16px; font-weight: 700; }
 .ui .settings-body input:not([type=radio]):not([type=checkbox]), .ui .settings-body textarea { border: 0; border-radius: 14px; background: var(--ui-card); padding: 14px 16px; }
 

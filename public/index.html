@@ -40,6 +40,7 @@
     <header class="topbar">
       <!-- 왼쪽 위: 지금 있는 곳. 누르면 홈 화면(크루 목록·크루 설정·크루 추가)이 열린다 -->
       <button id="homeBtn" class="crew-btn" aria-label="홈 · 크루 선택">🏠 홈 ▾</button>
+      <!-- 감자알 상태: C=CPU(폰이 잠들지 않고 일하는 중), N=네트워크. 녹색=정상, 빨강=이상 -->
       <!-- 크루가 만든 웹페이지 보기: 크루 이름 바로 오른쪽 (크루 방에서만 보인다) -->
       <button id="madeBtn" class="made-btn hidden" type="button" title="크루가 만든 결과물 보기">👀 결과물</button>
       <div class="top-actions">
@@ -47,8 +48,11 @@
       </div>
       <!-- ⋯ 메뉴: 지금 이 대화에 대한 것만. 크루 설정은 크루 탭의 프로필 창에, 앱 전체 설정은 더보기 탭에 있다 -->
       <div id="menu" class="menu hidden">
-        <button id="ttsBtn" class="menu-item" aria-pressed="false">🔇 답변 읽어주기: 꺼짐</button>
-        <button id="voiceBtn" class="menu-item" type="button"></button>
+        <div class="menu-row">
+          <button id="ttsBtn" class="menu-item" aria-pressed="false">🔇 답변 읽어주기: 꺼짐</button>
+          <!-- 읽어주는 목소리 고르기: 크루 아이콘과 같은 선 아이콘(말하는 사람). 그림은 app.js가 넣는다 -->
+          <button id="voiceBtn" class="menu-voice" type="button" aria-label="읽어주는 목소리" title="읽어주는 목소리"></button>
+        </div>
         <div id="zoomRow" class="menu-item menu-zoom">
           <span id="zoomLabel">화면비율</span>
           <span class="zoom-ctl"><button id="zoomOut" type="button" aria-label="줄이기">−</button><button id="zoomVal" type="button">100%</button><button id="zoomIn" type="button" aria-label="키우기">＋</button></span>
@@ -323,10 +327,17 @@
           <button type="submit">이어가기</button>
         </form>
       </div>
+      <div id="roomPrefs">
+        <h3 id="roomPrefsH"></h3>
+        <p id="roomPrefsNote" class="settings-note"></p>
+        <button id="roomPrefsReset" class="settings-ghost hidden" type="button"></button>
+      </div>
       <div id="roomActions">
         <h3 id="roomManageH"></h3>
         <button id="compactBtn" class="settings-ghost" type="button"></button>
         <p id="roomCompactNote" class="settings-note"></p>
+        <button id="continueBtn" class="settings-ghost" type="button"></button>
+        <p id="roomContinueNote" class="settings-note"></p>
         <button id="newBtn" class="settings-danger" type="button"></button>
         <p id="roomNewNote" class="settings-note"></p>
       </div>

@@ -50,6 +50,7 @@
     warn: '<path class="a" d="M12 4l9 16H3z"/><path d="M12 10v4.5"/><circle class="d" cx="12" cy="17.3" r=".9"/>',
     info: '<circle class="a" cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle class="d" cx="12" cy="7.9" r=".9"/>',
     wave: '<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/>',
+    speak: '<circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M17 6.2a4 4 0 0 1 0 5.2M19.6 3.8a7.6 7.6 0 0 1 0 10"/>', // 말하는 사람 (읽어주는 목소리)
     clipboard: '<rect class="a" x="6" y="5" width="12" height="16" rx="2"/><path d="M9 5V4h6v1M9 11h6M9 15h4"/>',
     download: '<path class="a" d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3z"/><path d="M12 4v10M8 10l4 4 4-4"/>',
     upload: '<path class="a" d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3z"/><path d="M12 14V4M8 8l4-4 4 4"/>',

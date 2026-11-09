@@ -81,7 +81,38 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(20), dp(16), dp(28))
         }
-        root.addView(label("감자", 34f, HOME_INK, bold = true).apply { setPadding(dp(4), dp(8), 0, 0) })
+        // 제목 오른쪽: C(CPU 깨움 잠금)·N(와이파이 잠금) 동그라미. 실제로 쥐고 있으면 녹색, 아니면 빨강
+        fun sysDot(ch: String) = TextView(this).apply {
+            text = ch
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+            background = rounded(0xFF9AA1AB.toInt(), 13)
+        }
+        val dotC = sysDot("C")
+        val dotN = sysDot("N")
+        fun refreshSys() {
+            dotC.background = rounded(if (GamjaService.cpuHeld()) 0xFF2F9E44.toInt() else 0xFFE5484D.toInt(), 13)
+            dotN.background = rounded(if (GamjaService.netHeld()) 0xFF2F9E44.toInt() else 0xFFE5484D.toInt(), 13)
+        }
+        refreshSys()
+        val sysTick = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                refreshSys()
+                ui.postDelayed(this, 2000)
+            }
+        }
+        ui.postDelayed(sysTick, 2000)
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(8), 0, 0)
+            addView(label("감자", 34f, HOME_INK, bold = true))
+            addView(dotC, LinearLayout.LayoutParams(dp(26), dp(26)).apply { leftMargin = dp(12) })
+            addView(dotN, LinearLayout.LayoutParams(dp(26), dp(26)).apply { leftMargin = dp(6) })
+        })
         root.addView(label("감자알이 돌아가는 곳이에요", 14f, HOME_SUB).apply { setPadding(dp(4), dp(4), 0, dp(14)) })
 
         // 감자알 상태 카드
