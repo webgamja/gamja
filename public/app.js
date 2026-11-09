@@ -377,7 +377,7 @@
   function updateHomeBtn() {
     const members = roomMembers(project);
     $('homeBtn').textContent = `← ${crewParts(members.length > 1 ? members[0] : project).icon} ${roomText(project)}`; // ←를 누르면 채팅 목록으로
-    $('madeBtn').classList.toggle('hidden', isGone(project)); // 감자 톡톡도 결과물 폴더(gamjaTT)가 있다
+    $('madeBtn').classList.remove('hidden'); // 감자 톡톡도 결과물 폴더가 있고, 크루가 지워진 채팅방도 방에 남은 결과물을 볼 수 있다
     applyGone();
   }
   // 채팅방의 참여자(크루) 목록. 채팅 목록에서 받아 온 정보를 쓰고, 아직 모르면 그 방의 크루 한 명으로 본다

@@ -12,6 +12,12 @@ const PORT = Number(process.env.PORT) || 26514;
 const HOST = process.env.HOST || '0.0.0.0';
 const PASSWORD = process.env.APP_PASSWORD;
 const PROJECTS_DIR = path.resolve(process.env.PROJECTS_DIR || path.join(os.homedir(), 'projects'));
+// 사용자 정보를 한 폴더에 모으는 새 구조: GAMJA_HOME(.env에 적는다)이 있으면 그 아래 data/ crews/ workspaces/ trash/ 를 쓴다.
+// 없으면 예전 방식 그대로 (크루 폴더·방 폴더·휴지통이 모두 PROJECTS_DIR 안, 개발 폰과 예전에 설치한 폰)
+const GAMJA_HOME = process.env.GAMJA_HOME ? path.resolve(process.env.GAMJA_HOME) : '';
+const CREWS_DIR = GAMJA_HOME ? path.join(GAMJA_HOME, 'crews') : PROJECTS_DIR; // 크루 폴더(지침·자료)
+const WORK_BASE = GAMJA_HOME ? path.join(GAMJA_HOME, 'workspaces') : PROJECTS_DIR; // 감자 톡톡과 폴더 없는 옛 방이 일하는 곳, 새 방 폴더가 모이는 곳
+const TRASH_DIR = GAMJA_HOME ? path.join(GAMJA_HOME, 'trash') : path.join(PROJECTS_DIR, '.trash'); // 지운 크루 폴더 (30일 보관)
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 // 선택: acceptEdits 모드에서 추가로 허용할 도구 (예: "Bash(git status:*) Bash(npm test:*)")
 const ALLOWED_TOOLS = (process.env.ALLOWED_TOOLS || '').trim();
@@ -151,10 +157,10 @@ const isUploadName = (n) => typeof n === 'string' && /^\d+-[a-z0-9]+\.(jpg|png|w
 
 // 감자 톡톡(크루가 아닌 기본 대화)이 만든 결과물을 모아 두는 폴더. 크루 목록에는 나오지 않는다
 const TALK_DIR_NAME = 'gamjaTT';
-const TALK_DIR = path.join(PROJECTS_DIR, TALK_DIR_NAME);
+const TALK_DIR = path.join(WORK_BASE, TALK_DIR_NAME);
 function listProjects() {
   try {
-    return fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
+    return fs.readdirSync(CREWS_DIR, { withFileTypes: true })
       .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== TALK_DIR_NAME)
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b));
@@ -195,14 +201,55 @@ function crewOf(rid) {
   const c = loadConv(s).crew;
   return typeof c === 'string' ? c : '';
 }
+// 새 채팅방은 자기만의 폴더("chat-번호")에서 일한다. 그래서 결과물도 그 방 것만 보인다.
+// 방 폴더는 크루 폴더 안이 아니라 ~/projects/.rooms/ 에 둔다. 결과물은 크루가 아니라 채팅방에 속하므로, 크루를 지우거나 바꿔도 방과 함께 남는다.
+// 폴더 이름은 대화 파일의 dir에 적어 둔다. dir이 없는 방(이 기능 전에 만든 방)은 예전처럼 크루 폴더에서 계속 일한다 (Claude의 이전 대화 기록이 폴더에 묶여 있어서)
+const ROOM_DIR_RE = /^chat-[a-z0-9]{3,8}$/;
+const ROOMS_DIR = GAMJA_HOME ? WORK_BASE : path.join(PROJECTS_DIR, '.rooms');
+const roomPreviewKey = (dir) => `room~${dir}`; // 결과물 주소에 쓰는 이름 (크루가 없어져도 방 폴더로 찾아간다)
+function roomDirName(rid) {
+  const s = String(rid || '');
+  if (!s.startsWith('@') || !ROOM_SUFFIX.test(s.slice(1)) || !fs.existsSync(convFile(s))) return '';
+  const d = loadConv(s).dir;
+  return typeof d === 'string' && ROOM_DIR_RE.test(d) ? d : '';
+}
 function resolveProject(name) {
   const s = String(name || '');
   const at = s.indexOf('@');
   if (at >= 0 && !ROOM_SUFFIX.test(s.slice(at + 1))) return null;
   const crew = crewOf(s);
-  if (!crew) return PROJECTS_DIR;
-  if (!listProjects().includes(crew)) return null;
-  return path.join(PROJECTS_DIR, crew);
+  if (crew && !listProjects().includes(crew)) return null;
+  const rd = roomDirName(s);
+  if (rd) return path.join(ROOMS_DIR, rd);
+  return crew ? path.join(CREWS_DIR, crew) : WORK_BASE;
+}
+// 이 방이 일하는 크루 폴더 (방 폴더와 별개). 감자 톡톡·크루 없는 방이면 null
+function crewDirOf(rid) {
+  const crew = crewOf(rid);
+  return crew && listProjects().includes(crew) ? path.join(CREWS_DIR, crew) : null;
+}
+// 크루 폴더 안에 만들었던 방 폴더(바로 앞 버전)를 .rooms로 옮긴다. 폴더가 바뀌면 Claude의 이전 대화 기록을 이을 수 없어서 sessionId는 비운다 (화면의 대화는 그대로)
+function migrateRoomDirs() {
+  try {
+    for (const f of fs.readdirSync(CONV_DIR)) {
+      if (!f.startsWith('p_%40') || !f.endsWith('.json')) continue;
+      const file = path.join(CONV_DIR, f);
+      let c;
+      try { c = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+      if (!c || typeof c.dir !== 'string' || !ROOM_DIR_RE.test(c.dir)) continue;
+      const dest = path.join(ROOMS_DIR, c.dir);
+      if (fs.existsSync(dest)) continue;
+      const old = [c.crew ? path.join(CREWS_DIR, c.crew, c.dir) : '', path.join(TALK_DIR, c.dir)].find((d) => d && fs.existsSync(d));
+      if (!old) continue;
+      fs.mkdirSync(ROOMS_DIR, { recursive: true });
+      fs.renameSync(old, dest);
+      c.sessionId = null;
+      fs.writeFileSync(file + '.tmp', JSON.stringify(c));
+      fs.renameSync(file + '.tmp', file);
+      convCache.delete(`@${f.slice(5, -5)}`);
+      console.log(`방 폴더를 옮겼어요: ${c.dir}`);
+    }
+  } catch (e) { console.error('방 폴더 옮기기 실패:', e.message); }
 }
 // 크루 자체를 다루는 곳(설정·이름·삭제)은 채팅방 번호가 아니라 크루 이름만 받는다
 const resolveCrew = (name) => (String(name || '').includes('@') ? null : resolveProject(name));
@@ -284,7 +331,7 @@ function toolStatus(name, input = {}) {
 
 // ---------- 대화 기록 (서버에 저장 → 어느 기기에서 들어와도 같은 기록) ----------
 // 프로젝트마다 data/conversations/<프로젝트>.json 하나: { sessionId, messages: [{role, text, ts, tools?, meta?}] }
-const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
+const DATA_DIR = path.resolve(process.env.DATA_DIR || (GAMJA_HOME ? path.join(GAMJA_HOME, 'data') : path.join(__dirname, 'data')));
 const CONV_DIR = path.join(DATA_DIR, 'conversations');
 const ARCHIVE_DIR = path.join(CONV_DIR, 'archive'); // 크루를 지워도 남겨 두는 대화 기록
 const MAX_MESSAGES = 500;
@@ -858,7 +905,7 @@ async function handleGroupChat(res, body, project, conv) {
     emit('status', { text: live.status });
     const system = ['당신은 이 그룹 채팅의 사회자예요. 위 크루들의 의견을 정리만 하고 새 의견은 만들지 않아요. ' +
       '"공통 의견", "서로 다른 점", "추천하는 다음 행동" 세 부분으로 각 1~3줄 쓰고, 어느 크루에게 일을 맡기면 좋을지도 한 줄 덧붙여요. 파일을 고치거나 명령을 실행하지 않아요.', base].filter(Boolean).join('\n');
-    const r = await askOnce({ cwd: PROJECTS_DIR, prompt: header + lines.join('\n') + '\n\n위 의견들을 정리해 주세요.', system, model: settings.model, effort: settings.effort, runId });
+    const r = await askOnce({ cwd: WORK_BASE, prompt: header + lines.join('\n') + '\n\n위 의견들을 정리해 주세요.', system, model: settings.model, effort: settings.effort, runId });
     if (r.stopped) stopped = true;
     else if (r.error) { errorText = `정리: ${r.error}`; conv.messages.push({ role: 'error', text: errorText, ts: Date.now() }); saveConv(project); }
     else { record(r); say({ role: 'bot', text: r.text, ts: Date.now(), by: '', summary: true, meta: `${(r.ms / 1000).toFixed(1)}초` }, '정리'); }
@@ -879,6 +926,8 @@ function handleChat(req, res, body, opts = {}) {
   const project = String(body.project || '');
   const cwd = resolveProject(project);
   if (!cwd) return send(res, 400, { error: '알 수 없는 프로젝트' });
+  const inRoomDir = !!roomDirName(project);
+  if (inRoomDir) { try { fs.mkdirSync(cwd, { recursive: true }); } catch {} } // 방 폴더가 지워졌어도 다시 만든다
   const gconv = loadConv(project);
   if (!opts.label && Array.isArray(gconv.participants) && gconv.participants.length > 1) {
     if (!GROUP_CHAT_ENABLED) return send(res, 403, { error: '그룹 채팅은 준비 중이에요.' });
@@ -916,12 +965,19 @@ function handleChat(req, res, body, opts = {}) {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--permission-mode', 'acceptEdits'];
   if (sessionId) args.push('--resume', sessionId);
+  // 방 폴더에서 일하는 크루는 자기 크루 폴더(지침·자료)도 함께 열어 둔다. 지침(CLAUDE.md)은 폴더 밖이라 자동으로 읽히지 않으므로 직접 읽어 넣는다
+  let crewGuide = '';
+  const crewDir = inRoomDir ? crewDirOf(project) : null;
+  if (crewDir) {
+    args.push('--add-dir', crewDir);
+    try { crewGuide = fs.readFileSync(path.join(crewDir, 'CLAUDE.md'), 'utf8').slice(0, 20000); } catch { /* 지침 파일이 없는 크루 */ }
+  }
   const model = projectConf[crewOf(project)]?.model || settings.model; // 프로젝트 설정이 전체 설정보다 우선
   if (model) args.push('--model', model);
   // 생각 깊이: 음성 대화는 빨리 답해야 하므로 항상 low. 그 외에는 프로젝트 설정 → 전체 설정 순
   const effort = body.voice === true && !opts.label ? 'low' : (projectConf[crewOf(project)]?.effort || settings.effort);
   if (effort) args.push('--effort', effort);
-  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT, crewOf(project) === '' ? TALK_PROMPT : ''].filter(Boolean).join('\n');
+  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : ''].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
@@ -1411,7 +1467,8 @@ function servePreview(req, res, urlPath) {
   } catch { return send(res, 400, 'bad request'); }
   const notFound = () => send(res, 404, '찾을 수 없어요');
   if (!project || !verifyPreviewToken(segs[0], project)) return send(res, 403, '주소가 만료됐어요. 감자에서 "👀 결과물"을 다시 열어 주세요.');
-  const dir = project === TALK_DIR_NAME ? TALK_DIR : resolveProject(project);
+  const roomKey = /^room~(chat-[a-z0-9]{3,8})$/.exec(project); // 방 폴더(크루가 없어져도 남는다)
+  const dir = roomKey ? path.join(ROOMS_DIR, roomKey[1]) : project === TALK_DIR_NAME ? TALK_DIR : resolveProject(project);
   if (!dir) return notFound();
   // 점(.)으로 시작하는 파일·폴더(.git, .gamja-uploads 등)와 상위 폴더 이동은 막는다
   if (rel.some((s) => s === '..' || s.startsWith('.') || s.includes('\0'))) return notFound();
@@ -1666,6 +1723,10 @@ function permRulesFor(crew) {
   return [...(perms[crew] || []).map((x) => x.rule), ...(once && once.until > Date.now() ? once.rules : [])];
 }
 // 감자 톡톡은 ~/projects 전체가 작업 위치라서, 만든 파일이 여기저기 흩어지지 않게 한 폴더로 모은다
+const roomDirPrompt = (crewDir, guide) => '이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 이 방에서 만드는 파일은 지금 폴더 안에만 저장하세요. 그래야 다른 채팅방의 결과물과 섞이지 않고, 화면 위쪽 👀 결과물에는 이 방에서 만든 것만 보여요.' +
+  (crewDir ? ` 이 크루의 폴더(${crewDir})에는 크루의 지침과 자료가 있어요. 읽어서 참고하는 건 자유지만, 그 폴더의 파일을 고치는 건 사용자가 따로 부탁할 때만 하세요.` : '') +
+  (guide ? `\n[이 크루의 지침 — 그대로 따르세요]\n${guide}` : '');
+const TALK_ROOM_PROMPT = '지금은 특정 크루가 아닌 감자 톡톡 대화예요. 이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 지금 폴더 안에만 저장하세요. 그 밖의 폴더(다른 채팅방, 크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.';
 const TALK_PROMPT = `지금은 특정 크루가 아닌 감자 톡톡 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
 const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요. 여러 명령을 &&·;·|로 이은 명령도 카드로 물을 수 있어요. 사용자가 허용하면 감자알이 그 명령을 대신 실행하고 결과를 다음 메시지로 알려 주니, 같은 명령을 다시 실행하지 말고 그 결과로 이어서 일하세요.';
 
@@ -1784,10 +1845,28 @@ const server = http.createServer(async (req, res) => {
       if (!isAuthed(req)) return send(res, 401, { error: '로그인이 필요합니다' });
       if (p === '/api/preview-files' && req.method === 'GET') {
         const project = url.searchParams.get('project') || '';
+        // 새 방(방 폴더가 있는 방)은 크루가 아니라 방에 속한 결과물만 보여 준다. 삭제된 크루의 보관 대화("~…")도 방 폴더가 남아 있으면 볼 수 있다
+        let rd = roomDirName(project);
+        if (!rd && project.startsWith('~')) {
+          try {
+            const id = project.slice(1);
+            const af = path.join(ARCHIVE_DIR, `${id}.json`);
+            if (/^[\w.%-]+__[\w.%-]+$/.test(id) && path.dirname(af) === ARCHIVE_DIR) {
+              const d = JSON.parse(fs.readFileSync(af, 'utf8')).dir;
+              if (typeof d === 'string' && ROOM_DIR_RE.test(d)) rd = d;
+            }
+          } catch { /* 보관 대화를 못 읽으면 결과물이 없는 것으로 */ }
+          if (!rd) return send(res, 400, { error: '이 보관 대화에는 따로 남은 결과물이 없어요' });
+        }
+        if (rd) {
+          const key = roomPreviewKey(rd);
+          return send(res, 200, { project: key, files: listResults(path.join(ROOMS_DIR, rd)), token: makePreviewToken(key), lan: lanOrigins() });
+        }
+        // 예전 방: 크루 폴더(감자 톡톡은 gamjaTT)의 결과물
         const talk = crewOf(project) === ''; // 감자 톡톡: 결과물 전용 폴더(gamjaTT)
         if (talk) fs.mkdirSync(TALK_DIR, { recursive: true });
-        const dir = talk ? TALK_DIR : resolveProject(project);
-        const crew = talk ? TALK_DIR_NAME : crewOf(project); // 결과물은 채팅방이 아니라 크루 폴더에 있다
+        const crew = talk ? TALK_DIR_NAME : crewOf(project);
+        const dir = talk ? TALK_DIR : resolveProject(crew); // 크루 폴더
         if (!dir || !crew) return send(res, 400, { error: '크루 방에서 열어 주세요' });
         return send(res, 200, { project: crew, files: listResults(dir), token: makePreviewToken(crew), lan: lanOrigins() });
       }
@@ -1798,7 +1877,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { command: `pkg install -y curl && curl -fsSL ${proto}://${host}/install/${makeInstallToken()} | bash` });
       }
       if (p === '/api/projects' && req.method === 'GET') {
-        return send(res, 200, { root: PROJECTS_DIR, projects: listProjects() });
+        return send(res, 200, { root: CREWS_DIR, projects: listProjects() });
       }
       if (p === '/api/chats' && req.method === 'GET') {
         // 💬 채팅 목록: 크루마다 마지막 말, 시간, 작업 중 여부, 최근 답변 시각(안 읽음 계산용)을 한 번에 알려 준다
@@ -1833,7 +1912,7 @@ const server = http.createServer(async (req, res) => {
             let rid;
             try { rid = decodeURIComponent(m[2]); } catch { continue; }
             const crew = crewOf(rid);
-            if (!crew || !fs.existsSync(path.join(PROJECTS_DIR, '.trash', `${crew}_${m[1]}`))) continue;
+            if (!crew || !fs.existsSync(path.join(TRASH_DIR, `${crew}_${m[1]}`))) continue;
             const file = path.join(ARCHIVE_DIR, f);
             let mtime = 0;
             try { mtime = fs.statSync(file).mtimeMs; } catch { continue; }
@@ -1946,7 +2025,7 @@ const server = http.createServer(async (req, res) => {
           const key = `${stamp}|${crew}`;
           const e = found.get(key) || {
             id: '', crew, deletedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), messages: 0,
-            hasFolder: fs.existsSync(path.join(PROJECTS_DIR, '.trash', `${crew}_${stamp}`)),
+            hasFolder: fs.existsSync(path.join(TRASH_DIR, `${crew}_${stamp}`)),
           };
           e.messages += (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot').length;
           if (!e.id || rid === crew) e.id = f.slice(0, -5);
@@ -1972,7 +2051,7 @@ const server = http.createServer(async (req, res) => {
           try { r2 = decodeURIComponent(mm[2]); } catch { continue; }
           if (crewOf(r2) === crew) fs.rmSync(path.join(ARCHIVE_DIR, f), { force: true });
         }
-        const trashRoot = path.join(PROJECTS_DIR, '.trash');
+        const trashRoot = TRASH_DIR;
         const dir = path.join(trashRoot, `${crew}_${m[1]}`);
         if (path.dirname(dir) === trashRoot && fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
         return send(res, 200, { ok: true });
@@ -1994,8 +2073,8 @@ const server = http.createServer(async (req, res) => {
         const newName = b.newName === undefined || String(b.newName) === '' ? crew : String(b.newName);
         if (!isProjectName(newName)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
         if (isReservedCrewName(newName)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
-        const trashDir = path.join(PROJECTS_DIR, '.trash', `${crew}_${stamp}`);
-        const dest = path.join(PROJECTS_DIR, newName);
+        const trashDir = path.join(TRASH_DIR, `${crew}_${stamp}`);
+        const dest = path.join(CREWS_DIR, newName);
         if (fs.existsSync(dest)) return send(res, 409, { error: `같은 이름('${newName}')의 크루가 이미 있어요.` });
         if (!fs.existsSync(trashDir)) return send(res, 404, { error: '휴지통에서 크루 폴더를 찾지 못했어요. (30일이 지나면 완전히 지워져요)' });
         fs.renameSync(trashDir, dest);
@@ -2046,7 +2125,9 @@ const server = http.createServer(async (req, res) => {
         const conv = loadConv(rid);
         conv.participants = crews;
         if (crew) conv.crew = crew;
+        if (crews.length === 1) conv.dir = `chat-${rid.slice(1)}`; // 이 방 전용 작업 폴더 (그룹 방은 아직 따로 두지 않는다)
         saveConv(rid); // 빈 대화 파일이 곧 방이다
+        if (conv.dir) { try { fs.mkdirSync(resolveProject(rid), { recursive: true }); } catch (e) { console.error('방 폴더 만들기 실패:', e.message); } }
         return send(res, 200, { room: rid, members: crews });
       }
       // 채팅방 참여자 초대·내보내기 (첫 방이 아닌 방에서만). 둘 이상이면 그룹 채팅이 된다. 그룹 방은 크루가 두 명 이상 남아 있어야 한다
@@ -2149,7 +2230,7 @@ const server = http.createServer(async (req, res) => {
         const { name } = await readBody(req);
         if (!isProjectName(name)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
         if (isReservedCrewName(name)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
-        const dir = path.join(PROJECTS_DIR, name);
+        const dir = path.join(CREWS_DIR, name);
         if (fs.existsSync(dir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
         fs.mkdirSync(dir, { recursive: true });
         return send(res, 200, { project: name });
@@ -2199,7 +2280,7 @@ const server = http.createServer(async (req, res) => {
           const newName = String(b.newName || '');
           if (!isProjectName(newName)) return send(res, 400, { error: '이름은 영문·숫자·한글·-·_ 로 40자까지 쓸 수 있어요.' });
           if (isReservedCrewName(newName)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
-          const newDir = path.join(PROJECTS_DIR, newName);
+          const newDir = path.join(CREWS_DIR, newName);
           if (fs.existsSync(newDir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
           fs.renameSync(dir, newDir);
           for (const r of rooms) { // 대화 기록도 함께
@@ -2216,8 +2297,8 @@ const server = http.createServer(async (req, res) => {
           if (projectConf[project]) { projectConf[newName] = projectConf[project]; delete projectConf[project]; saveProjectConf(); }
           return send(res, 200, { project: newName });
         }
-        // 삭제: 바로 지우지 않고 휴지통(~/projects/.trash)으로 옮긴다
-        const trash = path.join(PROJECTS_DIR, '.trash');
+        // 삭제: 바로 지우지 않고 휴지통(TRASH_DIR)으로 옮긴다
+        const trash = TRASH_DIR;
         const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-');
         fs.mkdirSync(trash, { recursive: true });
         fs.renameSync(dir, path.join(trash, `${project}_${stamp}`));
@@ -2506,7 +2587,7 @@ function purgeTrash() {
       if (t && t < limit) { try { fs.rmSync(path.join(dir, n), { recursive: true, force: true }); } catch { /* 못 지우면 다음에 다시 */ } }
     }
   };
-  sweep(path.join(PROJECTS_DIR, '.trash'), (n) => {
+  sweep(TRASH_DIR, (n) => {
     const m = /_(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)(\.conversation\.json)?$/.exec(n);
     return m ? stampTime(m[1]) : 0;
   });
@@ -2535,7 +2616,10 @@ if (PORT === 3000) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`Claude Chat: http://${HOST}:${PORT}  (projects: ${PROJECTS_DIR}, code ${RUNNING_HASH})`);
+  console.log(`Claude Chat: http://${HOST}:${PORT}  (${GAMJA_HOME ? `home: ${GAMJA_HOME}` : `projects: ${PROJECTS_DIR}`}, code ${RUNNING_HASH})`);
+  if (GAMJA_HOME) { // 새 구조의 폴더를 미리 만들어 둔다
+    for (const d of [DATA_DIR, CREWS_DIR, WORK_BASE, TRASH_DIR]) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { console.error(`폴더를 만들지 못했어요: ${d} (${e.message})`); } }
+  }
   purgeTrash();
   setInterval(purgeTrash, 6 * 3600 * 1000).unref();
   // 재시작/복구 결과를 채팅에 알림
@@ -2564,6 +2648,7 @@ server.listen(PORT, HOST, () => {
   setInterval(prepareDefaultKits, 15 * 60 * 1000).unref();
   readClaudeInfo();
   loadProjectConf();
+  migrateRoomDirs();
   loadTunnelState(); // 재시작 전에 켜 둔 터널이 아직 살아 있으면 그 주소를 그대로 쓴다
 });
 

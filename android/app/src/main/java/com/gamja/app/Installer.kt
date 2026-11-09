@@ -100,7 +100,9 @@ class Installer(
         ctx.assets.open("gamja-egg.pack").use { untar(it, p.appDir) }
         if (!p.envFile.exists()) {
             val pw = randomPassword()
-            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=${Ports.DEFAULT}\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\n")
+            // GAMJA_HOME: 사용자 정보(data/ crews/ workspaces/ trash/)를 한 폴더에 모으는 새 구조. DATA_DIR도 함께 적어서 start.sh의 자동 복구가 같은 data를 보게 한다.
+            // 이 줄이 없는 예전 설치는 예전 방식(~/projects) 그대로 동작한다
+            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=${Ports.DEFAULT}\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\nGAMJA_HOME=/root/gamja\nDATA_DIR=/root/gamja/data\n")
             onLog("· 로그인 비밀번호를 만들었어요 (앱 메뉴 → 다른 기기에서 접속)")
         }
     }
