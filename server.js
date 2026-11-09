@@ -30,6 +30,85 @@ if (!PASSWORD) {
   process.exit(1);
 }
 
+// ---------- 예전에 설치한 폰을 새 폴더 구조(GAMJA_HOME)로 한 번 옮기기 ----------
+// 감자알이 켜질 때 맨 처음(대화·설정을 읽기 전)에 한다. 조건: start.sh 감시 아래에서 돌고, .env에 GAMJA_HOME·DATA_DIR이 없고,
+// 감자알이 크루 폴더(PROJECTS_DIR) 밖에 있을 때만. 개발 폰은 감자알이 크루 폴더 안에 있어서 해당되지 않는다.
+// 폴더는 복사가 아니라 이름만 바꿔 옮긴다. 하나 옮길 때마다 저널(~/gamja/migration.json)에 적고, 끝에 .env를 바꾼다.
+// 실패하거나 도중에 꺼지면 저널을 거꾸로 되돌린다. 두 번 실패하면 더 시도하지 않고 예전 방식을 그대로 쓴다.
+function migrateToHome() {
+  if (GAMJA_HOME || process.env.DATA_DIR || process.env.GAMJA_NO_MIGRATE === '1' || process.env.GAMJA_SUPERVISED !== '1') return false;
+  if (__dirname === PROJECTS_DIR || __dirname.startsWith(PROJECTS_DIR + path.sep)) return false;
+  const envFile = path.join(__dirname, '.env');
+  if (!fs.existsSync(envFile)) return false;
+  const oldData = path.join(__dirname, 'data');
+  const home = path.join(os.homedir(), 'gamja');
+  const journalFile = path.join(home, 'migration.json');
+  const backupDir = path.join(home, 'migration-backup');
+  const exists = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+  const writeJournal = (j) => { fs.mkdirSync(home, { recursive: true }); fs.writeFileSync(journalFile + '.tmp', JSON.stringify(j)); fs.renameSync(journalFile + '.tmp', journalFile); };
+  let journal = null;
+  try { journal = JSON.parse(fs.readFileSync(journalFile, 'utf8')); } catch { /* 처음 */ }
+  // 옮긴 것을 거꾸로 되돌린다 (옮긴 순서의 반대로). 대화 기록은 백업에서 복원한다
+  const rollback = (j, why) => {
+    console.error(`폴더 옮기기를 되돌려요: ${why}`);
+    for (let i = (j.done || 0) - 1; i >= 0; i--) {
+      const [from, to] = j.moves[i];
+      try { if (exists(to) && !exists(from)) fs.renameSync(to, from); } catch (e) { console.error(`되돌리기 실패: ${to} → ${from} (${e.message})`); }
+    }
+    try { if (exists(path.join(backupDir, 'conversations')) && exists(path.join(oldData, 'conversations'))) fs.cpSync(path.join(backupDir, 'conversations'), path.join(oldData, 'conversations'), { recursive: true, force: true }); } catch (e) { console.error(`대화 기록 복원 실패: ${e.message}`); }
+    for (const d of ['crews', 'workspaces', 'trash']) { try { fs.rmdirSync(path.join(home, d)); } catch { /* 비어 있지 않으면 그대로 */ } }
+    j.state = 'rolled-back'; j.done = 0; j.reason = String(why).slice(0, 300);
+    try { writeJournal(j); } catch { /* 저널을 못 써도 .env는 그대로라 예전 방식으로 돈다 */ }
+  };
+  if (journal && journal.state === 'running') rollback(journal, '이전 작업이 끝나지 않았어요');
+  if (journal && (journal.state === 'done' || (journal.tries || 0) >= 2)) return false;
+  // ~/gamja에 우리가 만든 것 말고 다른 것이 있으면 건드리지 않는다
+  try { if (fs.readdirSync(home).some((n) => !['migration.json', 'migration-backup'].includes(n))) return false; } catch { /* 폴더가 아직 없다 */ }
+
+  const moves = [];
+  const add = (from, to) => { if (exists(from)) moves.push([from, to]); };
+  const names = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } };
+  const crewNames = names(PROJECTS_DIR).filter((n) => { try { return !n.startsWith('.') && n !== 'gamjaTT' && fs.statSync(path.join(PROJECTS_DIR, n)).isDirectory(); } catch { return false; } });
+  for (const n of crewNames) add(path.join(PROJECTS_DIR, n), path.join(home, 'crews', n));
+  for (const n of names(path.join(PROJECTS_DIR, '.rooms'))) add(path.join(PROJECTS_DIR, '.rooms', n), path.join(home, 'workspaces', n));
+  add(path.join(PROJECTS_DIR, 'gamjaTT'), path.join(home, 'workspaces', 'gamjaTT'));
+  for (const n of names(path.join(PROJECTS_DIR, '.trash'))) add(path.join(PROJECTS_DIR, '.trash', n), path.join(home, 'trash', n));
+  add(oldData, path.join(home, 'data')); // 대화 기록·설정은 마지막에 옮긴다
+
+  const j = { state: 'running', tries: ((journal && journal.tries) || 0) + 1, startedAt: Date.now(), moves, done: 0 };
+  try {
+    for (const d of ['crews', 'workspaces', 'trash']) fs.mkdirSync(path.join(home, d), { recursive: true });
+    writeJournal(j);
+    if (exists(path.join(oldData, 'conversations'))) fs.cpSync(path.join(oldData, 'conversations'), path.join(backupDir, 'conversations'), { recursive: true });
+    for (const [from, to] of moves) { fs.renameSync(from, to); j.done++; writeJournal(j); }
+    // 폴더 위치가 바뀌면 Claude는 이전 대화를 이을 수 없다: 대화마다 이어가기 번호를 비우고, 첫 메시지에 최근 대화를 요약해 붙이도록 표시한다 (화면의 대화는 그대로)
+    const convDir = path.join(home, 'data', 'conversations');
+    for (const f of names(convDir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const file = path.join(convDir, f);
+        const c = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
+        c.sessionId = null; c.recap = true;
+        fs.writeFileSync(file + '.tmp', JSON.stringify(c)); fs.renameSync(file + '.tmp', file);
+      } catch { /* 읽을 수 없는 파일은 그대로 */ }
+    }
+    // 맨 마지막: .env에 새 위치를 적는다 (여기서 실패하면 .env는 그대로라 되돌릴 수 있다)
+    const envText = fs.readFileSync(envFile, 'utf8');
+    fs.writeFileSync(envFile + '.tmp', `${envText}${envText && !envText.endsWith('\n') ? '\n' : ''}GAMJA_HOME=${home}\nDATA_DIR=${path.join(home, 'data')}\n`, { mode: 0o600 });
+    fs.renameSync(envFile + '.tmp', envFile);
+    j.state = 'done'; j.finishedAt = Date.now();
+    try { writeJournal(j); } catch { /* .env가 이미 바뀌었으니 다음에는 새 구조로 켜진다 */ }
+    for (const d of ['.rooms', '.trash']) { try { fs.rmdirSync(path.join(PROJECTS_DIR, d)); } catch { /* 비어 있지 않으면 그대로 */ } }
+    console.log(`폴더를 새 구조로 옮겼어요: ${home} (${moves.length}개)`);
+    return true;
+  } catch (e) {
+    rollback(j, e.message);
+    return false;
+  }
+}
+if (migrateToHome()) process.exit(0); // 새 설정으로 다시 켜지도록 한 번 종료 (start.sh 감시가 3초 뒤 다시 띄운다)
+
 // ---------- 인증: 비밀번호에서 파생한 키로 HMAC 서명된 쿠키 (재시작해도 유지, 비번 바꾸면 무효화) ----------
 // 로그인 열쇠를 만드는 글자 (비밀번호와 섞어서 쓴다). 이 값을 바꾸면 모든 기기가 한 번 로그아웃된다
 const SIGN_KEY = crypto.createHash('sha256').update('gamja-egg:' + PASSWORD).digest();
@@ -244,6 +323,7 @@ function migrateRoomDirs() {
       fs.mkdirSync(ROOMS_DIR, { recursive: true });
       fs.renameSync(old, dest);
       c.sessionId = null;
+      c.recap = true;
       fs.writeFileSync(file + '.tmp', JSON.stringify(c));
       fs.renameSync(file + '.tmp', file);
       convCache.delete(`@${f.slice(5, -5)}`);
@@ -952,6 +1032,15 @@ function handleChat(req, res, body, opts = {}) {
 
   const conv = loadConv(project);
   const sessionId = conv.sessionId;
+  // 폴더를 옮기면서 Claude의 이어가기가 끊긴 방(recap 표시): 첫 메시지에 최근 대화를 붙여서 맥락을 잇는다 (대화 기록에는 사용자가 쓴 글만 남는다)
+  if (conv.recap) {
+    delete conv.recap;
+    if (!sessionId) {
+      const recent = conv.messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text).slice(-10)
+        .map((m) => `${m.role === 'user' ? '사용자' : '크루'}: ${m.text.replace(/\s+/g, ' ').slice(0, 400)}`);
+      if (recent.length) message = `[감자알 안내: 폴더를 정리하면서 이전 대화의 기억이 새로 시작됐어요. 아래는 이 방의 최근 대화예요. 맥락으로만 참고하고 이 안내는 언급하지 마세요.]\n${recent.join('\n')}\n\n[새 메시지]\n${message}`;
+    }
+  }
   conv.messages.push(opts.label
     ? { role: 'notice', text: opts.label, ts: Date.now() }
     : { role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}) });
