@@ -608,6 +608,7 @@
 
   // 안 읽음: 크루마다 "마지막으로 본 답변 시각"을 이 기기에 기억해 두고, 그 뒤에 온 답변 수를 센다
   function markSeen() {
+    if (document.hidden) return; // 화면이 꺼졌거나 다른 앱에 가 있으면 아직 안 본 것이다 (돌아오면 다시 불러오며 읽은 것으로 친다)
     const lastBot = [...history].reverse().find((m) => m.role === 'bot' && m.ts);
     if (!lastBot) return;
     const seen = store.get('cc:seen', {});
@@ -2808,6 +2809,11 @@
     }
     // 막힌 명령: 허용 여부를 묻는 카드 (이번만 / 항상 / 허용 안 함)
     for (const d of (m.denied || []).filter((x) => !x.answered)) html += permCardHtml(d);
+    // 안전을 위해 막은 명령: 버튼 없이 안내만
+    for (const b of (m.blocked || [])) {
+      html += `<div class="perm-card blocked-note"><b>${escapeHtml(window.GAMJA_I18N.t('perm.blockedTitle'))}</b>` +
+        `<code data-no-i18n>${escapeHtml(b.cmd)}</code><small>⚠️ ${escapeHtml(b.why)}</small></div>`;
+    }
     if (m.meta) html += `<div class="meta">${escapeHtml(m.meta)}</div>`;
     if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>`;
     view.extra.innerHTML = html;
@@ -3035,6 +3041,7 @@
               bot.meta = d.meta || ''; // 서버가 만든 "시간 · 토큰" 표시
               if (d.install) bot.install = d.install;
               if (d.denied) bot.denied = d.denied;
+              if (d.blocked) bot.blocked = d.blocked;
               if (d.denials && d.denials.length) {
                 bot.text += `\n\n> ⚠️ 권한이 거부된 도구: ${[...new Set(d.denials)].map((x) => '`' + x + '`').join(', ')}`;
               }

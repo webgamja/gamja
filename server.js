@@ -1079,6 +1079,8 @@ function handleChat(req, res, body, opts = {}) {
   // 도구 상자에서 설치한 도구는 gamja-make 한 가지 명령으로만 허용한다 (.env의 ALLOWED_TOOLS가 있으면 함께)
   const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`, ...permRulesFor(crewOf(project))].filter(Boolean).join(' ');
   if (allowed) args.push('--allowedTools', allowed);
+  // 명령어 위험 수준: 안전한 명령은 묻지 않고 실행, 위험한 명령은 조용히 차단, 나머지(주의)는 기존처럼 허용 카드로 물어본다
+  args.push('--settings', PERM_HOOK_SETTINGS());
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -1194,8 +1196,19 @@ function handleChat(req, res, body, opts = {}) {
       case 'result': {
         gotResult = true;
         // 막힌 Bash 명령은 허용 카드로 물어보고, 그 밖의 도구(웹 가져오기 등)는 예전처럼 글로만 알린다
-        const cards = deniedCards(ev.permission_denials);
+        const cards = deniedCards(ev.permission_denials, cwd);
         if (cards.length) bot.denied = cards;
+        // 위험해서 조용히 막힌 명령(훅이 기록해 둔 것)은 허용 버튼 없는 안내로만 보여 준다
+        if (ev.session_id) {
+          try {
+            const bf = path.join(DATA_DIR, 'blocked', `${String(ev.session_id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80)}.jsonl`);
+            const seen = new Set();
+            const list = fs.readFileSync(bf, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } })
+              .filter((x) => x && x.cmd && !seen.has(x.cmd) && seen.add(x.cmd)).slice(-3).map((x) => ({ cmd: String(x.cmd).slice(0, 300), why: String(x.why || '').slice(0, 120) }));
+            fs.unlinkSync(bf);
+            if (list.length) bot.blocked = list;
+          } catch { /* 막힌 명령이 없으면 파일도 없다 */ }
+        }
         const denials = (ev.permission_denials || []).filter((d) => d.tool_name !== 'Bash')
           .map((d) => d.tool_name + (d.tool_input && d.tool_input.command ? `: ${d.tool_input.command}` : ''));
         if (ev.session_id) conv.sessionId = ev.session_id;
@@ -1235,6 +1248,7 @@ function handleChat(req, res, body, opts = {}) {
           numTurns: ev.num_turns,
           denials,
           denied: bot.denied,
+          blocked: bot.blocked,
           install: bot.install,
           errorText: ev.is_error ? ev.result : undefined,
         });
@@ -1291,6 +1305,7 @@ function recordDone(project, bot, errorText, ms, opts) {
   const ev = {
     ts: Math.max(Date.now(), (doneEvents.at(-1)?.ts || 0) + 1), // 알림 구분용 id (항상 증가)
     project,
+    botTs: bot.ts || 0, // 이 답의 시각: 사용자가 이 답까지 읽었는지(seen)와 견줘서 알림을 지운다
     seconds: Math.round(ms / 1000),
     error: !!errorText,
     preview: (errorText ? `⚠️ ${errorText}` : plain || '(도구 작업만 했어요)').slice(0, 120),
@@ -1760,11 +1775,11 @@ function savePerms() {
 }
 const permOnce = new Map(); // 크루 -> { rules, until } 이번만 허용: 다음 한 번의 실행에만 쓰고 지운다
 const PERM_MAX_RULES = 100;
-const PERM_CRITICAL = new Set(['sudo', 'su', 'doas', 'dd', 'mkfs', 'fdisk', 'mount', 'umount', 'chown', 'chgrp', 'shutdown', 'reboot', 'halt', 'poweroff',
-  'kill', 'pkill', 'killall', 'systemctl', 'service', 'crontab', 'passwd', 'useradd', 'userdel', 'iptables', 'nc', 'ncat', 'netcat', 'socat', 'telnet',
-  'eval', 'exec', 'source', '.', 'ssh', 'scp', 'sftp', 'rsync', 'mkfifo', 'nohup', 'setsid', 'disown', 'screen', 'tmux', 'chroot', 'insmod', 'modprobe']);
-const PERM_SECRET = /(^|[\s/=])\.env\b|\.ssh\b|id_rsa|id_ed25519|gamja_public_deploy|data\/ssh|permissions\.json|restart-request|start\.sh|\/proc\/|\/etc\/|\/sys\/|\/dev\/(?!null\b)/;
-const PERM_NET = new Set(['apt', 'apt-get', 'dpkg', 'npm', 'npx', 'pnpm', 'yarn', 'pip', 'pip3', 'pipx', 'curl', 'wget']);
+// 위험 수준 규칙은 tools/perm-policy.js에 있다 (Claude의 실행 전 훅 tools/perm-hook.js와 같은 규칙을 쓰려고)
+//   안전=묻지 않고 실행 / 주의=허용 카드로 물음 / 위험=카드 없이 조용히 차단
+const { PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, tier: permTier } = require('./tools/perm-policy');
+const PERM_HOOK_CMD = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'tools', 'perm-hook.js'))} ${JSON.stringify(__dirname)} ${JSON.stringify(DATA_DIR)}`;
+const PERM_HOOK_SETTINGS = () => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: PERM_HOOK_CMD, timeout: 10 }] }] } });
 // 아무 코드나 돌릴 수 있는 프로그램: "항상 허용"도 그 명령 그대로만 (인자가 달라지면 다시 묻는다)
 const PERM_EXACT = new Set(['node', 'nodejs', 'python', 'python3', 'bash', 'sh', 'zsh', 'perl', 'ruby', 'php', 'deno', 'bun', 'awk', 'gawk', 'find', 'xargs', 'env', 'time', 'timeout', 'watch', 'script', 'docker', 'make', 'sed', 'tar', 'unzip']);
 const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
@@ -1772,18 +1787,7 @@ const PERM_READ = new Set(['ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep'
 const PERM_WRITE = new Set(['mkdir', 'touch', 'cp', 'mv', 'chmod', 'rm', 'rmdir', 'tee', 'truncate', 'install', 'ln', 'zip', 'gzip', 'gunzip', 'bzip2', '7z', 'sed', 'tar', 'unzip']);
 // 명령 하나를 살펴서 { risk, once, always, rule }을 돌려준다. risk: read | write | run | net | critical | complex
 // 이어진 명령(&&, ;, |, 여러 줄 등)을 살핀다: 위험한 프로그램·비밀 파일이 하나라도 있으면 허용할 수 없다
-function screenComplex(text) {
-  if (text.length > 2000 || PERM_SECRET.test(text)) return false;
-  const re = /(^|[;&|`(\n]|\$\()\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*([^\s;&|`()<>]+)/g; // 명령 자리에 있는 프로그램 이름만 본다
-  let m;
-  while ((m = re.exec(text))) {
-    const prog = m[2].replace(/^.*\//, '');
-    if (prog !== '.' && PERM_CRITICAL.has(prog)) return false;
-  }
-  if (/(^|[\s;&|(])rm\s+(?:\S+\s+)*?(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive|--no-preserve-root)(\s|$)/.test(text)) return false;
-  if (/(^|[\s;&|(])chmod\s+(?:\S+\s+)*?(-[a-zA-Z]*R|777|a\+rwx)/.test(text)) return false;
-  return true;
-}
+// (screenComplex는 tools/perm-policy.js에서 가져온다)
 // "항상 허용"은 어떤 명령에도 주지 않는다 (always는 늘 false). 이어진 명령은 direct: 허용하면 감자알이 그대로 실행하고 결과를 크루에게 전한다
 function classifyCommand(cmd) {
   const text = String(cmd || '').trim();
@@ -1831,12 +1835,14 @@ function runApproved(cmd, cwd) {
 }
 const permResults = new Map(); // 프로젝트 -> 감자알이 대신 실행한 결과 글 (다음 메시지에 붙여 크루에게 전한다)
 // 막힌 Bash 명령 → 화면에 보여 줄 카드 (최대 3개, 같은 명령은 한 번만)
-function deniedCards(denials) {
+function deniedCards(denials, cwd) {
   const out = [];
+  const inApp = !!cwd && (cwd === __dirname || String(cwd).startsWith(__dirname + path.sep));
   for (const d of denials || []) {
     if (d.tool_name !== 'Bash' || !d.tool_input || !d.tool_input.command) continue;
     const cmd = String(d.tool_input.command).trim().slice(0, 2001);
     if (out.some((x) => x.cmd === cmd)) continue;
+    if (permTier(cmd, inApp ? [] : [__dirname, DATA_DIR]).tier === 'danger') continue; // 위험한 명령은 카드 없이 조용히 막는다
     const c = classifyCommand(cmd);
     out.push({ id: crypto.randomBytes(6).toString('hex'), cmd, risk: c.risk, once: c.once, always: c.always });
     if (out.length >= 3) break;
@@ -1855,7 +1861,7 @@ const roomDirPrompt = (crewDir, guide) => '이 채팅방은 자기만의 작업 
   (guide ? `\n[이 크루의 지침 — 그대로 따르세요]\n${guide}` : '');
 const TALK_ROOM_PROMPT = '지금은 특정 크루가 아닌 감자 톡톡 대화예요. 이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 지금 폴더 안에만 저장하세요. 그 밖의 폴더(다른 채팅방, 크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.';
 const TALK_PROMPT = `지금은 특정 크루가 아닌 감자 톡톡 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
-const PERM_PROMPT = '이 폰에서는 허용 목록에 없는 명령은 실행되지 않고, 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요. 여러 명령을 &&·;·|로 이은 명령도 카드로 물을 수 있어요. 사용자가 허용하면 감자알이 그 명령을 대신 실행하고 결과를 다음 메시지로 알려 주니, 같은 명령을 다시 실행하지 말고 그 결과로 이어서 일하세요.';
+const PERM_PROMPT = '이 폰에서는 명령이 위험 수준에 따라 처리돼요. 작업 폴더 안에서 파일을 읽고 만들고 고치고 지우는 일과 일반 프로그램 실행은 묻지 않고 바로 실행돼요. 작업 폴더 밖의 파일을 바꾸거나 밖에서 내려받고 설치하는 명령은 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 감자알 폴더·비밀번호 파일·시스템을 건드리는 명령은 아예 막히니, 막히면 다른 방법을 쓰고 사용자에게 이유를 쉬운 말로 알려 주세요. 허용 카드가 뜨는 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요. 여러 명령을 &&·;·|로 이은 명령도 카드로 물을 수 있어요. 사용자가 허용하면 감자알이 그 명령을 대신 실행하고 결과를 다음 메시지로 알려 주니, 같은 명령을 다시 실행하지 말고 그 결과로 이어서 일하세요.';
 
 // 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
 const LAN_OFF_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GAMJA</title>
@@ -2701,7 +2707,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/events' && req.method === 'GET') {
         // 🔔 감자 앱이 몇 초마다 묻는다: since 이후에 끝난 답변들
         const since = Number(url.searchParams.get('since')) || 0;
-        return send(res, 200, { now: Date.now(), events: doneEvents.filter((e) => e.ts > since) });
+        return send(res, 200, { now: Date.now(), events: doneEvents.filter((e) => e.ts > since), seen: seenMap }); // seen: 사용자가 방별로 마지막에 읽은 답의 시각 (감자 앱이 이미 읽은 답의 알림을 지울 때 쓴다)
       }
       if (p === '/api/status' && req.method === 'GET') {
         // 화면이 4초마다 확인하는 가벼운 상태 (새 메시지·진행 중 작업이 생겼는지)

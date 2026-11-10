@@ -140,12 +140,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Claude 말풍선: 시간을 옆에 두면 답이 끝나고 시간이 나타나는 순간 말풍선이 좁아져서 오른쪽에 틈이 생긴다 → 시간은 말풍선 아래에 둔다 */
 .row.bot .line { flex-direction: column; align-items: flex-start; gap: 2px; }
 .row.bot .time { margin-left: 2px; }
+/* 크루 말풍선: 위에 [아이콘 | 크루 이름] 한 줄, 그 아래 말풍선을 좌우 폭 넓게 (.col을 풀어서 격자 칸으로 쓴다) */
+.row.bot { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 8px; row-gap: 4px; align-items: center; }
+.row.bot > .avatar { width: 32px; height: 32px; border-radius: 12px; font-size: 16px; grid-column: 1; grid-row: 1; }
+.row.bot > .col { display: contents; }
+.row.bot .name { grid-column: 2; grid-row: 1; margin: 0; font-size: 14px; font-weight: 700; color: var(--bot-fg); }
+.row.bot .line { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+.row.bot .extra { grid-column: 1 / -1; grid-row: 3; min-width: 0; }
 .bubble {
   position: relative; padding: 8px 11px; border-radius: 14px; word-break: break-word; overflow-wrap: anywhere;
   min-width: 0; max-width: 100%;
 }
-.row.me .bubble { background: var(--me); color: var(--me-fg); border-top-right-radius: 4px; white-space: pre-wrap; }
-.row.bot .bubble { background: var(--bot); color: var(--bot-fg); border-top-left-radius: 4px; }
+.row.me .bubble { background: var(--me); color: var(--me-fg); border-top-right-radius: 0; white-space: pre-wrap; }
+/* 크루 답변은 말풍선 없이 배경 위에 바로 (표·코드·결과물 카드는 자기 배경을 가짐) */
+.row.bot .bubble { background: none; color: var(--bot-fg); border-radius: 0; padding: 2px 2px 2px 0; }
+.row.bot { margin-bottom: 8px; }
 .row.error .bubble { background: #fde8e8; color: #9b1c1c; white-space: pre-wrap; font-size: 13px; }
 .time { flex: none; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -177,6 +186,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .table-wrap { overflow-x: auto; margin: 0 0 .6em; }
 .bubble table { border-collapse: collapse; font-size: 13px; }
 .bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.row.bot .bubble table { border: 0; }
+.row.bot .bubble th, .row.bot .bubble td { border: 0; border-bottom: 1px solid var(--border); }
+.row.bot .bubble th { background: rgba(127,127,127,.15); }
 .tk-c { color: #7f8c98; font-style: italic; } .tk-s { color: #a5d6a7; } .tk-k { color: #f48fb1; } .tk-n { color: #ffcc80; }
 
 .cursor::after { content: '▍'; animation: blink 1s steps(1) infinite; margin-left: 1px; }
@@ -616,6 +628,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 채팅: 보내는 쪽 이름표(아바타)는 노랑 바탕에 감자, 로고는 크게 */
 .avatar { background: var(--me); color: var(--me-fg); --gi-a: #fff; }
 .avatar .gi-s { width: 30px; height: 30px; }
+.row.bot > .avatar .gi-s { width: 27px; height: 27px; }
 .login-logo, .welcome-logo { color: var(--bot-fg); display: grid; place-items: center; }
 .login-logo .gi-s { width: 80px; height: 80px; }
 .welcome-logo .gi-s { width: 72px; height: 72px; }

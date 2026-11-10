@@ -109,12 +109,35 @@ class GamjaService : Service() {
                     val e = events.getJSONObject(i)
                     since = maxOf(since, e.getLong("ts"))
                     // 감자 화면을 보고 있으면 이미 답이 보이므로 알리지 않는다
-                    if (!MainActivity.visible) notifyDone(e, nextId++)
+                    if (!MainActivity.visible) {
+                        val id = nextId++
+                        notifyDone(e, id)
+                        active[id] = Pair(e.optString("project"), e.optLong("botTs"))
+                    }
                 }
+                clearReadNotifications(json.optJSONObject("seen"))
             } catch (_: Exception) {
                 // 서버 재시작 중 등 → 다음 차례에 다시
             }
         }
+    }
+
+    // 띄워 둔 답변 알림: 알림 번호 -> (방, 그 답의 시각). 사용자가 그 답까지 읽었으면 알림을 지운다 (카톡처럼)
+    private val active = HashMap<Int, Pair<String, Long>>()
+
+    private fun clearReadNotifications(seen: JSONObject?) {
+        if (seen == null || active.isEmpty()) return
+        val nm = getSystemService(NotificationManager::class.java)
+        val it = active.entries.iterator()
+        while (it.hasNext()) {
+            val (id, v) = it.next()
+            val (project, botTs) = v
+            if (botTs > 0 && seen.optLong(project, 0L) >= botTs) {
+                nm.cancel(id)
+                it.remove()
+            }
+        }
+        if (active.size > 50) active.keys.sorted().take(active.size - 50).forEach { active.remove(it) }
     }
 
     private fun getEvents(since: Long): String? {
@@ -147,7 +170,17 @@ class GamjaService : Service() {
 
     private fun notifyDone(e: JSONObject, id: Int) {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL, "답변 완료 알림", NotificationManager.IMPORTANCE_HIGH))
+        // 알림음은 채널을 만들 때 정해지므로, 소리를 바꾸면 채널 번호를 새로 쓴다 (예전 채널은 지운다)
+        nm.deleteNotificationChannel("gamja-done")
+        nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL, "답변 완료 알림", NotificationManager.IMPORTANCE_HIGH).apply {
+            setSound(
+                android.net.Uri.parse("android.resource://$packageName/${R.raw.gamja_chime}"),
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+        })
         val project = e.optString("project")
         val sec = e.optInt("seconds")
         val took = if (sec >= 60) "${sec / 60}분 ${sec % 60}초" else "${sec}초"
@@ -210,7 +243,7 @@ class GamjaService : Service() {
 
     companion object {
         private const val CHANNEL = "gamja"
-        private const val DONE_CHANNEL = "gamja-done"
+        private const val DONE_CHANNEL = "gamja-done-2"
         private const val UPDATE_CHANNEL = "gamja-update"
         @Volatile private var inst: GamjaService? = null
         /** C: CPU를 깨워 두는 잠금(WakeLock)을 실제로 쥐고 있는지 */
