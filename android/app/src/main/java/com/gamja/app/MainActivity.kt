@@ -96,6 +96,37 @@ class MainActivity : Activity() {
             dotC.background = rounded(if (GamjaService.cpuHeld()) 0xFF2F9E44.toInt() else 0xFFE5484D.toInt(), 13)
             dotN.background = rounded(if (GamjaService.netHeld()) 0xFF2F9E44.toInt() else 0xFFE5484D.toInt(), 13)
         }
+        // 동그라미를 누르면 말풍선: "CPU: 켜짐" 같은 한 줄. 다시 누르거나 3초 뒤, 바깥을 누르면 사라진다
+        var bubble: android.widget.PopupWindow? = null
+        val hideBubble = Runnable { bubble?.dismiss() }
+        fun showBubble(anchor: View, name: String, on: Boolean) {
+            val wasShowing = bubble?.isShowing == true
+            val sameAnchor = anchor.tag == "open"
+            bubble?.dismiss()
+            dotC.tag = null; dotN.tag = null
+            if (wasShowing && sameAnchor) return
+            val tv = TextView(this).apply {
+                text = "● $name: ${if (on) "켜짐" else "꺼짐"}"
+                textSize = 14f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(0xFFFFFFFF.toInt())
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = rounded(0xFF2B2F36.toInt(), 12)
+                val s = android.text.SpannableString(text)
+                s.setSpan(android.text.style.ForegroundColorSpan(if (on) 0xFF4CD16A.toInt() else 0xFFFF6B6B.toInt()), 0, 1, 0)
+                text = s
+            }
+            val pw = android.widget.PopupWindow(tv, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+            pw.isOutsideTouchable = true
+            pw.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
+            pw.setOnDismissListener { ui.removeCallbacks(hideBubble); anchor.tag = null }
+            bubble = pw
+            anchor.tag = "open"
+            pw.showAsDropDown(anchor, 0, dp(6))
+            ui.postDelayed(hideBubble, 3000)
+        }
+        dotC.setOnClickListener { showBubble(dotC, "CPU", GamjaService.cpuHeld()) }
+        dotN.setOnClickListener { showBubble(dotN, "Network", GamjaService.netHeld()) }
         refreshSys()
         val sysTick = object : Runnable {
             override fun run() {
