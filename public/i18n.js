@@ -33,6 +33,26 @@
   const EN_TEXT = new Map(Object.entries({
     // 아래 메뉴·탭 제목
     '크루': 'Crew', '채팅': 'Chats', '더보기': 'More', '채팅 목록': 'Chats',
+    // "안전을 위해 막았어요" 카드의 이유 (tools/perm-policy.js의 why)
+    '감자알이 쓰는 폴더를 건드려요': 'Touches the folder GAMJA itself uses',
+    '낯선 주소나 설정을 쓰는 git 전송이에요': 'A git transfer using an unfamiliar address or settings',
+    '내려받은 것을 바로 실행해요': 'Runs something right after downloading it',
+    '명령이 너무 길어요': 'The command is too long',
+    '문장 속에 숨은 명령을 실행해요': 'Runs a command hidden inside a string',
+    '밖에서 내려받거나 설치해요': 'Downloads or installs from outside',
+    '비밀번호·시스템 파일을 건드려요': 'Touches passwords or system files',
+    '시스템에 영향을 주는 명령이에요': 'A command that affects the system',
+    '안쪽 명령이 파일을 지워요': 'The inner command deletes files',
+    '여러 파일에 한꺼번에 명령을 실행해요': 'Runs a command on many files at once',
+    '인터넷으로 보내거나 설정 파일을 읽어요': 'Sends data over the internet or reads settings files',
+    '인터넷의 저장소와 주고받아요': 'Exchanges data with an online repository',
+    '작업 폴더 밖에 저장해요': 'Saves outside the work folder',
+    '작업 폴더 밖의 파일에 덮어쓰려고 했어요': 'Tried to overwrite a file outside the work folder',
+    '작업 폴더 밖의 파일을 바꿔요': 'Changes a file outside the work folder',
+    '작업 폴더 밖의 파일을 지우거나 옮기려고 했어요': 'Tried to delete or move a file outside the work folder',
+    '작업 폴더 전체를 지우려고 했어요': 'Tried to delete the whole work folder',
+    '프로그램을 설치하거나 올려요': 'Installs or publishes a program',
+    '프로그램을 올리거나 계정을 다뤄요': 'Publishes a program or handles an account',
     // 로그인
     '비밀번호': 'Password', '로그인': 'Log in',
     // 채팅방 위쪽·메뉴
@@ -237,6 +257,7 @@
     'ext.lanNone': '와이파이 주소를 찾지 못했어요. 와이파이에 연결돼 있는지 확인해 주세요.',
     'perm.title': '🔒 허용이 필요한 명령',
     'perm.blockedTitle': '🛑 안전을 위해 막았어요',
+    'msg.copy': '이 답변 복사',
     'perm.once': '이번만 허용',
     'perm.always': '항상 허용',
     'perm.no': '허용 안 함',
@@ -479,6 +500,7 @@
     'ext.lanNone': "Couldn't find a Wi-Fi address. Check that you are connected to Wi-Fi.",
     'perm.title': '🔒 A command needs your OK',
     'perm.blockedTitle': '🛑 Blocked for safety',
+    'msg.copy': 'Copy this reply',
     'perm.once': 'Allow once',
     'perm.always': 'Always allow',
     'perm.no': "Don't allow",

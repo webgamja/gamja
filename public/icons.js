@@ -4,14 +4,7 @@
 (function () {
   const P = {
     // 감자 대표 캐릭터 (여러 색, 512 좌표를 24칸에 맞춤): 다른 아이콘과 달리 화면 색을 따르지 않고 늘 같은 모습
-    potato: '<g transform="translate(12 12.4) scale(.0605) translate(-258 -254)"><g transform="rotate(-8 256 286)">' +
-      '<g transform="translate(0 12)"><path d="M256 128c0-30 6-52 24-66" fill="none" stroke="#5a8f3c" stroke-width="16" stroke-linecap="round"/>' +
-      '<path d="M280 64c26-14 52-4 58 18-26 10-52 2-58-18z" fill="#7ab648" stroke="none"/><path d="M252 96c-22-16-50-12-60 8 22 14 48 10 60-8z" fill="#8cc759" stroke="none"/></g>' +
-      '<path d="M92 292C92 202 160 140 256 140C360 140 424 206 424 292C424 374 350 432 256 432C160 432 92 374 92 292Z" fill="#d9a05b" stroke="#8a5a2b" stroke-width="18" stroke-linejoin="round"/>' +
-      '<path d="M140 250c10-40 44-66 84-70" fill="none" stroke="#f2c98f" stroke-width="18" stroke-linecap="round" opacity=".8"/>' +
-      '<circle cx="204" cy="272" r="22" fill="#3b2412" stroke="none"/><circle cx="308" cy="272" r="22" fill="#3b2412" stroke="none"/>' +
-      '<ellipse cx="164" cy="318" rx="28" ry="17" fill="#f08a7a" stroke="none" opacity=".65"/><ellipse cx="348" cy="318" rx="28" ry="17" fill="#f08a7a" stroke="none" opacity=".65"/>' +
-      '<path d="M236 314c10 16 30 16 40 0" fill="none" stroke="#3b2412" stroke-width="15" stroke-linecap="round"/></g></g>',
+    potato: '<g transform="translate(12 11.8) scale(.058) translate(-256 -241)"><g transform="translate(197 36) scale(.92)"><path d="M60,70C20,70 4,40 8,6C46,6 66,30 60,70Z" fill="#6DBE4A"/><path d="M68,70C62,34 84,6 130,4C136,44 110,70 68,70Z" fill="#58AA3A"/><path d="M64,60L64,96" fill="none" stroke="#4E9A35" stroke-width="14" stroke-linecap="round"/></g><path d="M92,280C92,170 170,106 256,106C350,106 422,176 422,282C422,380 350,440 256,440C160,440 92,380 92,280Z" fill="#E3B168" stroke="#B9843B" stroke-width="18" stroke-linejoin="round"/><path d="M148,196C162,160 196,138 232,134" fill="none" stroke="#F5D69A" stroke-width="20" stroke-linecap="round"/><circle cx="200" cy="282" r="19" fill="#4A2E14"/><circle cx="312" cy="282" r="19" fill="#4A2E14"/><circle cx="207" cy="274" r="6" fill="#fff"/><circle cx="319" cy="274" r="6" fill="#fff"/><ellipse cx="160" cy="326" rx="26" ry="16" fill="#EFA38A"/><ellipse cx="352" cy="326" rx="26" ry="16" fill="#EFA38A"/><path d="M236,324c10,16 30,16 40,0" fill="none" stroke="#4A2E14" stroke-width="10" stroke-linecap="round"/></g>',
     home: '<path class="a" d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/>',
     globe: '<circle class="a" cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/>',
     menu: '<path d="M8 3v7M5.5 3v4a2.5 2.5 0 0 0 5 0V3M8 10v11"/><path class="a" d="M17 21V3c-2.5 1.5-3.5 5-3.5 8H17"/>',

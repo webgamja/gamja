@@ -1,34 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 알림 표시줄 아이콘 (감자 대표 캐릭터의 흰색 실루엣: 안드로이드 규칙상 한 가지 색만 쓴다) -->
+<!-- 알림 표시줄 아이콘: 감자 떡잎(위로 선 잎 두 장+줄기)만, 칸 높이를 꽉 채운 흰색 한 가지 색 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="512"
-    android:viewportHeight="512">
-    <group
-        android:pivotX="256"
-        android:pivotY="250"
-        android:scaleX="1.1"
-        android:scaleY="1.1"
-        android:translateY="10">
-        <group
-            android:pivotX="256"
-            android:pivotY="286"
-            android:rotation="-8">
-            <path
-                android:fillColor="#FFFFFFFF"
-                android:pathData="M92,292C92,202 160,140 256,140C360,140 424,206 424,292C424,374 350,432 256,432C160,432 92,374 92,292Z" />
-            <path
-                android:pathData="M256,140c0,-30 6,-52 24,-66"
-                android:strokeColor="#FFFFFFFF"
-                android:strokeWidth="24"
-                android:strokeLineCap="round" />
-            <path
-                android:fillColor="#FFFFFFFF"
-                android:pathData="M280,76c26,-14 52,-4 58,18c-26,10 -52,2 -58,-18z" />
-            <path
-                android:fillColor="#FFFFFFFF"
-                android:pathData="M252,108c-22,-16 -50,-12 -60,8c22,14 48,10 60,-8z" />
-        </group>
-    </group>
+    android:viewportWidth="138"
+    android:viewportHeight="136">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M60,70C20,70 4,40 8,6C46,6 66,30 60,70Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M68,70C62,34 84,6 130,4C136,44 110,70 68,70Z" />
+    <path android:pathData="M64,60L64,128" android:strokeColor="#FFFFFFFF" android:strokeWidth="14" android:strokeLineCap="round" />
 </vector>

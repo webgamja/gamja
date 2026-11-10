@@ -2815,10 +2815,31 @@
         `<code data-no-i18n>${escapeHtml(b.cmd)}</code><small>⚠️ ${escapeHtml(b.why)}</small></div>`;
     }
     if (m.meta) html += `<div class="meta">${escapeHtml(m.meta)}</div>`;
-    if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>`;
+    if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>` +
+      `<button class="speak-btn copy-msg-btn" type="button" title="${escapeHtml(window.GAMJA_I18N.t('msg.copy'))}">📋</button>`;
     view.extra.innerHTML = html;
-    const sb = view.extra.querySelector('.speak-btn');
+    const sb = view.extra.querySelector('.speak-btn:not(.copy-msg-btn)');
     if (sb) sb.onclick = () => speak(m.text, true, view.bubble);
+    const cb = view.extra.querySelector('.copy-msg-btn');
+    if (cb) cb.onclick = async () => {
+      // 화면에 보이는 글만 (코드 상자의 "복사" 버튼 글자는 빼고)
+      const hide = [...view.bubble.querySelectorAll('.copy')];
+      hide.forEach((b) => { b.style.display = 'none'; });
+      const text = view.bubble.innerText.trim();
+      hide.forEach((b) => { b.style.display = ''; });
+      // 보안 연결(https)이 아닌 주소(와이파이 접속)에서는 clipboard가 막히므로, 숨은 글칸으로 복사하는 방법을 먼저 이어서 쓴다. 둘 다 안 될 때만 시트를 띄운다
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch { /* 아래 방법으로 */ }
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        ta.remove();
+      }
+      // 복사됐다는 알림은 크롬이 스스로 띄워 주므로 우리 토스트는 없다. 복사가 안 될 때만 시트를 띄운다
+      if (!ok) gCopy(window.GAMJA_I18N.t('msg.copy'), text);
+    };
   }
 
   // 허용 카드: 고른 뒤 허용했으면 하던 일을 이어서 해 달라고 자동으로 보낸다
@@ -3175,6 +3196,7 @@
       };
       attachBox.appendChild(item);
     });
+    autoGrow(); // 미리보기 높이만큼 입력창 상한을 다시 계산한다
   }
   function clearAttachments(revoke = true) {
     if (revoke) pending.forEach((a) => URL.revokeObjectURL(a.url));
@@ -3235,7 +3257,12 @@
     const cs = getComputedStyle(el);
     const line = parseFloat(cs.lineHeight);
     const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-    const max = Math.ceil(line * MAX_LINES + pad);
+    // 키보드가 올라와 화면이 낮을 때(또는 사진 미리보기가 있을 때)는 입력창이 화면 밖으로 밀려나지 않게 높이 상한을 낮춘다
+    const appH = vv ? vv.height : window.innerHeight;
+    const ab = $('attachments');
+    const attachH = ab && !ab.classList.contains('hidden') ? ab.offsetHeight : 0;
+    const room = Math.floor(appH - 225 - attachH);
+    const max = Math.max(Math.ceil(line * 2 + pad), Math.min(Math.ceil(line * MAX_LINES + pad), room));
     el.style.height = 'auto';
     let h = el.scrollHeight;
     if (h > line * 1.5 + pad && !composerBox.classList.contains('multiline')) {
@@ -3278,6 +3305,7 @@
     renderAttachments();
   }
   els.input.addEventListener('input', autoGrow);
+  (vv || window).addEventListener('resize', autoGrow); // 키보드가 올라오거나 내려가면 상한을 다시 계산한다
   // 스크롤바는 스크롤하는 동안만 얇게 보인다
   let scrollHide = 0;
   els.input.addEventListener('scroll', () => {

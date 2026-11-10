@@ -230,7 +230,9 @@ class GamjaService : Service() {
 
     private fun notification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "감자 실행 상태", NotificationManager.IMPORTANCE_LOW))
+        // 상시 알림이 아이콘 배지(숫자 1)로 세어지지 않게 배지를 끈 새 채널을 쓴다 (채널 설정은 만든 뒤에 못 바꾸므로 번호를 새로 쓴다)
+        nm.deleteNotificationChannel("gamja")
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "감자 실행 상태", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
@@ -242,7 +244,7 @@ class GamjaService : Service() {
     }
 
     companion object {
-        private const val CHANNEL = "gamja"
+        private const val CHANNEL = "gamja-run"
         private const val DONE_CHANNEL = "gamja-done-2"
         private const val UPDATE_CHANNEL = "gamja-update"
         @Volatile private var inst: GamjaService? = null
