@@ -152,9 +152,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   min-width: 0; max-width: 100%;
 }
 .row.me .bubble { background: var(--me); color: var(--me-fg); border-top-right-radius: 0; white-space: pre-wrap; }
-/* 크루 답변은 말풍선 없이 배경 위에 바로 (표·코드·결과물 카드는 자기 배경을 가짐) */
-.row.bot .bubble { background: none; color: var(--bot-fg); border-radius: 0; padding: 2px 2px 2px 0; }
-.row.bot { margin-bottom: 8px; }
+.row.bot .bubble { background: var(--bot); color: var(--bot-fg); border-top-left-radius: 0; }
 .row.error .bubble { background: #fde8e8; color: #9b1c1c; white-space: pre-wrap; font-size: 13px; }
 .time { flex: none; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -185,11 +183,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .bubble pre code { background: none; color: var(--pre-fg); padding: 0; font-size: 12.5px; white-space: pre; }
 .table-wrap { overflow-x: auto; margin: 0 0 .6em; }
 .bubble table { border-collapse: collapse; font-size: 13px; }
-.bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
-.row.bot .bubble table { border: 0; }
-.row.bot .bubble th, .row.bot .bubble td { border: 0; border-bottom: 1px solid var(--border); }
-.row.bot .bubble th { background: rgba(127,127,127,.15); }
-.tk-c { color: #7f8c98; font-style: italic; } .tk-s { color: #a5d6a7; } .tk-k { color: #f48fb1; } .tk-n { color: #ffcc80; }
+.bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }.tk-c { color: #7f8c98; font-style: italic; } .tk-s { color: #a5d6a7; } .tk-k { color: #f48fb1; } .tk-n { color: #ffcc80; }
 
 .cursor::after { content: '▍'; animation: blink 1s steps(1) infinite; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }

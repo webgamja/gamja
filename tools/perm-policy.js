@@ -34,7 +34,19 @@ const PATH_WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'ln', 'chmod', 'truncat
 const DELETERS = new Set(['rm', 'rmdir', 'mv', 'truncate', 'shred']);
 const NET_ALWAYS = new Set(['curl', 'wget', 'apt', 'apt-get', 'dpkg', 'npx', 'pip', 'pip3', 'pipx', 'gh']);
 const PKG_SAFE_SUB = new Set(['run', 'test', 'start', 'ls', 'list', 'view', 'build', 'lint', '-v', '--version']);
-const GIT_NET_SUB = new Set(['push', 'clone', 'pull', 'fetch', 'remote', 'submodule']);
+const GIT_NET_SUB = new Set(['clone', 'remote', 'submodule']);
+const GIT_SYNC_SUB = new Set(['push', 'pull', 'fetch']);
+const GIT_ODD = /:\/\/|[\w.-]+@[\w.-]+:|--(upload|receive)-pack|--exec|sshCommand|--config/;
+// git [-C 폴더] [-c 설정] 서브명령 에서 서브명령을 찾는다
+function gitSub(rest) {
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '-C' || rest[i] === '-c') { i++; continue; }
+    if (!rest[i].startsWith('-')) return rest[i];
+  }
+  return '';
+}
+// 공개 저장소 올리기: 배포용 열쇠로 webgamja/gamja에만 올리는 정확히 이 모양의 명령은 안전
+const PUBLIC_PUSH = /^git -C (?:\/root\/projects\/gamja\/)?data\/public-export -c core\.sshCommand="ssh -i \/root\/projects\/gamja\/data\/ssh\/gamja_public_deploy -o IdentitiesOnly=yes" push git@github\.com:webgamja\/gamja\.git public-main:main(?: 2>&1(?: \| tail -\d+)?)?$/;
 
 const unquote = (a) => a.replace(/^['"]+|['"]+$/g, '');
 // 작업 폴더 밖을 가리킬 수 있는 글자인지 (절대 경로, ~, .., 변수)
@@ -45,6 +57,7 @@ function tier(cmd, guardDirs = []) {
   const text = String(cmd || '').trim();
   if (!text) return { tier: 'caution', why: '' };
   if (text.length > 4000) return { tier: 'caution', why: '명령이 너무 길어요' };
+  if (PUBLIC_PUSH.test(text)) return { tier: 'safe', why: '' };
   if (PERM_SECRET.test(text)) return { tier: 'danger', why: '비밀번호·시스템 파일을 건드려요' };
   for (const d of guardDirs) if (d && text.includes(d)) return { tier: 'danger', why: '감자알이 쓰는 폴더를 건드려요' };
   if (hasCriticalProg(text)) return { tier: 'danger', why: '시스템에 영향을 주는 명령이에요' };
@@ -60,7 +73,12 @@ function tier(cmd, guardDirs = []) {
     const sub = rest.find((a) => !a.startsWith('-')) || '';
     if (NET_ALWAYS.has(prog)) return { tier: 'caution', why: '밖에서 내려받거나 설치해요' };
     if (['npm', 'pnpm', 'yarn'].includes(prog) && sub && !PKG_SAFE_SUB.has(sub)) return { tier: 'caution', why: '프로그램을 설치하거나 올려요' };
-    if (prog === 'git' && GIT_NET_SUB.has(sub)) return { tier: 'caution', why: '인터넷의 저장소와 주고받아요' };
+    if (prog === 'git') {
+      const gsub = gitSub(rest);
+      if (GIT_NET_SUB.has(gsub)) return { tier: 'caution', why: '인터넷의 저장소와 주고받아요' };
+      // push·pull·fetch는 이미 연결된 저장소로만 가면 안전. 주소를 직접 쓰거나 설정으로 명령을 끼우면 주의
+      if ((GIT_SYNC_SUB.has(gsub) || rest.some((a) => GIT_SYNC_SUB.has(a))) && (rest.includes('-c') || GIT_ODD.test(seg))) return { tier: 'caution', why: '낯선 주소나 설정을 쓰는 git 전송이에요' };
+    }
     if (['bash', 'sh', 'zsh'].includes(prog) && rest.some((a) => a === '-c')) return { tier: 'caution', why: '문장 속에 숨은 명령을 실행해요' };
     if (prog === 'xargs' || (prog === 'find' && rest.some((a) => /^-(delete|exec|execdir)$/.test(a)))) return { tier: 'caution', why: '여러 파일에 한꺼번에 명령을 실행해요' };
     if (PATH_WRITERS.has(prog)) {
