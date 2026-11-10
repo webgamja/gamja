@@ -32,7 +32,37 @@ function screenComplex(text) {
 
 const PATH_WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'ln', 'chmod', 'truncate', 'tee', 'install', 'mkdir', 'touch', 'shred']);
 const DELETERS = new Set(['rm', 'rmdir', 'mv', 'truncate', 'shred']);
-const NET_ALWAYS = new Set(['curl', 'wget', 'apt', 'apt-get', 'dpkg', 'npx', 'pip', 'pip3', 'pipx', 'gh']);
+// 읽기만 하는 프로그램 (find -exec, xargs 뒤에 와도 안전)
+const READONLY = new Set(['grep', 'egrep', 'fgrep', 'rg', 'cat', 'ls', 'wc', 'head', 'tail', 'file', 'stat', 'du', 'md5sum', 'sha1sum', 'sha256sum',
+  'echo', 'basename', 'dirname', 'readlink', 'realpath', 'sort', 'uniq', 'cut', 'nl', 'diff', 'cmp', 'strings']);
+// curl·wget에서 무언가를 보내거나 설정 파일을 읽는 옵션
+function netSends(rest) {
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (/^(-d|-F|-T|-K|--data.*|--form.*|--upload-file|--config|--json|--post.*|--method|--body.*|--netrc.*)$/.test(a)) return true;
+    if (/^-[a-zA-Z]*[dFTK][a-zA-Z]*$/.test(a)) return true;
+    if (a === '-X' || a === '--request') { if (!/^['"]?(GET|HEAD)['"]?$/i.test(rest[i + 1] || '')) return true; }
+    else if (/^-X/.test(a) && !/^-X['"]?(GET|HEAD)['"]?$/i.test(a)) return true;
+  }
+  return false;
+}
+// find -exec / xargs 뒤의 명령이 읽기 전용인지 (아니면 알려 줄 문구)
+function execCheck(prog, rest) {
+  const bad = { tier: 'caution', why: '여러 파일에 한꺼번에 명령을 실행해요' };
+  const ro = (c) => READONLY.has(unquote(c || '').replace(/^.*\//, ''));
+  if (prog === 'find') {
+    if (rest.some((a) => /^-(delete|fprint.*|fls)$/.test(a))) return bad;
+    for (let i = 0; i < rest.length; i++) if (/^-(exec|execdir|ok|okdir)$/.test(rest[i]) && !ro(rest[i + 1])) return bad;
+    return null;
+  }
+  for (let i = 0; i < rest.length; i++) {
+    if (/^-[InPLdEsa]$/.test(rest[i])) { i++; continue; }
+    if (rest[i].startsWith('-')) continue;
+    return ro(rest[i]) ? null : bad;
+  }
+  return bad;
+}
+const NET_ALWAYS = new Set(['apt', 'apt-get', 'dpkg', 'npx', 'pip', 'pip3', 'pipx', 'gh']);
 const PKG_SAFE_SUB = new Set(['run', 'test', 'start', 'ls', 'list', 'view', 'build', 'lint', '-v', '--version']);
 const GIT_NET_SUB = new Set(['clone', 'remote', 'submodule']);
 const GIT_SYNC_SUB = new Set(['push', 'pull', 'fetch']);
@@ -53,7 +83,7 @@ const unquote = (a) => a.replace(/^['"]+|['"]+$/g, '');
 const outsideArg = (a) => /^(\/|~|\$)/.test(a) || /(^|\/)\.\.(\/|$)/.test(a);
 
 // guardDirs: 작업 폴더가 아닌 곳에서 일하는 크루가 건드리면 안 되는 폴더들(감자알 폴더, data)
-function tier(cmd, guardDirs = []) {
+function tier(cmd, guardDirs = [], depth = 0) {
   const text = String(cmd || '').trim();
   if (!text) return { tier: 'caution', why: '' };
   if (text.length > 4000) return { tier: 'caution', why: '명령이 너무 길어요' };
@@ -64,6 +94,13 @@ function tier(cmd, guardDirs = []) {
   if (/[`]|\$\(/.test(text) && /\$\([^)]*\b(rm|mv)\b/.test(text)) return { tier: 'caution', why: '안쪽 명령이 파일을 지워요' };
   // (위의 한 줄은 $( ) 안에 rm·mv가 숨은 경우)
   if (/>>?\s*(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/.test(text)) return { tier: 'danger', why: '작업 폴더 밖의 파일에 덮어쓰려고 했어요' };
+  // 내려받은 것을 바로 실행하는 모양 (curl … | sh, bash <(curl …))
+  if (/\b(curl|wget)\b/.test(text) && (/\|\s*(sudo\s+)?(env\s+)?(ba|z|da|k)?sh\b|\|\s*(python3?|node|perl|ruby|php|source|eval)\b/.test(text) || /<\(\s*(curl|wget)\b/.test(text))) {
+    return { tier: 'caution', why: '내려받은 것을 바로 실행해요' };
+  }
+  // bash -c "문장" 한 줄 전체이면 안쪽 문장을 같은 규칙으로 다시 본다
+  const bc = text.match(/^(?:[A-Za-z_]\w*=\S*\s+)*(?:\S*\/)?(?:ba|z|da)?sh\s+(?:-[a-zA-Z]+\s+)*?-[a-zA-Z]*c\s+(['"])([\s\S]*)\1\s*$/);
+  if (bc && depth < 3) return tier(bc[2], guardDirs, depth + 1);
   const segs = text.split(/&&|\|\||[;|&\n`]|\$\(|\)/).map((s) => s.trim()).filter(Boolean);
   for (const seg of segs) {
     const tok = seg.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, '').split(/\s+/);
@@ -71,8 +108,19 @@ function tier(cmd, guardDirs = []) {
     const rest = tok.slice(1);
     const args = rest.filter((a) => !a.startsWith('-')).map(unquote);
     const sub = rest.find((a) => !a.startsWith('-')) || '';
+    if (prog === 'curl' || prog === 'wget') {
+      if (netSends(rest)) return { tier: 'caution', why: '인터넷으로 보내거나 설정 파일을 읽어요' };
+      if (args.some(outsideArg)) return { tier: 'caution', why: '작업 폴더 밖에 저장해요' };
+      continue; // 읽기, 또는 작업 폴더 안에 저장 → 안전
+    }
     if (NET_ALWAYS.has(prog)) return { tier: 'caution', why: '밖에서 내려받거나 설치해요' };
-    if (['npm', 'pnpm', 'yarn'].includes(prog) && sub && !PKG_SAFE_SUB.has(sub)) return { tier: 'caution', why: '프로그램을 설치하거나 올려요' };
+    if (['npm', 'pnpm', 'yarn'].includes(prog) && sub && !PKG_SAFE_SUB.has(sub)) {
+      // 따로 작업 폴더가 있는 크루가 그 폴더 안에 설치하는 건 안전. 전역 설치·밖 경로·감자알 폴더는 주의
+      const local = guardDirs.length > 0 && !rest.some((a) => /^(-g|--global|--location=global)$/.test(a)) && !args.some(outsideArg);
+      if (!local) return { tier: 'caution', why: '프로그램을 설치하거나 올려요' };
+      if (/^(publish|login|logout|adduser|owner|access|token|deprecate|unpublish)$/.test(sub)) return { tier: 'caution', why: '프로그램을 올리거나 계정을 다뤄요' };
+      continue;
+    }
     if (prog === 'git') {
       const gsub = gitSub(rest);
       if (GIT_NET_SUB.has(gsub)) return { tier: 'caution', why: '인터넷의 저장소와 주고받아요' };
@@ -80,7 +128,7 @@ function tier(cmd, guardDirs = []) {
       if ((GIT_SYNC_SUB.has(gsub) || rest.some((a) => GIT_SYNC_SUB.has(a))) && (rest.includes('-c') || GIT_ODD.test(seg))) return { tier: 'caution', why: '낯선 주소나 설정을 쓰는 git 전송이에요' };
     }
     if (['bash', 'sh', 'zsh'].includes(prog) && rest.some((a) => a === '-c')) return { tier: 'caution', why: '문장 속에 숨은 명령을 실행해요' };
-    if (prog === 'xargs' || (prog === 'find' && rest.some((a) => /^-(delete|exec|execdir)$/.test(a)))) return { tier: 'caution', why: '여러 파일에 한꺼번에 명령을 실행해요' };
+    if (prog === 'xargs' || prog === 'find') { const r = execCheck(prog, rest); if (r) return r; }
     if (PATH_WRITERS.has(prog)) {
       if (DELETERS.has(prog) && args.some(outsideArg)) return { tier: 'danger', why: '작업 폴더 밖의 파일을 지우거나 옮기려고 했어요' };
       if (args.some(outsideArg)) return { tier: 'caution', why: '작업 폴더 밖의 파일을 바꿔요' };
