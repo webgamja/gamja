@@ -13,7 +13,7 @@ header { position:fixed; top:0; left:0; right:0; z-index:30; background:var(--hd
 header.scrolled { border-bottom-color:var(--line); }
 .bar { display:flex; align-items:center; height:60px; gap:26px; }
 .brand { font-weight:900; font-size:21px; letter-spacing:-.5px; display:flex; align-items:center; gap:8px; }
-.brand i { width:28px; height:28px; border-radius:9px; background:var(--accent); display:grid; place-items:center; font-style:normal; font-size:15px; color:var(--accent-fg); }
+.brand i { width:32px; height:32px; border-radius:10px; background:url(favicon.svg) center/cover no-repeat; display:block; font-style:normal; font-size:0; color:transparent; }
 nav.main { display:flex; gap:24px; font-size:14.5px; font-weight:600; margin-right:auto; }
 nav.main a { color:var(--muted); transition:color .2s; } nav.main a:hover { color:var(--fg); }
 .tools { display:flex; align-items:center; gap:6px; }

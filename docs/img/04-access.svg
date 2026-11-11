@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 740" role="img" aria-label="GAMJA external access settings with a QR code">
   <style>
     text{font-family:"Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
-    .t{fill:#191f28}.s{fill:#6b7684}.b{font-weight:700}.x{font-weight:800}.q{fill:#111}
+    .t{fill:#2B2418}.s{fill:#7A6F5A}.b{font-weight:700}.x{font-weight:800}.q{fill:#111}
   </style>
-  <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <rect width="360" height="740" rx="38" fill="#2B2418"/>
   <defs><clipPath id="scr"><rect x="8" y="8" width="344" height="724" rx="30"/></clipPath></defs>
-  <rect x="8" y="8" width="344" height="724" rx="30" fill="#f2f4f6"/>
+  <rect x="8" y="8" width="344" height="724" rx="30" fill="#F3EBD6"/>
   <g clip-path="url(#scr)">
   <text x="28" y="34" font-size="11" class="s b">9:41</text>
   <text x="24" y="76" font-size="22" class="t">←</text>
   <text x="180" y="76" font-size="17" text-anchor="middle" class="t b">🌐 외부 접속</text>
 
   <text x="20" y="112" font-size="13" class="s b">같은 와이파이 접속</text>
-  <rect x="16" y="122" width="328" height="60" rx="14" fill="#fff"/>
+  <rect x="16" y="122" width="328" height="60" rx="14" fill="#FFFDF7"/>
   <text x="32" y="158" font-size="15" class="t" font-weight="600">다른 기기에서 접속 허용</text>
-  <rect x="280" y="137" width="50" height="30" rx="15" fill="#fee500"/><circle cx="315" cy="152" r="12" fill="#fff"/>
+  <rect x="280" y="137" width="50" height="30" rx="15" fill="#F2D98A"/><circle cx="315" cy="152" r="12" fill="#FFFDF7"/>
   <text x="20" y="206" font-size="13" class="s">켜면 같은 와이파이의 아이폰·안드로이드·PC가</text>
   <text x="20" y="225" font-size="13" class="s">브라우저로 이 폰의 감자에 접속할 수 있어요.</text>
 
   <!-- 주소 카드: QR + 주소 + 복사 -->
-  <rect x="16" y="244" width="328" height="312" rx="20" fill="#fff"/>
-  <rect x="86" y="260" width="188" height="188" rx="12" fill="#fff" stroke="#e5e8eb"/>
+  <rect x="16" y="244" width="328" height="312" rx="20" fill="#FFFDF7"/>
+  <rect x="86" y="260" width="188" height="188" rx="12" fill="#FFFDF7" stroke="#EDE3CB"/>
   <g class="q" transform="translate(96 270)">
     <!-- 모서리 무늬 3개 -->
-    <rect x="0" y="0" width="56" height="56"/><rect x="8" y="8" width="40" height="40" fill="#fff"/><rect x="16" y="16" width="24" height="24"/>
-    <rect x="112" y="0" width="56" height="56"/><rect x="120" y="8" width="40" height="40" fill="#fff"/><rect x="128" y="16" width="24" height="24"/>
-    <rect x="0" y="112" width="56" height="56"/><rect x="8" y="120" width="40" height="40" fill="#fff"/><rect x="16" y="128" width="24" height="24"/>
+    <rect x="0" y="0" width="56" height="56"/><rect x="8" y="8" width="40" height="40" fill="#FFFDF7"/><rect x="16" y="16" width="24" height="24"/>
+    <rect x="112" y="0" width="56" height="56"/><rect x="120" y="8" width="40" height="40" fill="#FFFDF7"/><rect x="128" y="16" width="24" height="24"/>
+    <rect x="0" y="112" width="56" height="56"/><rect x="8" y="120" width="40" height="40" fill="#FFFDF7"/><rect x="16" y="128" width="24" height="24"/>
     <!-- 데이터 칸 (모양만 보여 주는 예시) -->
     <g>
       <rect x="64" y="0" width="8" height="8"/><rect x="80" y="0" width="8" height="8"/><rect x="96" y="8" width="8" height="8"/>
@@ -40,8 +40,8 @@
     </g>
   </g>
   <text x="180" y="472" font-size="12.5" text-anchor="middle" class="s">다른 폰의 카메라로 QR을 찍으면 이 주소가 열려요</text>
-  <text x="180" y="498" font-size="18" text-anchor="middle" class="t x">http://10.0.0.5:3000</text>
-  <rect x="32" y="510" width="296" height="34" rx="12" fill="#e5e8eb"/>
+  <text x="180" y="498" font-size="18" text-anchor="middle" class="t x">http://10.0.0.5:26514</text>
+  <rect x="32" y="510" width="296" height="34" rx="12" fill="#EDE3CB"/>
   <text x="180" y="533" font-size="14" text-anchor="middle" class="t b">📋 주소 복사</text>
 
   <text x="20" y="588" font-size="13" class="s b">외부 접속 주소 (와이파이 밖)</text>

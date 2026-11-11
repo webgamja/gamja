@@ -1,74 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="GAMJA - Your own AI crew, living in your phone">
-  <style>
-    text{font-family:"Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
-    .d{fill:#191f28}.t{fill:#191919}.s{fill:#55606b}.b{font-weight:700}.x{font-weight:800}
-  </style>
-  <defs><clipPath id="scr"><rect x="882" y="92" width="276" height="560" rx="32"/></clipPath></defs>
-  <rect width="1280" height="640" fill="#fee500"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 640" width="1280" height="640" font-family="Noto Sans CJK KR, sans-serif">
+<rect width="1280" height="640" fill="#FBF5E6"/>
+<circle cx="1180" cy="40" r="260" fill="#F6E3A1" opacity=".55"/>
+<circle cx="640" cy="690" r="220" fill="#F2D98A" opacity=".35"/>
+<image href="social-char.svg" x="80" y="70" width="104" height="104"/>
+<text x="206" y="130" font-size="64" font-weight="900" fill="#2B2418">GAMJA</text>
+<text x="208" y="168" font-size="26" font-weight="800" fill="#7A6F5A">감자</text>
+<text x="80" y="280" font-size="54" font-weight="900" fill="#2B2418">Your own AI crew,</text>
+<text x="80" y="350" font-size="54" font-weight="900" fill="#2B2418">living in your phone.</text>
+<rect x="80" y="376" width="420" height="12" rx="6" fill="#F2D98A"/>
+<text x="80" y="460" font-size="32" font-weight="800" fill="#3B2F14">쓰던 안드로이드 폰에 나만의 AI 크루를.</text>
+<text x="80" y="505" font-size="24" fill="#7A6F5A">No Mac mini, no cloud server. Claude Code in your pocket.</text>
+<line x1="80" y1="548" x2="640" y2="548" stroke="#E6D9B8" stroke-width="2"/>
+<text x="80" y="590" font-size="26" font-weight="800" fill="#2B2418">Open source · Apache-2.0 · webgamja.com</text>
 
-  <!-- 왼쪽: 이름과 한 줄 소개 -->
-  <rect x="80" y="86" width="104" height="104" rx="26" fill="#fff"/>
-  <g transform="translate(132 138) scale(0.2) translate(-258 -254)">
-    <g transform="rotate(-8 256 286)">
-      <g transform="translate(0 12)">
-        <path d="M256 128c0-30 6-52 24-66" fill="none" stroke="#5a8f3c" stroke-width="14" stroke-linecap="round"/>
-        <path d="M280 64c26-14 52-4 58 18-26 10-52 2-58-18z" fill="#7ab648"/>
-        <path d="M252 96c-22-16-50-12-60 8 22 14 48 10 60-8z" fill="#8cc759"/>
-      </g>
-      <path d="M92 292C92 202 160 140 256 140C360 140 424 206 424 292C424 374 350 432 256 432C160 432 92 374 92 292Z" fill="#d9a05b" stroke="#8a5a2b" stroke-width="14" stroke-linejoin="round"/>
-      <circle cx="204" cy="272" r="20" fill="#3b2412"/><circle cx="308" cy="272" r="20" fill="#3b2412"/>
-      <ellipse cx="164" cy="316" rx="26" ry="16" fill="#f08a7a" opacity=".6"/><ellipse cx="348" cy="316" rx="26" ry="16" fill="#f08a7a" opacity=".6"/>
-      <path d="M236 312c10 16 30 16 40 0" fill="none" stroke="#3b2412" stroke-width="12" stroke-linecap="round"/>
-    </g>
-  </g>
-  <text x="212" y="146" font-size="64" class="d x">GAMJA</text>
-  <text x="214" y="182" font-size="30" class="d b">감자</text>
-
-  <text x="80" y="300" font-size="54" class="d x">Your own AI crew,</text>
-  <text x="80" y="366" font-size="54" class="d x">living in your phone.</text>
-  <text x="80" y="432" font-size="32" class="d b" opacity=".8">쓰던 안드로이드 폰에 나만의 AI 크루를.</text>
-  <text x="80" y="480" font-size="26" class="d" opacity=".7">No Mac mini, no cloud server. Claude Code in your pocket.</text>
-
-  <rect x="80" y="536" width="560" height="2" fill="#191f28" opacity=".25"/>
-  <text x="80" y="580" font-size="26" class="d b">Open source · Apache-2.0 · webgamja.com</text>
-
-  <!-- 오른쪽: 채팅 화면 -->
-  <rect x="870" y="80" width="300" height="600" rx="44" fill="#1b1b1f"/>
-  <rect x="882" y="92" width="276" height="560" rx="32" fill="#bacee0"/>
-  <g clip-path="url(#scr)">
-    <rect x="882" y="92" width="276" height="62" fill="#a9bdce"/>
-    <g transform="translate(898 119) scale(.88)" fill="none" stroke="#191919" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
-    <text x="922" y="134" font-size="16" class="t" font-weight="600">홈페이지 ▾</text>
-    <rect x="1006" y="114" width="86" height="30" rx="15" fill="#fff" opacity=".55"/>
-    <g transform="translate(1016 120) scale(.75)" fill="none" stroke="#191919" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></g>
-    <text x="1054" y="134" font-size="13" text-anchor="middle" class="t b">결과물</text>
-
-    <rect x="942" y="176" width="204" height="56" rx="14" fill="#fee500"/>
-    <text x="954" y="199" font-size="13.5" class="t">우리 동네 카페 '봄날' 소개</text>
-    <text x="954" y="219" font-size="13.5" class="t">페이지 만들어 줘!</text>
-
-    <rect x="896" y="248" width="30" height="30" rx="11" fill="#d97757"/><g transform="translate(901 253) scale(.8)" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
-    <rect x="934" y="248" width="212" height="132" rx="14" fill="#fff"/>
-    <g font-size="13.5" class="t">
-      <text x="946" y="272">'봄날' 소개 페이지를</text>
-      <text x="946" y="291">만들었어요</text>
-      <text x="946" y="319">• 소개와 영업시간</text>
-      <text x="946" y="339">• 메뉴와 가격표</text>
-      <text x="946" y="359">• 오시는 길 안내</text>
-    </g>
-
-    <rect x="934" y="394" width="212" height="58" rx="14" fill="#fff"/>
-    <rect x="946" y="404" width="38" height="38" rx="10" fill="#f2f4f6"/><g transform="translate(953 411) scale(1)" fill="none" stroke="#191919" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18-3-3-3-15 0-18"/></g>
-    <text x="996" y="420" font-size="13" class="t b">결과물 · index.html</text>
-    <text x="996" y="438" font-size="11.5" class="s">눌러서 열어 보기 ›</text>
-
-    <rect x="962" y="470" width="184" height="40" rx="14" fill="#fee500"/>
-    <text x="974" y="495" font-size="13.5" class="t">제목을 더 따뜻하게!</text>
-
-    <rect x="882" y="590" width="276" height="62" fill="#fff"/>
-    <rect x="894" y="600" width="252" height="42" rx="21" fill="#f2f2f2"/>
-    <text x="912" y="627" font-size="20" class="s" text-anchor="middle">＋</text>
-    <text x="932" y="626" font-size="14" class="s">메시지 입력</text>
-    <circle cx="1120" cy="621" r="16" fill="#fee500"/><text x="1120" y="627" font-size="14" text-anchor="middle" class="t">➤</text>
-  </g>
+<g transform="translate(862,70)">
+<rect width="310" height="620" rx="42" fill="#2B2418"/>
+<rect x="10" y="10" width="290" height="600" rx="34" fill="#FBF5E6"/>
+<text x="30" y="62" font-size="24" font-weight="900" fill="#2B2418">내 크루</text>
+<g transform="translate(24,86)">
+ <rect width="262" height="92" rx="20" fill="#FFFDF7"/><rect x="14" y="16" width="60" height="60" rx="18" fill="#F2D98A"/>
+ <text x="44" y="56" text-anchor="middle" font-size="26" font-weight="900" fill="#3B2F14">홈</text>
+ <text x="88" y="44" font-size="18" font-weight="800" fill="#2B2418">홈페이지 크루</text>
+ <text x="88" y="68" font-size="13" fill="#7A6F5A">지침 · 자료 · 기억 3개</text>
+</g>
+<g transform="translate(24,194)">
+ <rect width="262" height="92" rx="20" fill="#FFFDF7"/><rect x="14" y="16" width="60" height="60" rx="18" fill="#F2D98A"/>
+ <text x="44" y="56" text-anchor="middle" font-size="26" font-weight="900" fill="#3B2F14">응</text>
+ <text x="88" y="44" font-size="18" font-weight="800" fill="#2B2418">고객 응대 크루</text>
+ <text x="88" y="68" font-size="13" fill="#7A6F5A">우리 가게 말투로 답해요</text>
+</g>
+<g transform="translate(24,302)">
+ <rect width="262" height="92" rx="20" fill="#FFFDF7"/><rect x="14" y="16" width="60" height="60" rx="18" fill="#F2D98A"/>
+ <text x="44" y="56" text-anchor="middle" font-size="26" font-weight="900" fill="#3B2F14">매</text>
+ <text x="88" y="44" font-size="18" font-weight="800" fill="#2B2418">매출·재고 크루</text>
+ <text x="88" y="68" font-size="13" fill="#7A6F5A">표와 요약을 만들어요</text>
+</g>
+<g transform="translate(24,410)">
+ <rect width="262" height="92" rx="20" fill="#FFFDF7" stroke="#E6D9B8" stroke-dasharray="6 6"/>
+ <text x="131" y="56" text-anchor="middle" font-size="18" font-weight="800" fill="#7A6F5A">＋ 내 일에 맞는 크루 만들기</text>
+</g>
+</g>
 </svg>

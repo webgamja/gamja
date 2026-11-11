@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 740" role="img" aria-label="GAMJA crew tab">
   <style>
     text{font-family:"Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
-    .t{fill:#191f28}.s{fill:#6b7684}.b{font-weight:700}.x{font-weight:800}
+    .t{fill:#2B2418}.s{fill:#7A6F5A}.b{font-weight:700}.x{font-weight:800}
   </style>
-  <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <rect width="360" height="740" rx="38" fill="#2B2418"/>
   <defs><clipPath id="scr"><rect x="8" y="8" width="344" height="724" rx="30"/></clipPath></defs>
-  <rect x="8" y="8" width="344" height="724" rx="30" fill="#f2f4f6"/>
+  <rect x="8" y="8" width="344" height="724" rx="30" fill="#F3EBD6"/>
   <g clip-path="url(#scr)">
   <text x="28" y="34" font-size="11" class="s b">9:41</text>
 
@@ -14,49 +14,49 @@
   <text x="322" y="84" font-size="24" class="t" text-anchor="middle">＋</text>
 
   <!-- 감자 톡톡 -->
-  <rect x="16" y="100" width="328" height="68" rx="20" fill="#fff"/>
-  <circle cx="53" cy="134" r="23" fill="#f2f4f6"/><text x="53" y="142" font-size="22" text-anchor="middle">🥔</text>
+  <rect x="16" y="100" width="328" height="68" rx="20" fill="#FFFDF7"/>
+  <circle cx="53" cy="134" r="23" fill="#F3EBD6"/><text x="53" y="142" font-size="22" text-anchor="middle">🥔</text>
   <text x="86" y="130" font-size="16" class="t b">감자 톡톡</text>
   <text x="86" y="150" font-size="13" class="s">폴더와 상관없이 무엇이든 물어보는 기…</text>
 
   <!-- 자주 쓰는 크루 -->
-  <text x="22" y="198" font-size="13" class="s b"><tspan fill="#f5c400">★</tspan> 자주 쓰는 크루 2</text>
-  <rect x="16" y="208" width="328" height="136" rx="20" fill="#fff"/>
-  <circle cx="53" cy="242" r="23" fill="#f2f4f6"/><text x="53" y="250" font-size="22" text-anchor="middle">🌐</text>
+  <text x="22" y="198" font-size="13" class="s b"><tspan fill="#E8C46A">★</tspan> 자주 쓰는 크루 2</text>
+  <rect x="16" y="208" width="328" height="136" rx="20" fill="#FFFDF7"/>
+  <circle cx="53" cy="242" r="23" fill="#F3EBD6"/><text x="53" y="250" font-size="22" text-anchor="middle">🌐</text>
   <text x="86" y="238" font-size="16" class="t b">홈페이지</text><text x="86" y="258" font-size="13" class="s">소개 페이지, 문의 폼, 서비스 안내</text>
-  <line x1="16" y1="276" x2="344" y2="276" stroke="#e5e8eb"/>
-  <circle cx="53" cy="310" r="23" fill="#f2f4f6"/><text x="53" y="318" font-size="22" text-anchor="middle">💬</text>
+  <line x1="16" y1="276" x2="344" y2="276" stroke="#EDE3CB"/>
+  <circle cx="53" cy="310" r="23" fill="#F3EBD6"/><text x="53" y="318" font-size="22" text-anchor="middle">💬</text>
   <text x="86" y="306" font-size="16" class="t b">고객 응대</text><text x="86" y="326" font-size="13" class="s">문의 답변 초안, 자주 묻는 질문</text>
 
   <!-- 추천 크루 -->
   <text x="22" y="372" font-size="13" class="s b">추천 크루</text>
   <text x="338" y="372" font-size="13" text-anchor="end" class="s b">전체 보기 ›</text>
-  <rect x="16" y="382" width="150" height="136" rx="18" fill="#fff"/>
-  <circle cx="91" cy="416" r="27" fill="#f2f4f6"/><text x="91" y="425" font-size="26" text-anchor="middle">🍽️</text>
+  <rect x="16" y="382" width="150" height="136" rx="18" fill="#FFFDF7"/>
+  <circle cx="91" cy="416" r="27" fill="#F3EBD6"/><text x="91" y="425" font-size="26" text-anchor="middle">🍽️</text>
   <text x="91" y="460" font-size="14" text-anchor="middle" class="t b">메뉴판·가격표</text>
   <text x="91" y="478" font-size="12" text-anchor="middle" class="s">메뉴판, 가격표, 이벤트…</text>
-  <rect x="62" y="486" width="58" height="26" rx="13" fill="#fee500"/><text x="91" y="504" font-size="13" text-anchor="middle" fill="#191919" class="x">추가</text>
-  <rect x="176" y="382" width="150" height="136" rx="18" fill="#fff"/>
-  <circle cx="251" cy="416" r="27" fill="#f2f4f6"/><text x="251" y="425" font-size="26" text-anchor="middle">📣</text>
+  <rect x="62" y="486" width="58" height="26" rx="13" fill="#F2D98A"/><text x="91" y="504" font-size="13" text-anchor="middle" fill="#2B2418" class="x">추가</text>
+  <rect x="176" y="382" width="150" height="136" rx="18" fill="#FFFDF7"/>
+  <circle cx="251" cy="416" r="27" fill="#F3EBD6"/><text x="251" y="425" font-size="26" text-anchor="middle">📣</text>
   <text x="251" y="460" font-size="14" text-anchor="middle" class="t b">후기·SNS 글</text>
   <text x="251" y="478" font-size="12" text-anchor="middle" class="s">후기 답글, 인스타 글…</text>
-  <rect x="222" y="486" width="58" height="26" rx="13" fill="#fee500"/><text x="251" y="504" font-size="13" text-anchor="middle" fill="#191919" class="x">추가</text>
-  <path d="M336 382h8v136h-8z" fill="#f2f4f6"/>
+  <rect x="222" y="486" width="58" height="26" rx="13" fill="#F2D98A"/><text x="251" y="504" font-size="13" text-anchor="middle" fill="#2B2418" class="x">추가</text>
+  <path d="M336 382h8v136h-8z" fill="#F3EBD6"/>
 
   <!-- 만들기 / 가져오기 -->
-  <rect x="16" y="532" width="328" height="50" rx="16" fill="#fee500"/>
-  <text x="32" y="562" font-size="15" fill="#191919" class="x">✏️ 직접 만들기</text>
-  <text x="328" y="562" font-size="12" text-anchor="end" fill="#191919" opacity=".7" font-weight="600">이름과 맡길 일 적기 ›</text>
-  <rect x="16" y="594" width="328" height="50" rx="16" fill="#fff"/>
+  <rect x="16" y="532" width="328" height="50" rx="16" fill="#F2D98A"/>
+  <text x="32" y="562" font-size="15" fill="#2B2418" class="x">✏️ 직접 만들기</text>
+  <text x="328" y="562" font-size="12" text-anchor="end" fill="#2B2418" opacity=".7" font-weight="600">이름과 맡길 일 적기 ›</text>
+  <rect x="16" y="594" width="328" height="50" rx="16" fill="#FFFDF7"/>
   <text x="32" y="624" font-size="14" class="t b">📥 친구가 보낸 크루 코드로 추가</text>
   <text x="328" y="624" font-size="12" text-anchor="end" class="s" font-weight="600">붙여넣기 ›</text>
 
   <!-- 아래 메뉴 -->
-  <rect x="8" y="668" width="344" height="64" fill="#fff"/>
-  <line x1="8" y1="668" x2="352" y2="668" stroke="#e5e8eb"/>
+  <rect x="8" y="668" width="344" height="64" fill="#FFFDF7"/>
+  <line x1="8" y1="668" x2="352" y2="668" stroke="#EDE3CB"/>
   <g fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" font-size="11" font-weight="700" text-anchor="middle">
-    <g transform="translate(51 676)" stroke="#191f28"><circle cx="9" cy="8" r="3.5" fill="#fee500"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></g>
-    <text x="64" y="716" stroke="none" fill="#191f28">크루</text>
+    <g transform="translate(51 676)" stroke="#2B2418"><circle cx="9" cy="8" r="3.5" fill="#F2D98A"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/></g>
+    <text x="64" y="716" stroke="none" fill="#2B2418">크루</text>
     <g transform="translate(167 676)" stroke="#9aa3ae"><path d="M4 5h16v11H10l-4 4v-4H4z"/></g>
     <text x="180" y="716" stroke="none" fill="#9aa3ae">채팅</text>
     <g transform="translate(283 676)" stroke="#9aa3ae"><path d="M5 7h14M5 12h14M5 17h14"/></g>

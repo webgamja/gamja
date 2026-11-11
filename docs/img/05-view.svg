@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 740" role="img" aria-label="GAMJA opened web page result">
   <style>
     text{font-family:"Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
-    .t{fill:#191f28}.s{fill:#6b7684}.b{font-weight:700}
+    .t{fill:#2B2418}.s{fill:#7A6F5A}.b{font-weight:700}
   </style>
-  <rect width="360" height="740" rx="38" fill="#1b1b1f"/>
+  <rect width="360" height="740" rx="38" fill="#2B2418"/>
   <defs><clipPath id="scr"><rect x="8" y="8" width="344" height="724" rx="30"/></clipPath></defs>
-  <rect x="8" y="8" width="344" height="724" rx="30" fill="#f2f4f6"/>
+  <rect x="8" y="8" width="344" height="724" rx="30" fill="#F3EBD6"/>
   <g clip-path="url(#scr)">
   <text x="28" y="34" font-size="11" class="s b">9:41</text>
   <text x="24" y="76" font-size="22" class="t">←</text>
   <text x="180" y="76" font-size="17" text-anchor="middle" class="t b">index.html</text>
 
   <!-- 크루가 만든 페이지 (전체 화면) -->
-  <rect x="8" y="92" width="344" height="640" fill="#fff"/>
-  <rect x="8" y="92" width="344" height="46" fill="#fff"/>
+  <rect x="8" y="92" width="344" height="640" fill="#FFFDF7"/>
+  <rect x="8" y="92" width="344" height="46" fill="#FFFDF7"/>
   <text x="24" y="121" font-size="16" fill="#4b2e17" class="b">봄날 카페</text>
   <text x="328" y="121" font-size="12.5" text-anchor="end" fill="#8a5a2b">메뉴 · 영업시간 · 오시는 길</text>
   <rect x="8" y="138" width="344" height="230" fill="#f3e3cf"/>
@@ -22,7 +22,7 @@
   <text x="180" y="282" font-size="30" text-anchor="middle" fill="#4b2e17" class="b">시작, 봄날</text>
   <text x="180" y="312" font-size="13.5" text-anchor="middle" fill="#6b4a2f">직접 볶은 원두와 매일 구운 디저트</text>
   <rect x="136" y="326" width="88" height="30" rx="15" fill="#4b2e17"/>
-  <text x="180" y="346" font-size="13" text-anchor="middle" fill="#fff">메뉴 보기</text>
+  <text x="180" y="346" font-size="13" text-anchor="middle" fill="#FFFDF7">메뉴 보기</text>
 
   <text x="28" y="408" font-size="17" fill="#4b2e17" class="b">메뉴</text>
   <g font-size="14">
