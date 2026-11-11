@@ -4,7 +4,7 @@
 // 비워 두면 통계를 쓰지 않는다. 감자 콘솔을 직접 고쳐서 쓰는 사람은 여기를 비우거나 자기 ID로 바꾸면 된다.
 (function () {
   'use strict';
-  var GA_MEASUREMENT_ID = '';
+  var GA_MEASUREMENT_ID = 'G-PWYP6T8JKS';
 
   var ALLOWED = {
     app_open: [], message_send: [], new_chat: ['kind'], crew_create: ['kind'], chat_continue: [], chat_export: [],

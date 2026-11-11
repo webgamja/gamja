@@ -159,7 +159,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tools { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .tools summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 .tools div { font-size: 12px; color: var(--muted); padding-left: 4px; }
-.speak-btn { border: 0; background: none; font-size: 22px; line-height: 1; padding: 0 6px 0 2px; opacity: .8; display: inline-flex; align-items: center; justify-content: center; height: 32px; min-width: 32px; vertical-align: top; }
+.speak-btn { border: 0; background: none; font-size: 20px; line-height: 1; padding: 0 6px 0 2px; opacity: .8; display: inline-flex; align-items: center; justify-content: center; height: 28px; min-width: 28px; vertical-align: middle; }
+.speak-btn.copy-msg-btn { font-size: 18px; position: relative; top: -1px; }
+.meta-row { display: flex; align-items: center; justify-content: flex-start; gap: 6px; margin-top: 4px; }
+.meta-row .meta { margin-top: 0; min-width: 0; }
+.msg-acts { display: inline-flex; align-items: center; flex: none; }
 
 /* 마크다운 */
 .bubble > :first-child { margin-top: 0; }

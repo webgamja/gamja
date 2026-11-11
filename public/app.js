@@ -2930,9 +2930,10 @@
       html += `<div class="perm-card blocked-note"><b>${escapeHtml(window.GAMJA_I18N.t('perm.blockedTitle'))}</b>` +
         `<code data-no-i18n>${escapeHtml(b.cmd)}</code><small>⚠️ ${escapeHtml(b.why)}</small></div>`;
     }
-    if (m.meta) html += `<div class="meta">${escapeHtml(m.meta)}</div>`;
-    if (!streaming && m.text && m.role === 'bot') html += `<button class="speak-btn" type="button" title="읽어주기">🔊</button>` +
-      `<button class="speak-btn copy-msg-btn" type="button" title="${escapeHtml(window.GAMJA_I18N.t('msg.copy'))}">📋</button>`;
+    const acts = !streaming && m.text && m.role === 'bot'
+      ? `<span class="msg-acts"><button class="speak-btn" type="button" title="읽어주기">🔊</button>` +
+        `<button class="speak-btn copy-msg-btn" type="button" title="${escapeHtml(window.GAMJA_I18N.t('msg.copy'))}">📋</button></span>` : '';
+    if (m.meta || acts) html += `<div class="meta-row">${m.meta ? `<div class="meta">${escapeHtml(m.meta)}</div>` : ''}${acts}</div>`; // 토큰 표시 줄의 오른쪽 끝에 두 버튼
     view.extra.innerHTML = html;
     const sb = view.extra.querySelector('.speak-btn:not(.copy-msg-btn)');
     if (sb) sb.onclick = () => speak(m.text, true, view.bubble);
