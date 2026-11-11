@@ -434,6 +434,8 @@
     const noContinue = gone || group || crewOf(project) === ''; // 감자 톡톡(크루 없는 방)에서는 이어가기를 숨긴다
     $('continueBtn').classList.toggle('hidden', noContinue);
     $('roomContinueNote').classList.toggle('hidden', noContinue);
+    $('exportBtn').classList.toggle('hidden', noContinue);
+    $('roomExportNote').classList.toggle('hidden', noContinue);
     $('roomActions').classList.toggle('hidden', gone); // 삭제된 크루의 방에서는 대화 관리를 보여 주지 않는다
     $('roomPrefs').classList.toggle('hidden', gone);
     $('attachBtn').classList.toggle('hidden', gone || group);
@@ -648,6 +650,7 @@
     let d;
     try { d = await api('/api/chats'); } catch { return; }
     chats = d.chats || [];
+    try { roomTrashItems = (await api('/api/roomtrash')).items || []; } catch { /* 못 받으면 이전 목록 그대로 */ }
     for (const c of chats) if (c.name.startsWith('@')) rememberRoomCrew(c.name, c.crew || ''); // 새 방이 속한 크루
     // 처음 보는 크루는 지금까지의 답을 모두 읽은 것으로 시작한다 (처음부터 안 읽음이 쌓여 보이지 않게)
     // 크루 이름·★·채팅방 이름·고정·순서도 기기마다 달라지지 않게 감자알의 것을 받아 오고, 이 기기에서 바꾼 것은 올린다
@@ -670,9 +673,10 @@
     cnt.textContent = total > 9 ? '9+' : String(total);
     cnt.classList.toggle('hidden', !total);
     // 바뀐 게 없으면 다시 그리지 않는다 (스크롤·눌림 상태가 흐트러지지 않게). 시간 글자는 분이 바뀔 때 갱신된다
-    const key = `${JSON.stringify(chats)}|${JSON.stringify(seen)}|${JSON.stringify(store.get('cc:roomMade', {}))}|${JSON.stringify(draftRooms())}|${JSON.stringify(getRoomTitles())}|${JSON.stringify(getRoomPins())}|${new Date().getMinutes()}`;
+    const key = `${roomTrashItems.length}|${JSON.stringify(chats)}|${JSON.stringify(seen)}|${JSON.stringify(store.get('cc:roomMade', {}))}|${JSON.stringify(draftRooms())}|${JSON.stringify(getRoomTitles())}|${JSON.stringify(getRoomPins())}|${new Date().getMinutes()}`;
     if (tab === 'chat' && key !== chatKey) { chatKey = key; renderChats(seen); }
   }
+  let roomTrashItems = []; // 삭제한 채팅 (채팅 탭 아래 "삭제한 채팅 복구하기")
   let chatKey = ''; // 마지막으로 그린 채팅 목록의 내용 (같으면 다시 그리지 않는다)
   // 채팅방이 "만들어진" 때: 크루의 채팅하기로 처음 방에 들어간 순간 (말을 하기 전이라도 그때 맨 위에 올라온다).
   // 이미 만들어진 방에 다시 들어갔다 나오는 것은 순서를 바꾸지 않는다
@@ -715,7 +719,9 @@
     if (pinRooms.length) html += `<div class="cl-hd first"><span><i class="fr-star">${starSvg()}</i> 고정${pinRooms.length}</span></div><div class="cl-list">${pinRooms.map(rowOf).join('')}</div>`;
     if (restRooms.length) html += `<div class="cl-hd${pinRooms.length ? '' : ' first'}"><span>최근 ${restRooms.length}</span></div><div class="cl-list">${restRooms.map(rowOf).join('')}</div>`;
     chatBody.innerHTML = '<div class="tab-head"><h1 class="ui-title">채팅</h1>' +
-      '<div class="tab-acts"><button id="chatNewBtn" type="button" aria-label="새 채팅">＋</button></div></div>' + (html || '<p class="empty">아직 대화가 없어요.<br>크루 탭에서 크루를 골라 말을 걸어 보세요.</p>');
+      '<div class="tab-acts"><button id="chatNewBtn" type="button" aria-label="새 채팅">＋</button></div></div>' + (html || '<p class="empty">아직 대화가 없어요.<br>크루 탭에서 크루를 골라 말을 걸어 보세요.</p>') +
+      // 삭제한 채팅이 있을 때만: 30일 안에 되살리거나 완전히 지운다 (크루 탭의 "삭제한 크루 복구하기"와 같은 모양)
+      (roomTrashItems.length ? `<button class="fr-join" data-rtrash="1" type="button">${escapeHtml(window.GAMJA_I18N.t('rtrash.row'))}<span>${roomTrashItems.length} ›</span></button>` : '');
   }
   // 채팅방 이름: 직접 정한 이름이 있으면 그것, 없으면 크루 이름 (이 기기에 저장)
   const getRoomTitles = () => store.get('cc:roomTitle', {});
@@ -741,6 +747,7 @@
   // (방을 지우는 건 채팅방 설정의 "채팅방 삭제"로만 한다)
   chatBody.addEventListener('click', (e) => {
     if (e.target.closest('#chatNewBtn')) return openNewChat();
+    if (e.target.closest('[data-rtrash]')) return openRoomTrash();
     const go = e.target.closest('[data-go]');
     if (go) selectProject(go.dataset.go);
   });
@@ -1623,6 +1630,51 @@
       renderTrash();
     }
   });
+  // ---------- 🗑 삭제한 채팅 복구하기 (채팅 탭) ----------
+  const rtrashEl = $('rtrashPanel');
+  function renderRoomTrash() {
+    const T = window.GAMJA_I18N.t;
+    $('rtrashH').textContent = T('rtrash.title');
+    $('rtrashNote').textContent = T('rtrash.note');
+    const DAY = 86400e3;
+    $('rtrashList').innerHTML = roomTrashItems.length ? roomTrashItems.map((it) => {
+      const days = Math.max(0, Math.floor((Date.now() - it.deletedAt) / DAY));
+      const left = Math.max(0, 30 - days);
+      const when = days === 0 ? T('trash.today') : T('trash.ago', { d: days });
+      const name = roomText(it.room);
+      return `<div class="tool-card"><i class="fr-av">${escapeHtml(crewParts(it.crew).icon)}</i><div class="tool-mid"><b>${escapeHtml(name)}</b>` +
+        `<small>${escapeHtml(T('rtrash.meta', { when, left, n: it.messages }))}</small>` +
+        (it.last ? `<small>${escapeHtml(plain(it.last).slice(0, 60))}</small>` : '') + `</div>` +
+        `<div class="trash-btns"><button class="tool-btn" type="button" data-rrestore="${escapeHtml(it.id)}">${escapeHtml(T('trash.restore'))}</button>` +
+        `<button class="tool-btn danger" type="button" data-rpurge="${escapeHtml(it.id)}" data-room="${escapeHtml(it.room)}" data-name="${escapeHtml(name)}">${escapeHtml(T('trash.purge'))}</button></div></div>`;
+    }).join('') : `<p class="empty">${escapeHtml(T('rtrash.empty'))}</p>`;
+  }
+  async function loadRoomTrash() {
+    try { roomTrashItems = (await api('/api/roomtrash')).items || []; } catch { return; }
+    chatKey = '';
+    renderRoomTrash();
+    if (tab === 'chat') refreshChats();
+  }
+  async function openRoomTrash() {
+    await loadRoomTrash();
+    rtrashEl.classList.remove('hidden');
+  }
+  $('rtrashBack').onclick = () => rtrashEl.classList.add('hidden');
+  rtrashEl.addEventListener('click', async (e) => {
+    const T = window.GAMJA_I18N.t;
+    const re = e.target.closest('[data-rrestore]');
+    const pu = e.target.closest('[data-rpurge]');
+    if (re) {
+      re.disabled = true;
+      try { await api('/api/roomtrash/restore', { id: re.dataset.rrestore }); toast(T('rtrash.restored')); } catch (err) { alert(err.message); }
+      await loadRoomTrash();
+    } else if (pu) {
+      if (!(await gSheet({ title: T('trash.purgeTitle'), message: T('rtrash.purgeMsg', { name: pu.dataset.name }), ok: T('trash.purgeOk'), danger: true }))) return;
+      try { await api('/api/roomtrash/purge', { id: pu.dataset.rpurge }); } catch (err) { return alert(err.message); }
+      forgetRoom(pu.dataset.room); // 이제 이름·고정 같은 기록도 비운다
+      await loadRoomTrash();
+    }
+  });
   // 읽던 위치 저장 (페이지가 새로 열려도 돌아오도록)
   let scrollSaveTimer = 0;
   els.messages.addEventListener('scroll', () => {
@@ -1828,6 +1880,8 @@
     $('roomCompactNote').textContent = T('room.compactNote');
     $('continueBtn').textContent = T('room.continue');
     $('roomContinueNote').textContent = T('room.continueNote');
+    $('exportBtn').textContent = T('room.export');
+    $('roomExportNote').textContent = T('room.exportNote');
     $('roomForm').innerHTML =
       `<h3>${escapeHtml(T('room.name'))}</h3><input id="roomName" maxlength="40" placeholder="${escapeHtml(p.text)}" value="${escapeHtml(getRoomTitles()[project] || '')}" autocomplete="off">` +
       `<p class="settings-note">${escapeHtml(T('room.nameNote'))}</p>` +
@@ -1967,6 +2021,9 @@
     $('newChatH').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.title' : 'newchat.titleOne');
     $('newChatNote').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.note' : 'newchat.noteOne');
     $('newChatGo').textContent = T(GROUP_CHAT_ENABLED ? 'newchat.go' : 'newchat.start');
+    $('importH').textContent = T('import.title');
+    $('importNote').textContent = T('import.note');
+    $('importBtn').textContent = T('import.btn');
     renderNewChat();
     newChatEl.classList.remove('hidden');
   }
@@ -2138,7 +2195,9 @@
       else if (name.includes('@')) await api('/api/rooms/delete', { room: name });
       else await api('/api/history/reset', { project: name });
     } catch (err) { return alert(err.message); }
+    const keepTitle = name.includes('@') && !isGone(name) ? getRoomTitles()[name] : ''; // 휴지통에서 알아볼 수 있게 이름은 남긴다
     forgetRoom(name);
+    if (keepTitle) { const ts = getRoomTitles(); ts[name] = keepTitle; store.set('cc:roomTitle', ts); }
     if (isGone(name) || name.includes('@')) { project = ''; store.set('cc:project', ''); swapRoomInput(name, ''); updateHomeBtn(); } // 없어진 방에서는 감자 톡톡으로 나간다
     roomEl.classList.add('hidden');
     showTab('chat');
@@ -2162,7 +2221,7 @@
     if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
     if (!groupSheetEl.classList.contains('hidden')) { closeGroupSheet(); return true; }
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
-    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['installPanel', 'installBack'], ['trashPanel', 'trashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
+    for (const [panel, back] of [['viewPanel', 'viewBack'], ['sharePanel', 'shareBack'], ['ghPanel', 'ghBack'], ['ncPick', 'ncPickBack'], ['installPanel', 'installBack'], ['trashPanel', 'trashBack'], ['rtrashPanel', 'rtrashBack'], ['invitePanel', 'inviteBack'], ['newChat', 'newChatBack'], ['projSettings', 'projBack'], ['memberInfo', 'memberBack'], ['roomSettings', 'roomBack'], ['tunnelPanel', 'tunnelBack'],
       ['agentPicker', 'agentBack'], ['madePanel', 'madeBack']]) {
       if (!$(panel).classList.contains('hidden')) { $(back).click(); return true; }
     }
@@ -2323,6 +2382,58 @@
     store.set('cc:roomTitle', titles);
     roomEl.classList.add('hidden');
     if (r.skippedBig) alert(T('room.continueSkippedBig'));
+    selectProject(r.room);
+  };
+
+  // 채팅 내보내기: 대화·결과물·크루 지침을 zip으로 내려받는다
+  const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(n >= 1.07e8 ? 0 : 1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+  $('exportBtn').onclick = async () => {
+    const T = window.GAMJA_I18N.t;
+    els.menu.classList.add('hidden');
+    if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
+    if (!history.length) return alert('아직 내보낼 대화가 없어요.');
+    const q = `room=${encodeURIComponent(project)}`;
+    let info;
+    try { info = await api(`/api/rooms/export?${q}&check=1`); } catch (err) { return alert(err.message); }
+    if (!(await gSheet({ title: T('room.export'), message: T('room.exportConfirm', { files: info.files, size: fmtSize(info.bytes) }), ok: T('room.exportOk') }))) return;
+    const meta = store.get(`cc:crew:${crewOf(project)}`, null);
+    const title = getRoomTitles()[project] || '';
+    const a = document.createElement('a');
+    a.href = `/api/rooms/export?${q}&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    alert(T('room.exportStarted'));
+  };
+  // 채팅 가져오기: 내보낸 zip으로 새 채팅방을 만든다 (대화 전체 + 결과물, 크루가 없으면 지침과 함께 만든다)
+  $('importBtn').onclick = () => { $('importFile').value = ''; $('importFile').click(); };
+  $('importFile').onchange = async () => {
+    const T = window.GAMJA_I18N.t;
+    const f = $('importFile').files[0];
+    if (!f) return;
+    if (f.size > 1024 * 1024 * 1024) return alert(T('import.tooBig'));
+    if (!(await gSheet({ title: T('import.title'), message: T('import.confirm', { name: f.name, size: fmtSize(f.size) }), ok: T('import.ok') }))) return;
+    const btn = $('importBtn');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('busy');
+    btn.textContent = T('import.busy');
+    let r;
+    try {
+      const resp = await fetch('/api/rooms/import', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: f, credentials: 'same-origin' });
+      if (resp.status === 401) { showLogin(); return; }
+      r = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(r.error || resp.statusText);
+    } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
+    if (r.meta) store.set(`cc:crew:${r.crew}`, { ...r.meta, name: r.crew });
+    if (r.room.startsWith('@')) rememberRoomCrew(r.room, r.crew || '');
+    const titles = getRoomTitles();
+    titles[r.room] = (r.title || T('import.title.room')).slice(0, 40);
+    store.set('cc:roomTitle', titles);
+    newChatEl.classList.add('hidden');
+    roomEl.classList.add('hidden');
+    await refreshChats();
     selectProject(r.room);
   };
 

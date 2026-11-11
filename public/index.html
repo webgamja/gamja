@@ -232,6 +232,10 @@
       <p id="newChatNote" class="settings-note"></p>
       <div id="newChatForm"></div>
       <button id="newChatGo" class="settings-save" type="button" disabled></button>
+      <h3 id="importH"></h3>
+      <p id="importNote" class="settings-note"></p>
+      <button id="importBtn" class="settings-ghost" type="button"></button>
+      <input id="importFile" type="file" accept=".zip,application/zip" class="hidden">
     </div>
   </section>
 
@@ -271,6 +275,19 @@
       <h1 id="trashH" class="ui-title"></h1>
       <p id="trashNote" class="settings-note"></p>
       <div id="trashList"></div>
+    </div>
+  </section>
+
+  <!-- 🗑 삭제한 채팅 복구하기 (채팅 탭): 30일 안에 복구하거나 완전히 지운다 -->
+  <section id="rtrashPanel" class="settings ui ui-big hidden">
+    <header class="settings-bar">
+      <button id="rtrashBack" class="icon-btn" title="닫기">←</button>
+      <h2>삭제한 채팅</h2>
+    </header>
+    <div class="settings-body">
+      <h1 id="rtrashH" class="ui-title"></h1>
+      <p id="rtrashNote" class="settings-note"></p>
+      <div id="rtrashList"></div>
     </div>
   </section>
 
@@ -338,6 +355,8 @@
         <p id="roomCompactNote" class="settings-note"></p>
         <button id="continueBtn" class="settings-ghost" type="button"></button>
         <p id="roomContinueNote" class="settings-note"></p>
+        <button id="exportBtn" class="settings-ghost" type="button"></button>
+        <p id="roomExportNote" class="settings-note"></p>
         <button id="newBtn" class="settings-danger" type="button"></button>
         <p id="roomNewNote" class="settings-note"></p>
       </div>
