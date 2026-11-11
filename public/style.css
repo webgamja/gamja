@@ -1,14 +1,14 @@
 :root {
-  --bg: #bacee0;            /* 카톡 하늘색 배경 */
-  --bar: #a9bdce;
-  --bar-fg: #1e1e1e;
-  --me: #fee500;            /* 내 말풍선 (노랑) */
-  --me-fg: #191919;
-  --bot: #ffffff;
-  --bot-fg: #191919;
-  --muted: #55606b;
-  --composer: #ffffff;
-  --input-bg: #f2f2f2;
+  --bg: #fbf5e6;            /* 크림 배경 */
+  --bar: #f3e9cc;
+  --bar-fg: #2b2418;
+  --me: #f2d98a;            /* 내 말풍선 (크림 노랑) */
+  --me-fg: #3b2f14;
+  --bot: #fffdf7;
+  --bot-fg: #2b2418;
+  --muted: #7a6f5a;
+  --composer: #fffdf7;
+  --input-bg: #f3ebd6;
   --code-bg: #f4f5f7;
   --code-fg: #24292f;
   --pre-bg: #1e1f22;
@@ -21,22 +21,22 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1c1c1e; --bar: #232326; --bar-fg: #ececec;
-    --me: #f5d90a; --me-fg: #191919;
-    --bot: #2c2c2e; --bot-fg: #ececec;
-    --muted: #9a9aa0; --composer: #232326; --input-bg: #333336;
-    --code-bg: #3a3a3d; --code-fg: #f0f0f0; --pre-bg: #111113; --pre-fg: #e6e6e6;
-    --border: rgba(255,255,255,.08);
+    --bg: #1d1a14; --bar: #26221a; --bar-fg: #ece4d2;
+    --me: #d9bf6a; --me-fg: #2b2418;
+    --bot: #2e2a21; --bot-fg: #ece4d2;
+    --muted: #a39a85; --composer: #26221a; --input-bg: #373227;
+    --code-bg: #3a352a; --code-fg: #f0e9d8; --pre-bg: #15130e; --pre-fg: #e6e0d0;
+    --border: rgba(255,240,200,.09);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #1c1c1e; --bar: #232326; --bar-fg: #ececec;
-  --me: #f5d90a; --me-fg: #191919;
-  --bot: #2c2c2e; --bot-fg: #ececec;
-  --muted: #9a9aa0; --composer: #232326; --input-bg: #333336;
-  --code-bg: #3a3a3d; --code-fg: #f0f0f0; --pre-bg: #111113; --pre-fg: #e6e6e6;
-  --border: rgba(255,255,255,.08);
+  --bg: #1d1a14; --bar: #26221a; --bar-fg: #ece4d2;
+  --me: #d9bf6a; --me-fg: #2b2418;
+  --bot: #2e2a21; --bot-fg: #ece4d2;
+  --muted: #a39a85; --composer: #26221a; --input-bg: #373227;
+  --code-bg: #3a352a; --code-fg: #f0e9d8; --pre-bg: #15130e; --pre-fg: #e6e0d0;
+  --border: rgba(255,240,200,.09);
   color-scheme: dark;
 }
 
@@ -159,7 +159,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tools { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .tools summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 .tools div { font-size: 12px; color: var(--muted); padding-left: 4px; }
-.speak-btn { border: 0; background: none; font-size: 22px; line-height: 1; padding: 4px 8px 4px 2px; opacity: .8; }
+.speak-btn { border: 0; background: none; font-size: 22px; line-height: 1; padding: 0 6px 0 2px; opacity: .8; display: inline-flex; align-items: center; justify-content: center; height: 32px; min-width: 32px; vertical-align: top; }
 
 /* 마크다운 */
 .bubble > :first-child { margin-top: 0; }
@@ -460,14 +460,14 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
    `.ui`가 붙은 화면 안에서는 기존 색 변수를 아래 값으로 바꿔 끼운다. 그래서 그 안의 카드·입력칸·목록이 한꺼번에 따라온다.
    채팅 화면(카카오톡 느낌: 하늘색 배경, 노란 말풍선)은 그대로 둔다. 공통: 노란 강조색, 같은 글꼴, 둥근 모서리, 선 아이콘 */
 .ui {
-  --ui-bg: #f2f4f6; --ui-card: #ffffff; --ui-text: #191f28; --ui-sub: #6b7684; --ui-line: #e5e8eb;
+  --ui-bg: #fbf5e6; --ui-card: #fffdf7; --ui-text: #2b2418; --ui-sub: #7a6f5a; --ui-line: #ede3cb;
   --bg: var(--ui-bg); --bar: var(--ui-bg); --bar-fg: var(--ui-text); --bot-fg: var(--ui-text);
   --composer: var(--ui-card); --muted: var(--ui-sub); --border: var(--ui-line); --input-bg: var(--ui-bg);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ui { --ui-bg: #101114; --ui-card: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #2b2d33; }
+  :root:not([data-theme="light"]) .ui { --ui-bg: #17140e; --ui-card: #26221a; --ui-text: #f1e9d6; --ui-sub: #a39a85; --ui-line: #3a3528; }
 }
-:root[data-theme="dark"] .ui { --ui-bg: #101114; --ui-card: #1c1d22; --ui-text: #f2f4f6; --ui-sub: #9aa1ab; --ui-line: #2b2d33; }
+:root[data-theme="dark"] .ui { --ui-bg: #17140e; --ui-card: #26221a; --ui-text: #f1e9d6; --ui-sub: #a39a85; --ui-line: #3a3528; }
 
 /* 위쪽 줄: ← 가운데 제목 (오른쪽에 같은 크기의 빈칸을 둬서 제목이 정확히 가운데에 온다) */
 .ui .settings-bar { background: var(--ui-bg); border: 0; }
@@ -602,7 +602,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* ---------- 감자 전용 아이콘 (icons.js) ----------
    선은 글자색을 따라가고(어두운 화면에서는 흰색), 노란 면은 --gi-a. 글 앞에 붙을 때(.gi-lead)는 글자 크기에 맞춘다 */
 /* 밝은 화면: 선은 글자색, 면은 노랑. 어두운 화면(D안): 면은 은은한 흰빛, 선은 한 단계 부드러운 흰회색(면의 윤곽선만 흰색) */
-:root { --gi-a: #fee500; --gi-line: currentColor; --gi-a-line: currentColor; }
+:root { --gi-a: #f2d98a; --gi-line: currentColor; --gi-a-line: currentColor; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gi-a: rgba(255,255,255,.16); --gi-line: #cfd4dc; --gi-a-line: #fff; } }
 :root[data-theme="dark"] { --gi-a: rgba(255,255,255,.16); --gi-line: #cfd4dc; --gi-a-line: #fff; }
 /* 노란 바탕 위에 놓이는 아이콘은 어두운 화면에서도 글자색 선을 쓴다 */
@@ -629,7 +629,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 감자 캐릭터는 다른 아이콘보다 크게, 감자 톡톡 아이콘 배경은 노란색 */
 .gi-n-potato { overflow: visible; transform: scale(1.3); }
 .avatar .gi-n-potato, .login-logo .gi-n-potato, .welcome-logo .gi-n-potato { transform: none; }
-.cl-av:has(.gi-n-potato), .fr-av:has(.gi-n-potato) { background: #FEE500; }
+.cl-av:has(.gi-n-potato), .fr-av:has(.gi-n-potato) { background: #f2d98a; }
 .crew-btn .gi-lead { width: 1.3em; height: 1.3em; }
 .icon-btn, .to-bottom { display: grid; place-items: center; }
 /* 위쪽 줄의 "결과물" 알약 버튼: 크루 이름 바로 오른쪽, 줄의 세로 가운데. 나머지 버튼(⋯)은 맨 오른쪽 */
@@ -863,16 +863,16 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .gone-note p { margin: 0 0 12px; }
 /* 바텀시트(확인·알림 공통): 아래에서 올라오는 창. 색은 밝은/어두운 화면을 따른다 */
 .gs-bg { position: fixed; inset: 0; z-index: 300; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.45); animation: gsFade .15s ease-out;
-  --gs-card: #fff; --gs-text: #191f28; --gs-sub: #6b7684; --gs-line: #e5e8eb; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-bg { --gs-card: #1c1d22; --gs-text: #f2f4f6; --gs-sub: #9aa1ab; --gs-line: #2b2d33; } }
-:root[data-theme="dark"] .gs-bg { --gs-card: #1c1d22; --gs-text: #f2f4f6; --gs-sub: #9aa1ab; --gs-line: #2b2d33; }
+  --gs-card: #fffdf7; --gs-text: #2b2418; --gs-sub: #7a6f5a; --gs-line: #ede3cb; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-bg { --gs-card: #26221a; --gs-text: #f1e9d6; --gs-sub: #a39a85; --gs-line: #3a3528; } }
+:root[data-theme="dark"] .gs-bg { --gs-card: #26221a; --gs-text: #f1e9d6; --gs-sub: #a39a85; --gs-line: #3a3528; }
 .gs { width: 100%; max-width: 520px; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--gs-card); color: var(--gs-text); animation: gsUp .2s ease-out; }
 .gs h2 { margin: 0 0 6px; font-size: 19px; font-weight: 800; letter-spacing: -.2px; }
 .gs p { margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: var(--gs-sub); white-space: pre-line; word-break: keep-all; overflow-wrap: anywhere; }
 .gs-field { display: block; width: 100%; margin: 0 0 16px; padding: 13px 14px; border: 0; border-radius: 14px; background: var(--gs-line); color: var(--gs-text); font: inherit; font-size: 15px; line-height: 1.45; resize: none; outline: none; word-break: break-all; }
 .gs-btns { display: flex; flex-direction: column; gap: 8px; }
 .gs-ok, .gs-cancel { height: 54px; border: 0; border-radius: 14px; font: inherit; font-size: 17px; font-weight: 800; }
-.gs-ok { background: var(--me, #fee500); color: var(--me-fg, #191919); }
+.gs-ok { background: var(--me, #f2d98a); color: var(--me-fg, #191919); }
 .gs-ok.danger { background: var(--danger, #e5484d); color: #fff; }
 .gs-cancel { height: 50px; background: var(--gs-line); color: var(--gs-text); font-size: 16px; font-weight: 700; }
 .gs-ok:active, .gs-cancel:active { filter: brightness(.95); }
@@ -885,17 +885,17 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 탭 화면(채팅 목록·크루·더보기)이 열려 있거나 열리는 중에는 뒤의 채팅방을 가린다 (자리는 그대로 두어 입력칸 높이 계산은 유지) */
 body.in-tab #app { visibility: hidden; }
 /* 탭 화면으로 켜질 때는 처음부터 탭 화면의 회색 바탕 (채팅방의 하늘색이 잠깐 비치지 않게) */
-html.pre-tab body, body.in-tab { background: #f2f4f6; }
+html.pre-tab body, body.in-tab { background: #fbf5e6; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]).pre-tab body, :root:not([data-theme="light"]) body.in-tab { background: #101114; }
+  :root:not([data-theme="light"]).pre-tab body, :root:not([data-theme="light"]) body.in-tab { background: #17140e; }
 }
-:root[data-theme="dark"].pre-tab body, :root[data-theme="dark"] body.in-tab { background: #101114; }
+:root[data-theme="dark"].pre-tab body, :root[data-theme="dark"] body.in-tab { background: #17140e; }
 /* 당겨서 새로고침 표시 (채팅방을 뺀 모든 화면) */
 .ptr { position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; z-index: 95; width: 44px; height: 44px; margin-left: -22px; display: grid; place-items: center;
   border-radius: 50%; background: var(--ui-card, #fff); color: var(--ui-text, #191f28); box-shadow: 0 2px 10px rgba(0,0,0,.22); opacity: 0; pointer-events: none;
   transform: translateY(calc(var(--pull, 0px) - 56px)); transition: transform .2s ease, opacity .2s ease; }
 .ptr.drag { transition: none; }
-.ptr.ready { background: var(--me, #fee500); color: var(--me-fg, #191919); --gi-line: currentColor; --gi-a-line: currentColor; }
+.ptr.ready { background: var(--me, #f2d98a); color: var(--me-fg, #191919); --gi-line: currentColor; --gi-a-line: currentColor; }
 .ptr .gi-s { width: 24px; height: 24px; }
 .ptr.spin .gi-s { animation: ptrSpin .8s linear infinite; }
 @keyframes ptrSpin { to { transform: rotate(360deg); } }
@@ -916,7 +916,7 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .conn-bar.off { background: #e5484d; }
 .conn-bar.ok { background: #2f9e44; }
 .conn-bar.hidden { display: none; }
-.conn-bar button { flex: none; border: 0; border-radius: 10px; padding: 6px 12px; background: #fee500; color: #191919; font: inherit; font-weight: 800; }
+.conn-bar button { flex: none; border: 0; border-radius: 10px; padding: 6px 12px; background: #f2d98a; color: #191919; font: inherit; font-weight: 800; }
 .conn-bar button.hidden { display: none; }
 /* 다른 폰에 감자 설치: 설치 순서 */
 #installPanel { z-index: 31; }
@@ -942,21 +942,21 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .lan-hint { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ui-sub); text-align: center; }
 .lan-addr { margin: 0; font-size: 18px; font-weight: 800; color: var(--ui-text); text-align: center; word-break: break-all; white-space: pre-line; user-select: all; }
 .lan-card button { width: 100%; }
-.gone-note button { padding: 11px 22px; border: 0; border-radius: 16px; background: var(--me, #fee500); color: var(--me-fg, #191919); font: inherit; font-weight: 800; }
+.gone-note button { padding: 11px 22px; border: 0; border-radius: 16px; background: var(--me, #f2d98a); color: var(--me-fg, #191919); font: inherit; font-weight: 800; }
 
 /* 읽는 문장 표시: 지금 읽는 문단을 살짝 노랗게 */
 .reading-now { background: rgba(254, 229, 0, .38); border-radius: 6px; box-shadow: 0 0 0 3px rgba(254, 229, 0, .38); transition: background .2s; }
 
 /* 읽어주는 중 한 줄 박스 */
-.reader-bar { display: flex; align-items: center; justify-content: center; gap: 2px; width: fit-content; max-width: calc(100% - 20px); margin: 5px auto 0; padding: 3px 8px; border-radius: 999px; background: #fee500; color: #191919; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+.reader-bar { display: flex; align-items: center; justify-content: center; gap: 2px; width: fit-content; max-width: calc(100% - 20px); margin: 5px auto 0; padding: 3px 8px; border-radius: 999px; background: #f2d98a; color: #191919; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
 .reader-bar.hidden { display: none; }
 .rd-btn { flex: none; min-width: 34px; height: 34px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 800; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 .rd-btn:active { filter: brightness(.9); }
-.rd-play { background: #191919; color: #fee500; min-width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.rd-play { background: #191919; color: #f2d98a; min-width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .rd-skip { display: inline-flex; align-items: center; justify-content: center; }
 .rd-btn svg { display: block; pointer-events: none; }
 .rd-boost { background: rgba(25,25,25,.12); min-width: 44px; height: 28px; margin: 0 4px; font-size: 13px; }
-.rd-boost.on { background: #191919; color: #fee500; }
+.rd-boost.on { background: #191919; color: #f2d98a; }
 .rd-x { color: #191919; min-width: 30px; height: 30px; padding: 0; background: rgba(25,25,25,.12); font-size: 13px; }
 
 /* 읽어주는 목소리 고르기 (아래에서 올라오는 시트 안의 목록) */
@@ -968,7 +968,7 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .vp-row.on::after { content: '✓'; }
 .vp-rate { display: flex; gap: 6px; margin: 0 0 12px; }
 .vp-rate button { flex: 1; height: 40px; border: 0; border-radius: 10px; background: var(--gs-line); color: var(--gs-text); font: inherit; font-size: 14px; font-weight: 700; }
-.vp-rate button.on { background: var(--me, #fee500); color: var(--me-fg, #191919); }
+.vp-rate button.on { background: var(--me, #f2d98a); color: var(--me-fg, #191919); }
 .vp-sub { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--gs-sub); }
 /* 켜고 끄는 스위치 (더보기 > 자동 업데이트) */
 .settings-body .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
@@ -976,7 +976,7 @@ html.pre-tab body, body.in-tab { background: #f2f4f6; }
 .switch-row small { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; opacity: .65; }
 input.switch { flex: none; appearance: none; -webkit-appearance: none; position: relative; width: 50px; height: 30px; margin: 0; border-radius: 15px; background: #c9ced6; transition: background .2s; cursor: pointer; }
 input.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
-input.switch:checked { background: #fee500; }
+input.switch:checked { background: #f2d98a; }
 input.switch:checked::after { transform: translateX(20px); }
 input.switch:disabled { opacity: .5; cursor: default; }
 

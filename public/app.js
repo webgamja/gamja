@@ -1094,6 +1094,7 @@
       try { await api('/api/project-settings', { project: folder, instructions, model: '', effort: '' }); }
       catch (err) { return alert(err.message); }
     }
+    if (created) window.gaTrack('crew_create', { kind: tpl ? 'agent' : 'crew' });
     if (tpl) store.set(`cc:tpl:${folder}`, tpl);
     if (meta) store.set(`cc:crew:${folder}`, meta); // 가져온 크루의 이름·아이콘·예시 문장 (빈 방에서 보여 줌)
     clipCrew = null;
@@ -1666,7 +1667,7 @@
     const pu = e.target.closest('[data-rpurge]');
     if (re) {
       re.disabled = true;
-      try { await api('/api/roomtrash/restore', { id: re.dataset.rrestore }); toast(T('rtrash.restored')); } catch (err) { alert(err.message); }
+      try { await api('/api/roomtrash/restore', { id: re.dataset.rrestore }); window.gaTrack('room_trash_restore'); toast(T('rtrash.restored')); } catch (err) { alert(err.message); }
       await loadRoomTrash();
     } else if (pu) {
       if (!(await gSheet({ title: T('trash.purgeTitle'), message: T('rtrash.purgeMsg', { name: pu.dataset.name }), ok: T('trash.purgeOk'), danger: true }))) return;
@@ -2042,6 +2043,7 @@
     if (!ROOM_CREATE_ENABLED || !crews.length) return;
     let r;
     try { r = await api('/api/rooms', { crews }); } catch (err) { return alert(err.message); }
+    window.gaTrack('new_chat', { kind: crews.length > 1 ? 'group' : 'crew' });
     if (r.room.startsWith('@')) rememberRoomCrew(r.room, crews.length === 1 ? crews[0] : '');
     const d = new Date();
     const pad = (x) => String(x).padStart(2, '0');
@@ -2284,7 +2286,7 @@
     const b = e.target.closest('[data-kit]');
     if (!b) return;
     b.disabled = true;
-    try { await api('/api/tools/install', { kit: b.dataset.kit }); toast(window.GAMJA_I18N.t('tools.started')); }
+    try { await api('/api/tools/install', { kit: b.dataset.kit }); window.gaTrack('tool_install', { kit: b.dataset.kit }); toast(window.GAMJA_I18N.t('tools.started')); }
     catch (err) { toast(err.message); }
     renderTools();
   });
@@ -2374,6 +2376,7 @@
     btn.textContent = T('room.continueBusy');
     let r;
     try { r = await api('/api/rooms/continue', { room: project }); } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
+    window.gaTrack('chat_continue');
     const crew = r.members && r.members[0];
     if (r.room.startsWith('@')) rememberRoomCrew(r.room, crew || '');
     const titles = getRoomTitles();
@@ -2401,6 +2404,7 @@
     const a = document.createElement('a');
     a.href = `/api/rooms/export?${q}&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`;
     a.download = '';
+    window.gaTrack('chat_export');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2426,6 +2430,7 @@
       r = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(r.error || resp.statusText);
     } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
+    window.gaTrack('chat_import');
     if (r.meta) store.set(`cc:crew:${r.crew}`, { ...r.meta, name: r.crew });
     if (r.room.startsWith('@')) rememberRoomCrew(r.room, r.crew || '');
     const titles = getRoomTitles();
@@ -2983,6 +2988,7 @@
     btn.textContent = T('tool.going');
     try {
       await api('/api/tools/install', { kit });
+      window.gaTrack('tool_install', { kit });
       for (;;) { // 설치가 끝날 때까지 3초마다 확인 (몇 분 걸려요)
         await new Promise((r) => setTimeout(r, 3000));
         const s = await api('/api/tools');
@@ -3052,6 +3058,7 @@
     const text = els.input.value.trim();
     if ((!text && !pending.length) || runId) return null;
     if (remoteRunId) { alert('이전 응답이 아직 진행 중이에요. 끝난 뒤에 보내 주세요.'); return null; }
+    window.gaTrack('message_send');
     stopListening();
     stopSpeaking();
     clearTimeout(pollTimer);

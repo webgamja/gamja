@@ -53,24 +53,24 @@ class LoginActivity : Activity() {
             android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
                 android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
         )
-        window.statusBarColor = 0xFFF2F4F6.toInt()
+        window.statusBarColor = 0xFFFBF5E6.toInt()
         window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         fun rounded(color: Int, r: Int) = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = r * dp }
 
         // 안내 카드 (감자 콘솔 더보기와 같은 느낌: 흰 카드, 노란 버튼)
-        guideStep = TextView(this).apply { textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF6B7684.toInt()) }
-        guideTitle = TextView(this).apply { textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF191F28.toInt()); setPadding(0, (4 * dp).toInt(), 0, 0) }
+        guideStep = TextView(this).apply { textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF7A6F5A.toInt()) }
+        guideTitle = TextView(this).apply { textSize = 20f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF2B2418.toInt()); setPadding(0, (4 * dp).toInt(), 0, 0) }
         guideText = TextView(this).apply { textSize = 14f; setTextColor(0xFF4E5968.toInt()); setPadding(0, (6 * dp).toInt(), 0, (12 * dp).toInt()); setLineSpacing(0f, 1.15f) }
         guideButton = Button(this).apply {
             isAllCaps = false; textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(0xFF191919.toInt())
+            setTextColor(0xFF3B2F14.toInt())
             stateListAnimator = null
-            background = rounded(0xFFFEE500.toInt(), 16)
+            background = rounded(0xFFF2D98A.toInt(), 16)
         }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(Color.WHITE, 20)
+            background = rounded(0xFFFFFDF7.toInt(), 20)
             val pad = (18 * dp).toInt()
             setPadding(pad, (16 * dp).toInt(), pad, pad)
             // 맨 위 줄: 단계 표시(왼쪽)와 나가기(오른쪽)
@@ -82,7 +82,7 @@ class LoginActivity : Activity() {
                     text = "나가기"
                     textSize = 14f
                     setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(0xFF6B7684.toInt())
+                    setTextColor(0xFF7A6F5A.toInt())
                     setPadding((12 * dp).toInt(), (8 * dp).toInt(), (4 * dp).toInt(), (8 * dp).toInt())
                     setOnClickListener { finish() } // 뒤로 가기와 같다: 앱 첫 화면으로 돌아간다
                 })
@@ -134,7 +134,7 @@ class LoginActivity : Activity() {
 
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFFF2F4F6.toInt())
+            setBackgroundColor(0xFFFBF5E6.toInt())
             fitsSystemWindows = true
             addView(cardWrap)
             addView(terminalWrap, LinearLayout.LayoutParams(-1, 0, 1f).apply {
@@ -156,9 +156,9 @@ class LoginActivity : Activity() {
         minHeight = 0
         setPadding(0, 0, 0, 0)
         gravity = android.view.Gravity.CENTER
-        setTextColor(0xFF191F28.toInt())
+        setTextColor(0xFF2B2418.toInt())
         stateListAnimator = null
-        background = android.graphics.drawable.GradientDrawable().apply { setColor(0xFFE5E8EB.toInt()); cornerRadius = 12 * d }
+        background = android.graphics.drawable.GradientDrawable().apply { setColor(0xFFEDE3CB.toInt()); cornerRadius = 12 * d }
         setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(0, (44 * d).toInt(), 1f).apply { setMargins((3 * d).toInt(), 0, (3 * d).toInt(), 0) }
     }

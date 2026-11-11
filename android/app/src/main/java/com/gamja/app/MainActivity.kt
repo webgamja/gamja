@@ -169,7 +169,7 @@ class MainActivity : Activity() {
             textSize = 18f
             isAllCaps = false
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(0xFF191919.toInt())
+            setTextColor(0xFF3B2F14.toInt())
             stateListAnimator = null
             background = rounded(HOME_YELLOW, 20)
             isEnabled = false
@@ -269,7 +269,7 @@ class MainActivity : Activity() {
     }
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = rounded(Color.WHITE, 20)
+        background = rounded(0xFFFFFDF7.toInt(), 20)
         setPadding(dp(20), dp(4), dp(20), dp(4))
         layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) }
     }
@@ -532,7 +532,7 @@ class MainActivity : Activity() {
         dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(Color.WHITE, 24)
+            background = rounded(0xFFFFFDF7.toInt(), 24)
             setPadding(dp(22), dp(24), dp(22), dp(18))
             addView(label(title, 19f, HOME_INK, bold = true))
             addView(label(message, 14f, HOME_SUB).apply { setPadding(0, dp(8), 0, dp(18)) })
@@ -612,7 +612,7 @@ class MainActivity : Activity() {
         textSize = 18f
         isAllCaps = false
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(0xFF191919.toInt())
+        setTextColor(0xFF3B2F14.toInt())
         stateListAnimator = null
         background = rounded(HOME_YELLOW, 20)
     }
@@ -863,11 +863,11 @@ class MainActivity : Activity() {
         /** 감자알 주소. 포트는 감자알의 .env에서 읽는다 (예전에 설치한 폰 3000, 새로 설치한 폰 26514) */
         val BASE: String get() = "http://127.0.0.1:${Ports.current()}"
         // 홈 화면 색 (감자 콘솔 더보기와 같은 팔레트)
-        private val HOME_BG = 0xFFF2F4F6.toInt()
-        private val HOME_INK = 0xFF191F28.toInt()
-        private val HOME_SUB = 0xFF6B7684.toInt()
-        private val HOME_LINE = 0xFFE5E8EB.toInt()
-        private val HOME_YELLOW = 0xFFFEE500.toInt()
+        private val HOME_BG = 0xFFFBF5E6.toInt()
+        private val HOME_INK = 0xFF2B2418.toInt()
+        private val HOME_SUB = 0xFF7A6F5A.toInt()
+        private val HOME_LINE = 0xFFEDE3CB.toInt()
+        private val HOME_YELLOW = 0xFFF2D98A.toInt()
         const val EXTRA_PROJECT = "project"
         const val EXTRA_UPDATE = "update"
         /** 감자 화면이 지금 보이는지 (보이면 완료 알림을 띄우지 않음) */
