@@ -1004,3 +1004,7 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .import-pv-btns { display: flex; gap: 10px; }
 .import-pv-btns button { flex: 1; }
 .import-pv-btns button:disabled { opacity: .4; }
+
+/* 마이크를 쓸 수 없는 곳(http 주소 등): 흐린 마이크에 빗금. 빗금은 밝은 화면·어두운 화면 모두에서 보이는 붉은색 */
+.cbtn.mic-off { opacity: .6; }
+.gi-s .x { fill: none; stroke: #d6603c; stroke-width: 2; }

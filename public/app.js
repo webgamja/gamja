@@ -3631,11 +3631,22 @@
     clearTimeout(scrollHide);
     scrollHide = setTimeout(() => els.input.classList.remove('scrolling'), 800);
   });
-  // 오른쪽 버튼 모양: 응답 중 ■(setRunning이 처리) / 입력이 비면 🗣 음성 대화(지원 브라우저만) / 아니면 ➤
+  // 음성 입력 가능 여부: 브라우저에 음성 인식이 있고, 보안 연결(https 또는 127.0.0.1)이어야 마이크를 쓸 수 있다.
+  // 와이파이 주소(http://192.168…)로 열면 브라우저가 마이크를 막는다. 막히면 🎤는 빗금 마이크로, 🗣는 ➤로 바꿔 보여 준다.
+  const hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const secureOk = window.isSecureContext !== false;
+  const micUsable = hasSR && secureOk;
+  // 마이크를 쓸 수 없을 때 이유를 알려 주는 시트 (🎤·🗣를 눌렀을 때)
+  function showMicOff() {
+    const T = window.GAMJA_I18N.t;
+    const why = !secureOk ? T('mic.off.insecure', { url: `127.0.0.1:${location.port || 80}` }) : T('mic.off.unsupported');
+    gSheet({ title: T('mic.off.title'), message: `${why}\n\n${T('mic.off.kbd')}`, ok: T('mic.off.ok'), alertOnly: true });
+  }
+  // 오른쪽 버튼 모양: 응답 중 ■(setRunning이 처리) / 입력이 비면 🗣 음성 대화(쓸 수 있는 곳만) / 아니면 ➤
   function updateSendState() {
     if (runId || remoteRunId) { els.send.disabled = false; return; }
     const hasContent = !!(els.input.value.trim() || pending.length);
-    const voiceOk = !hasContent && !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
+    const voiceOk = !hasContent && micUsable && !!window.speechSynthesis;
     els.send.dataset.mode = voiceOk ? 'voice' : 'send';
     els.send.classList.toggle('voice-btn', voiceOk);
     els.send.textContent = voiceOk ? '🗣' : '➤';
@@ -3650,9 +3661,10 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const interimBox = $('interim');
   let rec = null, wantListen = false, lastFinal = '', silentRuns = 0;
-  if (!SR) {
-    els.mic.title = '이 브라우저는 음성 인식을 지원하지 않아요';
-    els.mic.style.opacity = '.35';
+  if (!micUsable) { // 쓸 수 없는 곳: 빗금 마이크 (누르면 이유 안내)
+    els.mic.title = window.GAMJA_I18N.t('mic.off.title');
+    els.mic.classList.add('mic-off');
+    els.mic.textContent = '🚫'; // icons.js가 빗금 마이크로 바꿔 끼운다
   }
   // 마이크 권한이 없을 때: 앱에서는 알림만 띄우지 않고 폰의 GAMJA 앱 정보 화면(권한)으로 바로 데려간다
   const isMicDenied = (code) => code === 'not-allowed' || code === 'service-not-allowed' || code === 'service-permission';
@@ -3729,7 +3741,7 @@
     try { rec.start(); } catch { stopListening(); }
   }
   els.mic.onclick = () => {
-    if (!SR) return alert('이 브라우저는 음성 인식을 지원하지 않아요. (Chrome/Safari 권장, HTTPS 또는 localhost 필요)');
+    if (!micUsable) return showMicOff();
     if (wantListen) return stopListening();
     stopSpeaking();
     wantListen = true;
@@ -4166,6 +4178,7 @@
   }
   function startVoice() {
     if (voice.on) return;
+    if (!micUsable) return showMicOff(); // 쓸 수 없는 곳에서는 음성 화면을 열지 않는다
     stopListening();
     stopSpeaking();
     if (synth) synth.speak(new SpeechSynthesisUtterance('')); // 휴대폰: 사용자 동작으로 읽기 기능 잠금 해제
