@@ -3414,8 +3414,21 @@
   }
 
   // 오른쪽 버튼: 응답 중 ■ 중지 / 입력이 비어 있으면 🗣 음성 대화 모드 / 아니면 ➤ 보내기
+  // ■를 눌러도 바로 멈추지 않고, 바텀시트로 한 번 더 묻는다. 묻는 사이에 답변이 끝나면 시트를 닫는다
+  let stopAsking = false;
+  async function confirmStop() {
+    if (stopAsking) return;
+    stopAsking = true;
+    const T = window.GAMJA_I18N.t;
+    const p = gSheet({ title: T('stop.title'), message: T('stop.msg'), ok: T('stop.ok'), cancel: T('stop.cancel'), danger: true });
+    const mine = gsOpen;
+    const watch = setInterval(() => { if (!runId && !remoteRunId && mine && gsOpen === mine) mine.close(false); }, 500);
+    let yes = false;
+    try { yes = await p; } finally { clearInterval(watch); stopAsking = false; }
+    if (yes && (runId || remoteRunId)) stopRun();
+  }
   els.send.onclick = () => {
-    if (runId || remoteRunId) return stopRun();
+    if (runId || remoteRunId) return confirmStop();
     if (els.send.dataset.mode === 'voice') return startVoice();
     sendMessage();
   };
