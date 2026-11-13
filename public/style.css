@@ -477,6 +477,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .ui .settings-bar { background: var(--ui-bg); border: 0; }
 .ui .settings-bar h2 { flex: 1; text-align: center; font-size: 17px; font-weight: 700; color: var(--ui-text); }
 .ui .settings-bar::after { content: ''; flex: none; width: 38px; }
+#viewPanel .settings-bar::after { display: none; } /* 오른쪽 빈칸 대신 다운로드 버튼이 자리를 채운다 */
 .ui-big .settings-bar h2 { visibility: hidden; } /* 제목은 화면 안에 크게 */
 .ui .settings-body { padding-top: 0; }
 .ui-title { margin: 6px 4px 22px; font-size: 26px; line-height: 1.35; font-weight: 800; letter-spacing: -.3px; color: var(--ui-text); white-space: pre-line; }
@@ -984,3 +985,22 @@ input.switch:checked { background: #f2d98a; }
 input.switch:checked::after { transform: translateX(20px); }
 input.switch:disabled { opacity: .5; cursor: default; }
 
+
+/* 채팅 zip 가져오기 미리보기 (2단계) */
+.import-pv { max-height: 88vh; display: flex; flex-direction: column; text-align: left; }
+.import-pv h4 { text-align: center; }
+.import-pv-body { overflow-y: auto; flex: 1; margin: 6px 0 10px; padding-right: 4px; font-size: 14px; }
+.import-pv-body p { margin: 4px 0; }
+.import-pv-body h5 { margin: 14px 0 4px; font-size: 14px; }
+.import-pv-main { font-weight: 700; font-size: 16px; }
+.import-pv-warn { color: #b3541e; }
+.import-pv-pre { white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto; margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--ui-bg, rgba(0,0,0,.05)); font-size: 13px; }
+.import-pv-files { margin: 0; padding-left: 18px; font-size: 13px; word-break: break-all; max-height: 200px; overflow-y: auto; }
+.import-pv-files .flag-skipped { color: #b3541e; text-decoration: line-through; }
+.import-pv-files .flag-script, .import-pv-files .flag-exec { color: #b3541e; }
+.import-pv-talk { font-size: 13px; color: var(--ui-sub); }
+.import-pv-sha { font-size: 12px; color: var(--ui-sub); word-break: break-all; }
+.import-pv-trust { display: flex; align-items: center; gap: 6px; padding: 10px 2px; font-size: 15px; }
+.import-pv-btns { display: flex; gap: 10px; }
+.import-pv-btns button { flex: 1; }
+.import-pv-btns button:disabled { opacity: .4; }

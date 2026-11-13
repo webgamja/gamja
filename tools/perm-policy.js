@@ -82,6 +82,33 @@ const unquote = (a) => a.replace(/^['"]+|['"]+$/g, '');
 // 작업 폴더 밖을 가리킬 수 있는 글자인지 (절대 경로, ~, .., 변수)
 const outsideArg = (a) => /^(\/|~|\$)/.test(a) || /(^|\/)\.\.(\/|$)/.test(a);
 
+// 글을 다른 프로그램으로 실행할 수 있는 말: 이런 말이 있으면 따옴표 안의 >도 진짜 리다이렉트일 수 있어서 예전처럼 그대로 검사한다
+const RUNS_TEXT = /(^|[\s;&|(`'"=])(eval|exec|source|\.|sh|bash|zsh|dash|ksh|csh|fish|xargs|sudo|su|env|nohup|watch|timeout|time|script|ssh|awk|gawk|mawk|sed|perl|ruby|php|lua|tclsh|deno|bun|node|nodejs|python[\d.]*|sqlite3)(?=$|[\s;&|)`'"])/;
+const OLD_REDIRECT = />>?\s*(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/;
+const OUT_TARGET = /^\s*['"]?(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/;
+// 작업 폴더 밖으로 가는 리다이렉트(> 또는 >>)가 있는지. 따옴표 안의 글자(문장·커밋 메시지 등)는 리다이렉트가 아니므로 건너뛴다
+function redirectsOutside(text) {
+  if (RUNS_TEXT.test(text)) return OLD_REDIRECT.test(text);
+  let q = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (q === '"' && c === '\\') { i++; continue; }
+      if (c === q) q = '';
+      continue;
+    }
+    if (c === '\\') { i++; continue; } // \> 는 글자 그대로
+    if (c === "'" || c === '"') { q = c; continue; }
+    if (c === '>') {
+      let j = i + 1;
+      if (text[j] === '>') j++;
+      if (OUT_TARGET.test(text.slice(j))) return true;
+    }
+  }
+  if (q) return OLD_REDIRECT.test(text); // 따옴표가 안 닫힘: 보수적으로 예전 검사
+  return false;
+}
+
 // guardDirs: 작업 폴더가 아닌 곳에서 일하는 크루가 건드리면 안 되는 폴더들(감자알 폴더, data)
 function tier(cmd, guardDirs = [], depth = 0) {
   const text = String(cmd || '').trim();
@@ -93,7 +120,7 @@ function tier(cmd, guardDirs = [], depth = 0) {
   if (hasCriticalProg(text)) return { tier: 'danger', why: '시스템에 영향을 주는 명령이에요' };
   if (/[`]|\$\(/.test(text) && /\$\([^)]*\b(rm|mv)\b/.test(text)) return { tier: 'caution', why: '안쪽 명령이 파일을 지워요' };
   // (위의 한 줄은 $( ) 안에 rm·mv가 숨은 경우)
-  if (/>>?\s*(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/.test(text)) return { tier: 'danger', why: '작업 폴더 밖의 파일에 덮어쓰려고 했어요' };
+  if (redirectsOutside(text)) return { tier: 'danger', why: '작업 폴더 밖의 파일에 덮어쓰려고 했어요' };
   // 내려받은 것을 바로 실행하는 모양 (curl … | sh, bash <(curl …))
   if (/\b(curl|wget)\b/.test(text) && (/\|\s*(sudo\s+)?(env\s+)?(ba|z|da|k)?sh\b|\|\s*(python3?|node|perl|ruby|php|source|eval)\b/.test(text) || /<\(\s*(curl|wget)\b/.test(text))) {
     return { tier: 'caution', why: '내려받은 것을 바로 실행해요' };
@@ -138,4 +165,4 @@ function tier(cmd, guardDirs = [], depth = 0) {
   return { tier: 'safe', why: '' };
 }
 
-module.exports = { PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, hasCriticalProg, tier };
+module.exports = { redirectsOutside, PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, hasCriticalProg, tier };

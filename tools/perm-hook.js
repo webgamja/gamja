@@ -13,6 +13,7 @@ process.stdin.on('end', () => {
   try {
     const input = JSON.parse(raw);
     if (input.tool_name !== 'Bash' || !input.tool_input || !input.tool_input.command) return;
+    if (process.argv.includes('--allow-all')) { out('allow', ''); return; } // gamja 방: 모든 명령 허용
     const [appDir, dataDir] = process.argv.slice(2);
     const cwd = path.resolve(input.cwd || process.cwd());
     const inApp = appDir && (cwd === appDir || cwd.startsWith(appDir + path.sep));

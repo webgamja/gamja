@@ -6,6 +6,8 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const TM = require('./tools/test-mode'); // 시험용 주입 지점의 관문: 시험 모드(GAMJA_TEST_MODE=1)에서만 켜진다
+TM.enforce(); // 운영 모드에 시험용 설정이 남아 있거나 운영 환경에서 시험 모드를 켰으면 여기서 끝낸다
 
 // 기본 포트: 개발 도구들이 흔히 쓰는 3000과 겹치지 않게 26514를 쓴다. 예전에 설치한 폰은 .env에 PORT=3000이 적혀 있어서 그대로 3000을 쓴다 (앱이 .env의 PORT를 읽는다)
 const PORT = Number(process.env.PORT) || 26514;
@@ -87,6 +89,7 @@ function migrateToHome() {
       if (!f.endsWith('.json')) continue;
       try {
         const file = path.join(convDir, f);
+        if (fs.statSync(file).size > 512 * 1024 * 1024) continue; // 너무 큰 파일은 읽지 않고 그대로 둔다
         const c = JSON.parse(fs.readFileSync(file, 'utf8'));
         if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
         c.sessionId = null; c.recap = true;
@@ -237,10 +240,14 @@ const isUploadName = (n) => typeof n === 'string' && /^\d+-[a-z0-9]+\.(jpg|png|w
 // 감자 톡톡(크루가 아닌 기본 대화)이 만든 결과물을 모아 두는 폴더. 크루 목록에는 나오지 않는다
 const TALK_DIR_NAME = 'gamjaTT';
 const TALK_DIR = path.join(WORK_BASE, TALK_DIR_NAME);
+let isQuarantinedName = () => false; // 가져오기 복구에 실패해 숨겨 둔 크루·방 (importFlow가 만들어진 뒤 채워진다)
+// 대화 파일을 읽지 못한 상태 (파일이 없는 "빈 대화"와 다르다). 이때는 원본 파일을 절대 덮어쓰지 않고, 그 방만 막는다
+class ConvUnreadableError extends Error { constructor(reason) { super('이 대화 파일을 읽을 수 없어요. 원본은 그대로 두었어요.'); this.code = 'GAMJA_CONV_UNREADABLE'; this.reason = reason; } }
+class LockedError extends Error { constructor() { super('복구 중인 항목이라 잠시 쓸 수 없어요.'); this.code = 'GAMJA_LOCKED'; } }
 function listProjects() {
   try {
     return fs.readdirSync(CREWS_DIR, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== TALK_DIR_NAME)
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== TALK_DIR_NAME && !isQuarantinedName(d.name))
       .map((d) => d.name)
       .sort((a, b) => a.localeCompare(b));
   } catch {
@@ -277,7 +284,7 @@ function crewOf(rid) {
   if (at < 0) return s;
   if (at > 0) return s.slice(0, at);
   if (!ROOM_SUFFIX.test(s.slice(1)) || !fs.existsSync(convFile(s))) return '';
-  const c = loadConv(s).crew;
+  const c = (peekConv(s) || {}).crew; // 읽지 못한 방은 크루를 알 수 없다 (그 방은 접근이 막히고, 지우기·휴지통은 그대로 된다)
   return typeof c === 'string' ? c : '';
 }
 // 새 채팅방은 자기만의 폴더("chat-번호")에서 일한다. 그래서 결과물도 그 방 것만 보인다.
@@ -289,11 +296,12 @@ const roomPreviewKey = (dir) => `room~${dir}`; // 결과물 주소에 쓰는 이
 function roomDirName(rid) {
   const s = String(rid || '');
   if (!s.startsWith('@') || !ROOM_SUFFIX.test(s.slice(1)) || !fs.existsSync(convFile(s))) return '';
-  const d = loadConv(s).dir;
+  const d = (peekConv(s) || {}).dir;
   return typeof d === 'string' && ROOM_DIR_RE.test(d) ? d : '';
 }
 function resolveProject(name) {
   const s = String(name || '');
+  if (isQuarantinedName(s)) throw new LockedError();
   const at = s.indexOf('@');
   if (at >= 0 && !ROOM_SUFFIX.test(s.slice(at + 1))) return null;
   const crew = crewOf(s);
@@ -308,13 +316,17 @@ function crewDirOf(rid) {
   return crew && listProjects().includes(crew) ? path.join(CREWS_DIR, crew) : null;
 }
 // 크루 폴더 안에 만들었던 방 폴더(바로 앞 버전)를 .rooms로 옮긴다. 폴더가 바뀌면 Claude의 이전 대화 기록을 이을 수 없어서 sessionId는 비운다 (화면의 대화는 그대로)
+const CONV_FILE_MAX_BYTES = 512 * 1024 * 1024; // 앱이 쓰는 대화 파일(최대 500개 메시지)은 이보다 훨씬 작다
 function migrateRoomDirs() {
   try {
     for (const f of fs.readdirSync(CONV_DIR)) {
       if (!f.startsWith('p_%40') || !f.endsWith('.json')) continue;
       const file = path.join(CONV_DIR, f);
       let c;
-      try { c = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+      try {
+        if (fs.statSync(file).size > CONV_FILE_MAX_BYTES) continue; // 비정상적으로 큰 대화 파일은 켤 때 읽지 않는다 (메모리 보호)
+        c = JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch { continue; }
       if (!c || typeof c.dir !== 'string' || !ROOM_DIR_RE.test(c.dir)) continue;
       const dest = path.join(ROOMS_DIR, c.dir);
       if (fs.existsSync(dest)) continue;
@@ -348,6 +360,7 @@ function roomFilesOf(crew) {
       } else if (f.startsWith(newPrefix)) {
         const code = f.slice(newPrefix.length, -5);
         const rid = `@${code}`;
+        if (isQuarantinedName(rid)) continue;
         if (ROOM_SUFFIX.test(code) && crewOf(rid) === crew) out.push({ rid, file: path.join(CONV_DIR, f) });
       }
     }
@@ -418,22 +431,66 @@ const MAX_MESSAGES = 500;
 const ROLES = new Set(['user', 'bot', 'error', 'notice']);
 const convCache = new Map(); // project -> conv
 const zipTool = require('./tools/gamja-zip'); // 채팅 내보내기·가져오기용 zip (의존성 없음)
-const ZIP_MAX_BYTES = 1024 * 1024 * 1024; // 채팅 옮기기·이어가기 때 담을 수 있는 결과물 크기 (1GB)
+const ZIP_MAX_BYTES = 1024 * 1024 * 1024; // 새 채팅으로 이어가기 때 복사할 수 있는 결과물 크기 (1GB). 내보내기·가져오기 한도(import-flow의 LIMITS)와는 따로다
+const EXPORT_LIMITS = require('./tools/import-flow').LIMITS; // 내보내기는 가져오기와 같은 한도를 쓴다 (내가 만든 zip을 내가 못 가져오는 일이 없도록)
+const zipScan = require('./tools/import-scan');
 const ROOM_TRASH_DIR =path.join(CONV_DIR, 'roomtrash'); // 지운 채팅방(대화 + 방 폴더) 30일 보관: "시각__방아이디/conv.json, folder/"
 const archiveChatCache = new Map(); // 삭제된 크루의 보관 대화 파일 -> 채팅 목록에 보일 요약 (파일이 바뀌면 다시 읽는다)
 
 function convFile(project) {
   return path.join(CONV_DIR, (project ? 'p_' + encodeURIComponent(project) : '_root') + '.json');
 }
+// 대화 파일 읽기: 결과는 셋 중 하나다.
+//   { state: 'missing' }            파일이 없다 (새 방. 빈 대화로 시작해도 된다)
+//   { state: 'ok', conv }           정상으로 읽었다 (빈 대화여도 ok)
+//   { state: 'failed', reason }     있는데 읽지 못했다 (너무 크다·JSON이 깨졌다·너무 깊다·모양이 이상하다·읽기 오류). 빈 대화로 취급하면 안 된다
+const { parseJsonSafe, JsonLimitError } = require('./tools/safe-json');
+function readConvPath(file) {
+  let st;
+  try { st = fs.statSync(file); } catch (e) { return e.code === 'ENOENT' ? { state: 'missing' } : { state: 'failed', reason: 'io' }; }
+  if (!st.isFile()) return { state: 'failed', reason: 'not-file' };
+  if (st.size > CONV_FILE_MAX_BYTES) return { state: 'failed', reason: 'too-big', size: st.size };
+  let buf;
+  try { buf = fs.readFileSync(file); } catch (e) { return e.code === 'ENOENT' ? { state: 'missing' } : { state: 'failed', reason: 'io' }; }
+  let conv;
+  try { conv = parseJsonSafe(buf, { maxBytes: CONV_FILE_MAX_BYTES, maxDepth: 64, maxNodes: 20000000 }); }
+  catch (e) { return { state: 'failed', reason: e instanceof JsonLimitError ? e.code : 'bad-json' }; }
+  if (!conv || typeof conv !== 'object' || Array.isArray(conv)) return { state: 'failed', reason: 'bad-shape' };
+  if (conv.messages !== undefined && !Array.isArray(conv.messages)) return { state: 'failed', reason: 'bad-shape' };
+  return { state: 'ok', conv };
+}
+const convFailCache = new Map(); // project -> { mtimeMs, size, reason }: 깨진 파일을 요청마다 다시 파싱하지 않는다 (파일이 바뀌면 다시 읽는다)
 function loadConv(project) {
+  if (isQuarantinedName(project)) throw new LockedError(); // 가져오기 복구에 실패해 격리 중인 크루·방은 대화도 읽거나 쓰지 못한다
   if (convCache.has(project)) return convCache.get(project);
-  let conv = { sessionId: null, messages: [] };
-  try { conv = { ...conv, ...JSON.parse(fs.readFileSync(convFile(project), 'utf8')) }; } catch {}
+  const file = convFile(project);
+  const fc = convFailCache.get(project);
+  if (fc) {
+    let st = null;
+    try { st = fs.statSync(file); } catch { /* 없어졌으면 다시 읽는다 */ }
+    if (st && st.mtimeMs === fc.mtimeMs && st.size === fc.size) throw new ConvUnreadableError(fc.reason);
+    convFailCache.delete(project);
+  }
+  const r = readConvPath(file);
+  if (r.state === 'failed') {
+    try { const st = fs.statSync(file); convFailCache.set(project, { mtimeMs: st.mtimeMs, size: st.size, reason: r.reason }); } catch { /* 캐시는 없어도 된다 */ }
+    console.error(`대화 파일을 읽지 못했어요(${r.reason}): ${path.basename(file)} — 원본은 그대로 둬요.`);
+    throw new ConvUnreadableError(r.reason);
+  }
+  const conv = { sessionId: null, messages: [], ...(r.state === 'ok' ? r.conv : {}) };
   convCache.set(project, conv);
   return conv;
 }
+// 읽지 못해도 던지지 않는다: 목록·방 정보처럼 "없으면 건너뛰면 되는" 곳에서 쓴다. 읽지 못한 방은 null
+function peekConv(project) {
+  try { return loadConv(project); } catch (e) { if (e instanceof ConvUnreadableError) return null; throw e; }
+}
 function saveConv(project) {
-  const conv = loadConv(project);
+  let conv;
+  try { conv = loadConv(project); } catch (e) {
+    if (e instanceof ConvUnreadableError) { console.error('대화 저장을 건너뛰었어요(원본을 읽지 못한 상태라 덮어쓰지 않아요):', project); return false; }
+    throw e;
+  }
   if (conv.messages.length > MAX_MESSAGES) conv.messages = conv.messages.slice(-MAX_MESSAGES);
   conv.updatedAt = Date.now();
   // 이 방이 어느 크루의 방인지 대화 파일에 적어 둔다 (기록용. 지금은 방 아이디에서 읽고, 나중에 방 아이디를 크루와 분리할 때 쓴다)
@@ -444,8 +501,10 @@ function saveConv(project) {
     const file = convFile(project);
     fs.writeFileSync(file + '.tmp', JSON.stringify(conv));
     fs.renameSync(file + '.tmp', file); // 쓰다가 죽어도 기존 파일은 안전
+    return true;
   } catch (e) {
     console.error('대화 저장 실패:', e.message);
+    return false;
   }
 }
 // 브라우저에서 올라온 메시지(이전 버전의 localStorage 기록) 정리
@@ -480,6 +539,21 @@ function saveUi() {
 }
 // 읽음 기록: { 방 이름: 마지막으로 읽은 답변 시각 }. 모든 기기가 같이 쓴다 (한 기기에서 읽으면 다른 기기의 안 읽음 숫자도 줄어든다)
 const SEEN_FILE = path.join(DATA_DIR, 'seen.json');
+// 화면에 내보내는 화면 정보·읽음 표시에서는 격리 중인 크루·방 항목을 뺀다 (파일의 원본 데이터는 그대로 둔다)
+function publicUi() {
+  const out = {};
+  for (const [map, m] of Object.entries(uiState || {})) {
+    if (!m || typeof m !== 'object') { out[map] = m; continue; }
+    out[map] = {};
+    for (const [k, v] of Object.entries(m)) if (!isQuarantinedName(k)) out[map][k] = v;
+  }
+  return out;
+}
+function publicSeen() {
+  const out = {};
+  for (const [k, v] of Object.entries(seenMap)) if (!isQuarantinedName(k)) out[k] = v;
+  return out;
+}
 let seenMap = {};
 try { seenMap = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')) || {}; } catch {}
 function saveSeen() {
@@ -533,7 +607,9 @@ function claudeAccount() {
 }
 
 function addNotice(project, text, extra = {}) {
-  loadConv(project).messages.push({ role: 'notice', text, ts: Date.now(), ...extra });
+  const c = peekConv(project);
+  if (!c) return; // 읽지 못한 대화에는 알림을 덧붙이지 않는다 (원본 보존)
+  c.messages.push({ role: 'notice', text, ts: Date.now(), ...extra });
   saveConv(project);
 }
 
@@ -548,6 +624,15 @@ const ROLLBACK_NOTE = path.join(DATA_DIR, 'rollback-note'); // start.sh가 자�
 const VERSIONS_DIR = path.join(DATA_DIR, 'versions'); // 안정적으로 돌았던 코드 스냅샷
 const MAX_VERSIONS = 10;
 const SKIP_TOP = new Set(['data', '.env', 'node_modules', '.git']);
+// 코드 폴더를 dest로 복사한다. 최상위 항목을 하나씩 복사한다 — dest가 코드 폴더 안(예: data/versions)이면
+// 폴더 전체를 한 번에 cpSync 할 때 Node가 "자기 하위 폴더로 복사"라며 거절해서(ERR_FS_CP_EINVAL) 안정 버전이 저장되지 않았다
+function copyCodeTree(dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const name of fs.readdirSync(__dirname)) {
+    if (SKIP_TOP.has(name)) continue;
+    fs.cpSync(path.join(__dirname, name), path.join(dest, name), { recursive: true });
+  }
+}
 
 function codeHash() {
   const h = crypto.createHash('sha256');
@@ -571,9 +656,18 @@ function listVersions() {
 function saveStableVersion() {
   const versions = listVersions();
   if (versions.length && versions[versions.length - 1].endsWith('-' + RUNNING_HASH)) return;
+  // 안정 버전 = 지금 돌고 있는 코드여야 한다. 시작한 뒤 디스크의 코드가 바뀌었으면(교체 중이거나 교체 직후) 저장하지 않는다
+  try {
+    const disk = codeHash();
+    if (disk !== RUNNING_HASH) { console.error(`안정 버전 저장 건너뜀: 디스크의 코드(${disk})가 실행 중인 코드(${RUNNING_HASH})와 달라요`); return; }
+  } catch (e) { console.error('안정 버전 저장 건너뜀: 코드 확인 실패:', e.message); return; }
   try {
     const dest = path.join(VERSIONS_DIR, `${Date.now()}-${RUNNING_HASH}`);
-    fs.cpSync(__dirname, dest, { recursive: true, filter: (src) => !SKIP_TOP.has(path.relative(__dirname, src).split(path.sep)[0]) });
+    // 숨김 임시 폴더(.tmp-…)에 다 복사한 뒤 이름을 바꿔서 나타낸다. 복사 도중 끊기거나 디스크가 차도 반쪽 폴더가 안정 버전처럼 보이지 않는다
+    // (start.sh 자동 복구는 data/versions 의 가장 새 폴더를 그대로 되돌리므로, 반쪽이 있으면 반쪽으로 복구된다)
+    const tmp = path.join(VERSIONS_DIR, `.tmp-${path.basename(dest)}`);
+    try { copyCodeTree(tmp); fs.renameSync(tmp, dest); } catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); throw e; }
+    try { for (const n of fs.readdirSync(VERSIONS_DIR)) if (n.startsWith('.tmp-') && path.join(VERSIONS_DIR, n) !== tmp) fs.rmSync(path.join(VERSIONS_DIR, n), { recursive: true, force: true }); } catch { /* 폴더 없음 */ }
     for (const old of listVersions().slice(0, -MAX_VERSIONS)) fs.rmSync(path.join(VERSIONS_DIR, old), { recursive: true, force: true });
   } catch (e) {
     console.error('버전 저장 실패:', e.message);
@@ -665,8 +759,32 @@ const AUTO_MSG = {
 };
 
 // 재시작 요청이 있으면 검사 후 재시작. 반환: { status: 'none' | 'failed' | 'restart', error? }
+// 재시작 전에: 답변 말고 다른 일(가져오기·내보내기·업로드·기타 변경)이 모두 끝날 때까지 기다린다.
+// 제한 시간이 지나도 끝나지 않으면 재시작하지 않고(기다리던 요청 파일은 지운다) 어떤 일이 남았는지 알린다. 일을 강제로 끊지 않는다.
+const DRAIN_MAX_MS = Number(TM.env('DRAIN_MAX_MS')) || 60 * 1000;
+async function drainBeforeRestart() {
+  const t0 = Date.now();
+  let snap = activity.snapshot();
+  while (snap.total > 0 && Date.now() - t0 < DRAIN_MAX_MS) { await new Promise((r) => setTimeout(r, 250)); snap = activity.snapshot(); }
+  return { ok: snap.total === 0, snap, waitedMs: Date.now() - t0 };
+}
+function drainReport(snap) {
+  const names = { chat: '답변', 'group-chat': '그룹 답변', import: '가져오기', export: '내보내기', upload: '사진 올리기', mutate: '기타 저장' };
+  return Object.entries(snap.by).filter(([, n]) => n > 0).map(([k, n]) => `${names[k] || k} ${n}건`).join(', ') || '없음';
+}
 async function restartIfRequested(project, emit, depth = 0) {
   if (restarting || projectRuns.size || !fs.existsSync(RESTART_FLAG)) return { status: 'none' };
+  if (activity.snapshot().total > 0) {
+    emit('status', { text: '⏳ 진행 중인 일이 끝나길 기다리는 중...' });
+    const d = await drainBeforeRestart();
+    if (restarting || projectRuns.size || !fs.existsSync(RESTART_FLAG)) return { status: 'none' };
+    if (!d.ok) {
+      fs.rmSync(RESTART_FLAG, { force: true });
+      console.error(`재시작 보류: ${Math.round(d.waitedMs / 1000)}초를 기다렸지만 일이 끝나지 않았어요 (${drainReport(d.snap)})`);
+      addNotice(project, `⚠️ 진행 중인 일이 끝나지 않아서 재시작하지 않았어요 (${drainReport(d.snap)}, ${Math.round(d.waitedMs / 1000)}초 기다림). 일이 끝난 뒤 다시 요청해 주세요.`);
+      return { status: 'none', drain: 'timeout' };
+    }
+  }
   let reason = '';
   try { reason = fs.readFileSync(RESTART_FLAG, 'utf8').trim().slice(0, 300); } catch {}
   fs.rmSync(RESTART_FLAG, { force: true });
@@ -726,7 +844,7 @@ async function updateOnce() {
 
     saveStableVersion(); // 복구용: 지금 돌고 있는 코드를 안정 버전으로 남긴다
     const backup = path.join(tmp, 'backup');
-    fs.cpSync(__dirname, backup, { recursive: true, filter: (src) => !SKIP_TOP.has(path.relative(__dirname, src).split(path.sep)[0]) });
+    copyCodeTree(backup);
     require('child_process').execFileSync('tar', ['-xzf', pack, '-C', __dirname, '--exclude=./start.sh'], { stdio: 'pipe' });
     const r = await checkNewCode();
     if (!r.ok) {
@@ -885,6 +1003,8 @@ const projectRuns = new Map(); // project -> { runId, live: { text, tools, statu
 function childEnv() {
   const env = { ...process.env };
   if (env.LD_PRELOAD && /termux/.test(env.LD_PRELOAD)) delete env.LD_PRELOAD;
+  // 로그인 비밀번호는 Claude와 그가 실행하는 명령에게 넘기지 않는다. 넘기면 env·printenv 한 번으로 화면과 대화 기록에 비밀번호가 남는다
+  delete env.APP_PASSWORD;
   return env;
 }
 
@@ -895,9 +1015,10 @@ function childEnv() {
 const GROUP_HISTORY = 14; // 크루에게 알려 주는 방의 최근 말 수
 const GROUP_READONLY = ['--permission-mode', 'default', '--allowedTools', 'Read Grep Glob',
   '--disallowedTools', 'Edit Write MultiEdit NotebookEdit Bash WebFetch WebSearch'];
-function askOnce({ cwd, prompt, system, model, effort, runId }) {
+function askOnce({ cwd, prompt, system, model, effort, runId, noTools }) {
   return new Promise((resolve) => {
-    const args = ['-p', '--output-format', 'json', ...GROUP_READONLY];
+    // noTools: 가져온 자료를 요약할 때처럼 읽기도 필요 없는 호출. 도구를 모두 끈다(--tools "")
+    const args = ['-p', '--output-format', 'json', ...(noTools ? ['--tools', ''] : GROUP_READONLY)];
     if (model) args.push('--model', model);
     if (effort) args.push('--effort', effort);
     if (system) args.push('--append-system-prompt', system);
@@ -945,7 +1066,7 @@ async function handleGroupChat(res, body, project, conv) {
   res.on('close', () => { clientGone = true; });
   const runId = crypto.randomUUID();
   const live = { text: '', tools: [], status: '🤔 크루들이 생각하는 중...' };
-  projectRuns.set(project, { runId, live });
+  projectRuns.set(project, { runId, live, group: true, since: Date.now() });
   const emit = (event, data) => { if (!clientGone) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
   const heartbeat = setInterval(() => { if (!clientGone) res.write(': ping\n\n'); }, 15000);
   emit('start', { runId });
@@ -1083,7 +1204,7 @@ function handleChat(req, res, body, opts = {}) {
   const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`, ...permRulesFor(crewOf(project))].filter(Boolean).join(' ');
   if (allowed) args.push('--allowedTools', allowed);
   // 명령어 위험 수준: 안전한 명령은 묻지 않고 실행, 위험한 명령은 조용히 차단, 나머지(주의)는 기존처럼 허용 카드로 물어본다
-  args.push('--settings', PERM_HOOK_SETTINGS());
+  args.push('--settings', PERM_HOOK_SETTINGS(crewOf(project) === 'gamja')); // 감자를 고치는 gamja 방은 모든 명령을 허용 (사용자 결정)
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -1126,7 +1247,7 @@ function handleChat(req, res, body, opts = {}) {
     return res.end();
   }
   running.set(runId, child);
-  projectRuns.set(project, { runId, live });
+  projectRuns.set(project, { runId, live, since: Date.now() });
   const startedAt = Date.now();
   emit('start', { runId, cwd });
   // 프롬프트는 stdin으로 전달 ('-'로 시작하는 메시지도 안전)
@@ -1581,6 +1702,7 @@ function servePreview(req, res, urlPath) {
   const notFound = () => send(res, 404, '찾을 수 없어요');
   if (!project || !verifyPreviewToken(segs[0], project)) return send(res, 403, '주소가 만료됐어요. 감자에서 "👀 결과물"을 다시 열어 주세요.');
   const roomKey = /^room~(chat-[a-z0-9]{3,8})$/.exec(project); // 방 폴더(크루가 없어져도 남는다)
+  if (roomKey && isQuarantinedName(roomKey[1])) return send(res, 423, '복구 중인 항목이라 잠시 쓸 수 없어요.');
   const dir = roomKey ? path.join(ROOMS_DIR, roomKey[1]) : project === TALK_DIR_NAME ? TALK_DIR : resolveProject(project);
   if (!dir) return notFound();
   // 점(.)으로 시작하는 파일·폴더(.git, .gamja-uploads 등)와 상위 폴더 이동은 막는다
@@ -1771,18 +1893,172 @@ function sysHealth() {
 }
 const PERM_FILE = path.join(DATA_DIR, 'permissions.json');
 let perms = {}; // { 크루: [{ rule, cmd, ts }] }
-try { perms = JSON.parse(fs.readFileSync(PERM_FILE, 'utf8')) || {}; } catch {}
+let permsDiskLocked = false; // 손상된 원본을 보존하지 못했을 때: 디스크의 원본을 건드리지 않는다 (메모리에서만 빈 규칙)
+const PERM_MIG_FILE = path.join(DATA_DIR, 'perm-migration.json'); // 예전 "항상 허용" 규칙을 백업하고 초기화했다는 표식
+function fsyncPath(p) { // 파일·폴더를 디스크에 확정한다 (지원 안 되는 환경이면 false)
+  try { const fd = fs.openSync(p, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } return true; } catch { return false; }
+}
+function writeFileAtomic(file, data, mode) { // 임시 이름에 쓰고 fsync → rename → 폴더 fsync
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, data, mode ? { mode } : undefined);
+  fsyncPath(tmp);
+  fs.renameSync(tmp, file);
+  fsyncPath(path.dirname(file));
+}
+function copyBytesVerified(src, dst) { // 원본 바이트를 그대로 복사하고, 같은지 확인한 뒤에만 성공으로 본다
+  if (TM.env('FAIL') === 'perm-backup') throw new Error('테스트: 백업 실패'); // 테스트 인스턴스에서만 켜는 실패 주입
+  const buf = fs.readFileSync(src);
+  fs.writeFileSync(dst, buf, { mode: 0o600 });
+  fsyncPath(dst);
+  fsyncPath(path.dirname(dst));
+  if (!fs.readFileSync(dst).equals(buf)) throw new Error('백업이 원본과 달라요');
+  return buf;
+}
+const permStamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
+function countPermRules(o) { return Object.values(o || {}).reduce((n, l) => n + (Array.isArray(l) ? l.length : 0), 0); }
+// 시작할 때 한 번: 예전 규칙이 있으면 원본 그대로 백업 → (검증되면) 활성 규칙 비우기. 백업이 안 되면 아무것도 바꾸지 않는다
+function loadPerms() {
+  if (!fs.existsSync(PERM_FILE)) return;
+  let parsed = null;
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(fs.readFileSync(PERM_FILE));
+    const o = JSON.parse(text);
+    if (o && typeof o === 'object' && !Array.isArray(o)) parsed = o;
+  } catch { /* 손상 */ }
+  if (!parsed) { // 손상: 원본 바이트를 따로 보존한 뒤에만 빈 규칙으로 시작한다
+    try {
+      const bak = path.join(DATA_DIR, `permissions.corrupt-${permStamp()}.json`);
+      copyBytesVerified(PERM_FILE, bak);
+      perms = {};
+      writeFileAtomic(PERM_FILE, '{}\n');
+      console.error('권한 파일이 손상돼 있어서 원본을 보존하고 비웠어요:', path.basename(bak));
+    } catch (e) {
+      perms = {}; permsDiskLocked = true; // 보존 실패: 원본은 그대로 두고 메모리에서만 빈 규칙 (허용 0 = 더 안전)
+      console.error('권한 파일이 손상됐는데 원본을 보존하지 못해 그대로 두었어요:', e.message);
+    }
+    return;
+  }
+  const count = countPermRules(parsed);
+  let mig = null;
+  try { mig = JSON.parse(fs.readFileSync(PERM_MIG_FILE, 'utf8')); } catch { /* 없음 */ }
+  if (!count || (mig && mig.done)) { perms = parsed; return; }
+  try {
+    const bak = path.join(DATA_DIR, `permissions.backup-${permStamp()}.json`);
+    copyBytesVerified(PERM_FILE, bak); // 검증된 백업이 있어야만 다음으로
+    perms = {};
+    writeFileAtomic(PERM_FILE, '{}\n');
+    writeFileAtomic(PERM_MIG_FILE, JSON.stringify({ done: true, at: Date.now(), count, backupFile: path.basename(bak), notified: false }, null, 2));
+    console.log(`예전 "항상 허용" 규칙 ${count}개를 백업하고 초기화했어요:`, path.basename(bak));
+  } catch (e) {
+    perms = parsed; // 백업 실패: 초기화하지 않고 원래 규칙을 그대로 쓴다
+    console.error('권한 백업에 실패해서 초기화하지 않았어요:', e.message);
+  }
+}
+loadPerms();
 function savePerms() {
+  if (permsDiskLocked) return;
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(PERM_FILE, JSON.stringify(perms, null, 2));
+  writeFileAtomic(PERM_FILE, JSON.stringify(perms, null, 2));
+}
+// 가장 최근 백업을 활성 규칙으로 되돌린다 (되돌리기 전 현재 상태도 원본 그대로 백업해 둔다)
+function restorePermBackup() {
+  const files = fs.readdirSync(DATA_DIR).filter((f) => /^permissions\.backup-[\w-]+\.json$/.test(f) && !f.includes('prerestore')).sort();
+  if (!files.length) throw new Error('되돌릴 백업이 없어요');
+  const src = path.join(DATA_DIR, files[files.length - 1]);
+  const st = fs.lstatSync(src); // 심볼릭 링크·특수 파일은 되돌리기 대상으로 쓰지 않는다
+  if (!st.isFile() || st.isSymbolicLink()) throw new Error('백업 파일이 일반 파일이 아니라서 되돌릴 수 없어요');
+  const o = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(fs.readFileSync(src)));
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('백업 파일이 올바르지 않아요');
+  const bad = validatePermData(o);
+  if (bad) throw new Error(`백업 내용이 올바르지 않아서 아무것도 되돌리지 않았어요: ${bad}`);
+  if (fs.existsSync(PERM_FILE)) copyBytesVerified(PERM_FILE, path.join(DATA_DIR, `permissions.backup-${permStamp()}-prerestore.json`));
+  permsDiskLocked = false;
+  perms = o;
+  writeFileAtomic(PERM_FILE, JSON.stringify(perms, null, 2));
+  return { file: files[files.length - 1], count: countPermRules(perms) };
 }
 const permOnce = new Map(); // 크루 -> { rules, until } 이번만 허용: 다음 한 번의 실행에만 쓰고 지운다
+// 크루 생명주기: 만들기·삭제·이름 변경·복구·가져오기에서 그 이름의 규칙을 비운다 (이름이 같아도 이어받지 않는다)
+function clearCrewPerms(...names) {
+  let changed = false;
+  for (const n of names) {
+    if (typeof n !== 'string' || !n) continue;
+    permOnce.delete(n);
+    if (Object.prototype.hasOwnProperty.call(perms, n)) { delete perms[n]; changed = true; }
+  }
+  if (changed) { try { savePerms(); } catch (e) { console.error('권한 정리 저장 실패:', e.message); } }
+}
 const PERM_MAX_RULES = 100;
 // 위험 수준 규칙은 tools/perm-policy.js에 있다 (Claude의 실행 전 훅 tools/perm-hook.js와 같은 규칙을 쓰려고)
 //   안전=묻지 않고 실행 / 주의=허용 카드로 물음 / 위험=카드 없이 조용히 차단
 const { PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, tier: permTier } = require('./tools/perm-policy');
+// 되돌릴 권한 데이터의 모양과 내용을 검사한다. 문제가 있으면 이유(문자열)를, 괜찮으면 null을 돌려준다. 하나라도 이상하면 전체를 거절한다 (일부만 되돌리지 않는다)
+function validatePermData(o) {
+  const crews = Object.keys(o);
+  if (crews.length > 1000) return '크루가 너무 많아요';
+  for (const crew of crews) {
+    if (!crew || crew.length > 200 || ['__proto__', 'constructor', 'prototype'].includes(crew)) return `크루 이름이 올바르지 않아요 (${crew.slice(0, 30)})`;
+    const list = o[crew];
+    if (!Array.isArray(list)) return `"${crew}"의 규칙이 목록이 아니에요`;
+    if (list.length > PERM_MAX_RULES) return `"${crew}"의 규칙이 ${PERM_MAX_RULES}개를 넘어요`;
+    for (const x of list) {
+      if (!x || typeof x !== 'object' || Array.isArray(x)) return `"${crew}"에 올바르지 않은 규칙이 있어요`;
+      if (typeof x.rule !== 'string' || !x.rule || x.rule.length > 300) return `"${crew}"의 규칙 글자가 올바르지 않아요`;
+      if ('cmd' in x && (typeof x.cmd !== 'string' || x.cmd.length > 4000)) return `"${crew}"의 명령 기록이 올바르지 않아요`;
+      if ('ts' in x && (typeof x.ts !== 'number' || !Number.isFinite(x.ts))) return `"${crew}"의 시각 값이 올바르지 않아요`;
+      if (/[\u0000-\u001f\u007f]/.test(x.rule)) return `"${crew}"의 규칙에 제어 문자가 있어요`;
+      const m = x.rule.match(/^Bash\(([\s\S]*)\)$/);
+      if (!m) return `"${crew}"의 규칙 모양이 올바르지 않아요 (${x.rule.slice(0, 40)})`;
+      const inner = m[1].replace(/:\*$/, '').trim();
+      if (!inner || inner === '*') return `"${crew}"의 규칙이 너무 넓어요 (${x.rule.slice(0, 40)})`;
+      const prog = inner.split(/\s+/)[0].replace(/^.*\//, '');
+      if (/:\*$/.test(m[1]) && PERM_EXACT.has(prog)) return `"${crew}"의 규칙이 너무 넓어요 (${x.rule.slice(0, 40)})`;
+      if (permTier(inner, [__dirname, DATA_DIR]).tier === 'danger') return `"${crew}"의 규칙이 지금 권한 정책에서 허용하지 않는 모양이에요 (${x.rule.slice(0, 40)})`;
+    }
+  }
+  return null;
+}
+// 권한을 바꾸는 요청이 다른 사이트에서 온 것인지 한 번 더 확인한다 (Origin이 있으면 Host와 같아야 한다. 화면의 요청은 늘 같은 주소라 통과한다)
+function sameOriginReq(req) {
+  if (req.headers['sec-fetch-site'] === 'cross-site') return false;
+  const o = req.headers.origin;
+  if (o === undefined) return true;
+  let oh;
+  try { oh = new URL(String(o)).host.toLowerCase(); } catch { return false; }
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+  return !!host && oh === host;
+}
+// 채팅 zip 가져오기 흐름 (검사·미리보기·설치). 실제 일은 tools/import-flow.js에서 한다
+const { kindOfRequest } = require('./tools/activity');
+const importFlow = require('./tools/import-flow').createImportFlow({
+  DATA_DIR, ROOMS_DIR, CREWS_DIR, CONV_DIR, UI_FILE, ROLES, MAX_MESSAGES, GH_SECRET, COOKIE,
+  dropConvCache: (rid) => convCache.delete(rid),
+  send, readBody, parseCookies, sameOriginReq, writeFileAtomic, listProjects, convFile, loadConv, saveConv,
+  clearCrewPerms, askOnce, running,
+  saveUi: () => saveUi(), getUi: () => uiState, getSettings: () => settings,
+});
+isQuarantinedName = importFlow.isQuarantined;
+// 점검 모드(tools/maintenance.js)와 진행 중인 작업 표(tools/activity.js). 재시작·교체 전에 새 작업을 막고 기존 작업이 끝나길 기다리는 데 쓴다
+const maint = require('./tools/maintenance').createMaintenance(DATA_DIR);
+const activity = require('./tools/activity').createActivity({
+  chatRuns: () => [...projectRuns.entries()].map(([room, r]) => ({ room, group: !!r.group, since: r.since })),
+  liveChildren: () => running.size,
+  exportBusy: () => ({ building: exportLocks.size, downloading: [...exportJobs.values()].filter((j) => j.downloading > 0).length }),
+  importBusy: () => importFlow.busy(),
+});
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity-state.json');
+// 점검 중에만: 작업 현황을 0.5초마다 파일로 남긴다 (배포 도구가 "다 끝났는지"를 읽는다). 점검이 풀리면 파일을 지운다.
+// 파일에는 pid·시각이 있어서, 감자알이 죽었거나 멈춘 뒤의 낡은 파일은 도구가 믿지 않는다
+function writeActivityState() {
+  try {
+    const m = maint.state();
+    if (!m.on) { fs.rmSync(ACTIVITY_FILE, { force: true }); return; }
+    const snap = activity.snapshot();
+    writeFileAtomic(ACTIVITY_FILE, JSON.stringify({ v: 1, pid: process.pid, boot: BOOT_ID, hash: RUNNING_HASH, updatedAt: Date.now(), maintenance: { on: true, corrupt: m.corrupt, since: m.since, allowRooms: m.allowRooms || [] }, total: snap.total, by: snap.by, items: snap.items.slice(0, 50) }));
+  } catch (e) { console.error('작업 현황 기록 실패:', e.message); }
+}
 const PERM_HOOK_CMD = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'tools', 'perm-hook.js'))} ${JSON.stringify(__dirname)} ${JSON.stringify(DATA_DIR)}`;
-const PERM_HOOK_SETTINGS = () => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: PERM_HOOK_CMD, timeout: 10 }] }] } });
+const PERM_HOOK_SETTINGS = (allowAll) => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: allowAll ? PERM_HOOK_CMD + " --allow-all" : PERM_HOOK_CMD, timeout: 10 }] }] } });
 // 아무 코드나 돌릴 수 있는 프로그램: "항상 허용"도 그 명령 그대로만 (인자가 달라지면 다시 묻는다)
 const PERM_EXACT = new Set(['node', 'nodejs', 'python', 'python3', 'bash', 'sh', 'zsh', 'perl', 'ruby', 'php', 'deno', 'bun', 'awk', 'gawk', 'find', 'xargs', 'env', 'time', 'timeout', 'watch', 'script', 'docker', 'make', 'sed', 'tar', 'unzip']);
 const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
@@ -1875,9 +2151,126 @@ button{border:0;border-radius:14px;padding:14px 26px;background:#fee500;color:#1
 <script>if(!/^ko/i.test(navigator.language)){t.textContent='Access is off';d.textContent='Same-Wi-Fi access is turned off on the phone. Turn it on in the GAMJA console (More > Connections > External access) and try again.';b.textContent='Try again'}</script></body></html>`;
 
 // ---------- 라우팅 ----------
-const server = http.createServer(async (req, res) => {
+// 요청 본문을 받는 시간 제한을 "서버 전체"가 아니라 요청 종류별로 직접 건다.
+//  - Node의 server.requestTimeout은 0으로 끈다 (모든 요청에 같은 값이 걸려서, 업로드를 위해 늘리면 다른 요청도 늘어나 버린다).
+//    헤더는 headersTimeout(60초)이 그대로 맡는다.
+//  - 보통 요청: 본문을 5분 안에 다 못 받으면 끊는다 (Node 기본값과 같다).
+//  - 채팅 가져오기 업로드(/api/rooms/import/inspect)만: 400MB를 느린 와이파이로 올릴 수 있게 1시간. 그 안에서도 바이트가 2분 동안 안 오면 import-flow가 끊는다.
+//  - 이미 본문을 다 받은 요청(req.complete)은 응답이 오래 걸려도 끊지 않는다 (Claude 답변은 오래 걸린다).
+const RECV_TEST_MS = Number(TM.env('REQUEST_TIMEOUT_MS')) || 0; // 시험용: 두 제한을 모두 이 값으로
+const RECV_MS = { normal: RECV_TEST_MS || 5 * 60 * 1000, upload: Number(TM.env('UPLOAD_TOTAL_MS')) || RECV_TEST_MS || 60 * 60 * 1000 };
+const HTTP_OPTS = { requestTimeout: 0, headersTimeout: Math.min(60000, RECV_TEST_MS || 60000) };
+// ---------- 채팅 내보내기: 폴더 잠금 · 임시 zip ----------
+// 내보내는 동안 같은 폴더에서 감자 안의 일(답변, 사진 올리기)이 파일을 바꾸지 못하게 한다. 답변이 진행 중이면 내보내기를 시작하지 않는다.
+// 감자 밖의 프로그램이 바꾸는 것은 막을 수 없으므로, 만드는 도중 바뀌면 감지해서 멈춘다 (tools/gamja-zip.js의 verify)
+const EXPORT_TMP = path.join(DATA_DIR, 'export-tmp');
+const EXPORT_TTL_MS = 15 * 60 * 1000;
+const EXPORT_RUN_MAX_MS = 10 * 60 * 1000; // 내보내기 한 번이 돌 수 있는 시간. 넘으면 내보내기 자체를 멈추고(임시 파일 삭제), 멈춘 뒤에 잠금을 푼다. 잠금이 시간만 지났다고 저절로 풀리지는 않는다
+const exportLocks = new Map(); // 폴더 경로 -> { since }: 잠근 일 하나를 가리키는 표 (이 표 자체가 주인 증표다)
+const exportJobs = new Map(); // token -> { file, name, size, made, exp, downloading, sid, done }: 만들어 둔 zip (동시에 EXPORT_MAX_JOBS개까지)
+const exportKey = (dir) => path.resolve(String(dir || ''));
+const exportFolderLocked = (dir) => exportLocks.has(exportKey(dir));
+// 잠근다. 이미 잠겨 있으면 null. 돌려주는 release는 한 번만 듣고, 자기가 만든 잠금만 푼다 (늦게 도착한 옛 일의 release가 새 일의 잠금을 풀 수 없다)
+function exportLock(dir) {
+  const k = exportKey(dir);
+  if (exportLocks.has(k)) return null;
+  const mine = { since: Date.now() };
+  exportLocks.set(k, mine);
+  let released = false;
+  return () => {
+    if (released) return false;
+    released = true;
+    if (exportLocks.get(k) !== mine) return false;
+    exportLocks.delete(k);
+    return true;
+  };
+}
+// 내려받기 주소의 주인: 만든 기기의 로그인 쿠키에서 구한 값 (쿠키 자체는 저장하지 않는다)
+const sessionKey = (req) => { const t = parseCookies(req)[COOKIE]; return t ? crypto.createHash('sha256').update('gamja-export:' + t).digest('hex') : ''; };
+function runInFolder(dir) {
+  const k = exportKey(dir);
+  for (const room of projectRuns.keys()) {
+    let c = null;
+    try { c = resolveProject(room); } catch { continue; }
+    if (c && exportKey(c) === k) return true;
+  }
+  return false;
+}
+const exportTmpBuilding = new Set(); // 지금 만드는 중인 임시 파일 이름 (주인 없는 파일로 보고 지우지 않게)
+const EXPORT_MAX_JOBS = 2; // 만들어 둔 zip은 동시에 둘까지 (기기 둘이 거의 동시에 내보내도 서로 지우지 않게. 디스크는 최대 약 800MB)
+function dropExportJob(t) { // 내려받는 중인 것은 지우지 않는다
+  const j = exportJobs.get(t);
+  if (!j || j.downloading > 0) return false;
+  try { fs.rmSync(j.file, { force: true }); } catch { /* 다음에 다시 (시작·주기 정리) */ }
+  exportJobs.delete(t);
+  return true;
+}
+function trimExportJobs() { // 새로 만들기 전에: 자리를 만든다. 가장 오래된 것부터, 내려받는 중인 것은 빼고
+  const order = [...exportJobs.entries()].sort((a, b) => a[1].made - b[1].made);
+  for (const [t] of order) { if (exportJobs.size < EXPORT_MAX_JOBS) break; dropExportJob(t); }
+  return exportJobs.size < EXPORT_MAX_JOBS;
+}
+function cleanExportTmp() { // 시작할 때와 주기적으로: 주인 없는 임시 파일, 기한이 지난 파일을 지운다 (내려받는 중인 것은 건너뜀)
+  for (const [t, j] of exportJobs) if (j.exp < Date.now()) dropExportJob(t);
+  let names = [];
+  try { names = fs.readdirSync(EXPORT_TMP); } catch { return; }
+  const live = new Set([...[...exportJobs.values()].map((j) => path.basename(j.file)), ...exportTmpBuilding]);
+  for (const n of names) if (!live.has(n)) { try { fs.rmSync(path.join(EXPORT_TMP, n), { force: true }); } catch { /* 다음에 */ } }
+}
+// 다 만든 zip을 가져오기와 같은 기준으로 다시 확인한다: 크기, 항목 이름·크기가 만들려던 것과 같은지, 압축률
+function verifyExportZip(file, entries) {
+  const bad = (msg) => new zipTool.ZipVerifyError('final-check', '', msg);
+  const size = fs.statSync(file).size;
+  if (size > EXPORT_LIMITS.upload) throw bad('완성된 zip이 한도 크기를 넘어요.');
+  const idx = zipTool.readZipIndexEx(file);
+  if (idx.length !== entries.length) throw bad('완성된 zip의 항목 수가 달라요.');
+  const want = new Map(entries.map((e) => [e.name, e.data ? e.data.length : e.size]));
+  let total = 0;
+  for (const e of idx) {
+    if (!want.has(e.name) || want.get(e.name) !== e.usize) throw bad(`완성된 zip의 항목이 달라요: ${e.name}`);
+    want.delete(e.name);
+    if (e.usize > EXPORT_LIMITS.file) throw bad('완성된 zip에 한도를 넘는 파일이 있어요.');
+    if (e.method === 8 && e.usize > 1048576 && e.usize > EXPORT_LIMITS.ratio * Math.max(e.csize, 1)) throw bad('완성된 zip의 압축률이 한도를 넘어요.');
+    total += e.usize;
+  }
+  if (want.size) throw bad('완성된 zip에 빠진 항목이 있어요.');
+  if (total > EXPORT_LIMITS.total) throw bad('완성된 zip의 합계가 한도를 넘어요.');
+  if (total > 1048576 && total > EXPORT_LIMITS.ratio * size) throw bad('완성된 zip의 전체 압축률이 한도를 넘어요.');
+  return size;
+}
+const EXPORT_TIMEOUT_BODY = { error: '내보내기가 너무 오래 걸려서 멈췄어요. 잠시 뒤에 다시 해 주세요.', code: 'export-timeout' };
+// 내보내기 중단 이유 → 사용자에게 보여 줄 코드
+function exportFailure(e) {
+  const code = e && e.code;
+  if (code === 'source-changed') return { status: 409, code: 'export-source-changed', error: '내보내는 도중 파일이 바뀌었어요. 잠시 뒤에 다시 해 주세요.', file: e.entry };
+  if (code === 'ratio') return { status: 413, code: 'export-ratio', error: '압축률이 가져오기 한도를 넘어서 내보낼 수 없어요.', file: e.entry };
+  if (code === 'file-too-big' || code === 'total-too-big' || code === 'too-big') return { status: 413, code: 'export-too-big', error: '내보낼 결과물이 가져올 수 있는 크기를 넘어요.', max: EXPORT_LIMITS.upload };
+  if (code === 'ENOENT' || code === 'EACCES' || code === 'EIO' || code === 'EISDIR' || code === 'EPERM') return { status: 500, code: 'export-read-failed', error: '파일을 읽지 못해서 내보내지 못했어요.' };
+  return { status: 500, code: 'export-failed', error: '내보내기에 실패했어요. 잠시 뒤에 다시 해 주세요.' };
+}
+
+function guardReceiveTime(req, res, p) {
+  if (req.complete) return;
+  const ms = p === '/api/rooms/import/inspect' ? RECV_MS.upload : RECV_MS.normal;
+  const timer = setTimeout(() => {
+    if (req.complete) return;
+    try { if (!res.headersSent) { res.writeHead(408, { 'Content-Type': 'application/json', Connection: 'close' }); res.end(JSON.stringify({ error: '요청을 받는 데 너무 오래 걸려서 끊었어요.', code: 'request-timeout' })); } } catch { /* 이미 끊긴 연결 */ }
+    req.destroy();
+  }, ms);
+  timer.unref();
+  // 본문을 다 받기 전에 응답이 끝났다(로그인 안 됨 401, 다른 가져오기 진행 중 409, 한도 초과 413 등): 남은 본문은 필요 없으니
+  // 응답이 나갈 시간(1.5초)만 주고 연결을 닫는다. 안 닫으면 올리는 쪽이 이 연결을 시간 제한이 올 때까지 붙잡고 있을 수 있다
+  // 이때는 응답에 Connection: close를 붙여, 올리는 쪽이 이 연결을 다른 요청에 다시 쓰다가 같이 끊기는 일이 없게 한다
+  const origWriteHead = res.writeHead.bind(res);
+  res.writeHead = (...a) => { if (!req.complete && !res.headersSent) { try { res.setHeader('Connection', 'close'); } catch { /* 이미 보낸 뒤 */ } } return origWriteHead(...a); };
+  res.once('finish', () => { if (!req.complete) setTimeout(() => { if (!req.complete) req.destroy(); }, 1500).unref(); });
+  const clear = () => clearTimeout(timer);
+  req.once('end', clear); req.once('close', clear); res.once('close', clear);
+}
+const server = http.createServer(HTTP_OPTS, async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
+  guardReceiveTime(req, res, p);
   // 브라우저로 쓰게 되면서 다른 사이트가 감자 콘솔 화면을 액자(iframe)에 넣어 누르게 속이는 일을 막는다.
   // 크루가 만든 결과물(/preview/)은 아래 previewHeaders가 따로 보안 헤더(sandbox 등)를 붙인다
   if (!p.startsWith('/preview/')) {
@@ -1962,7 +2355,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/me') {
       const authed = isAuthed(req);
-      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null, sys: authed ? sysHealth() : undefined });
+      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null, sys: authed ? sysHealth() : undefined, maintenance: authed ? maint.publicInfo() : undefined });
     }
 
     const inst = p.match(/^\/(install|bundle)\/([\w.-]+)$/);
@@ -1979,6 +2372,14 @@ const server = http.createServer(async (req, res) => {
 
     if (p.startsWith('/api/')) {
       if (!isAuthed(req)) return send(res, 401, { error: '로그인이 필요합니다' });
+      { // 점검 중이면 새 사용자 작업을 막는다 (로그인 확인 뒤라서 인증 없이는 상태도 알 수 없다). 막지 않은 변경 요청은 끝날 때까지 작업으로 센다
+        const mb = maint.check(req.method, p);
+        if (mb) return send(res, mb.status, mb.body, mb.headers);
+        const kind = kindOfRequest(req.method, p);
+        if (kind) activity.trackRes(res, kind, { path: p });
+      }
+      if (p === '/api/maintenance' && req.method === 'GET') return send(res, 200, { ...maint.publicInfo(), activity: activity.snapshot() });
+      if (importFlow.guard(req, res, p)) return; // 가져오기 복구 중(503)·마무리 중(409)
       if (p === '/api/preview-files' && req.method === 'GET') {
         const project = url.searchParams.get('project') || '';
         // 새 방(방 폴더가 있는 방)은 크루가 아니라 방에 속한 결과물만 보여 준다. 삭제된 크루의 보관 대화("~…")도 방 폴더가 남아 있으면 볼 수 있다
@@ -2023,12 +2424,14 @@ const server = http.createServer(async (req, res) => {
           for (const r of roomFilesOf(crew)) if (r.rid !== crew) rids.push(r.rid); // 같은 크루의 다른 채팅방들
         }
         const chats = rids.map((name) => {
-          const conv = loadConv(name);
+          const loaded = peekConv(name);
+          const conv = loaded || { messages: [] };
           const talk = conv.messages.filter((m) => m.role === 'user' || m.role === 'bot' || m.role === 'error');
           const last = talk[talk.length - 1];
           const run = projectRuns.get(name);
           return {
             name,
+            damaged: !loaded, // 대화 파일을 읽지 못한 방: 목록에는 남기고(지우기 가능), 열면 안내가 나온다
             extra: name.includes('@'), // 크루의 첫 방이 아닌 방 (만들어진 순간부터 목록에 보인다)
             crew: crewOf(name), // 이 방이 속한 크루 (새 방 "@번호"는 아이디에서 알 수 없어 알려 준다)
             members: Array.isArray(conv.participants) && conv.participants.length ? conv.participants : [crewOf(name)], // 참여자(크루) 목록
@@ -2055,7 +2458,9 @@ const server = http.createServer(async (req, res) => {
             let entry = archiveChatCache.get(f);
             if (!entry || entry.mtime !== mtime) { // 보관 파일은 바뀌지 않으니 한 번만 읽는다
               let conv;
-              try { conv = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+              const rd = readConvPath(file); // 너무 크거나 깨진 보관 파일은 목록에서만 건너뛴다 (파일은 그대로)
+              if (rd.state !== 'ok') continue;
+              conv = rd.conv;
               const talk = (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot' || x.role === 'error');
               const last = talk[talk.length - 1];
               entry = { mtime, count: talk.length, ts: last ? last.ts : 0, last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null };
@@ -2068,22 +2473,23 @@ const server = http.createServer(async (req, res) => {
             });
           }
         } catch { /* 보관함이 아직 없으면 건너뛴다 */ }
-        return send(res, 200, { chats, seen: seenMap, ui: uiState });
+        return send(res, 200, { chats, seen: publicSeen(), ui: publicUi() });
       }
       // 기기 간 공유 화면 정보 올리기: 항목마다 더 늦은 시각이 이긴다
       if (p === '/api/ui-state' && req.method === 'POST') {
         const b = await readBody(req);
         let changed = false;
         for (const c of (Array.isArray(b.changes) ? b.changes : []).slice(0, 300)) {
-          if (!c || !UI_MAPS.has(c.map) || typeof c.key !== 'string' || c.key.length > 200 || typeof c.ts !== 'number' || !Number.isFinite(c.ts)) continue;
+          if (!c || !UI_MAPS.has(c.map) || typeof c.key !== 'string' || c.key.length > 200 || isQuarantinedName(c.key) || typeof c.ts !== 'number' || !Number.isFinite(c.ts)) continue;
           if (c.v !== null && JSON.stringify(c.v === undefined ? null : c.v).length > 8000) continue; // 너무 큰 값은 받지 않는다
           const m = uiState[c.map] || (uiState[c.map] = {});
           if (c.ts > ((m[c.key] && m[c.key].ts) || 0)) { m[c.key] = { v: c.v === undefined ? null : c.v, ts: c.ts }; changed = true; }
         }
         if (changed) saveUi();
-        return send(res, 200, { ui: uiState });
+        return send(res, 200, { ui: publicUi() });
       }
       // 🔐 막힌 명령 허용 (카드의 버튼): 감자알이 기록해 둔 막힌 명령의 id로만 허용할 수 있다
+      if (p.startsWith('/api/perm/') && req.method === 'POST' && !sameOriginReq(req)) return send(res, 403, { error: '다른 사이트에서 온 요청이라 막았어요.' });
       if (p === '/api/perm/answer' && req.method === 'POST') {
         const b = await readBody(req);
         const project = String(b.project || '');
@@ -2132,16 +2538,43 @@ const server = http.createServer(async (req, res) => {
         }
         return send(res, 200, { ok: true });
       }
+      // 예전 규칙 초기화 안내: 한 번만 보여 준다 (알림 확인 표식을 남긴다)
+      if (p === '/api/perm/migration-notice' && req.method === 'GET') {
+        let mig = null;
+        try { mig = JSON.parse(fs.readFileSync(PERM_MIG_FILE, 'utf8')); } catch { /* 없음 */ }
+        return send(res, 200, { show: !!(mig && mig.done && mig.count > 0 && !mig.notified), count: mig ? mig.count : 0 });
+      }
+      if (p === '/api/perm/migration-notice/ack' && req.method === 'POST') {
+        try {
+          const mig = JSON.parse(fs.readFileSync(PERM_MIG_FILE, 'utf8'));
+          mig.notified = true;
+          writeFileAtomic(PERM_MIG_FILE, JSON.stringify(mig, null, 2));
+        } catch { /* 없으면 할 일 없음 */ }
+        return send(res, 200, { ok: true });
+      }
+      if (p === '/api/perm/restore-backup' && req.method === 'POST') {
+        if (!isLocalReq(req)) return send(res, 403, { error: '권한 되돌리기는 이 폰 안에서만 할 수 있어요.' });
+        const b = await readBody(req);
+        if (b.confirm !== true) return send(res, 400, { error: '되돌리려면 확인이 필요해요 (confirm).' });
+        try {
+          const r = restorePermBackup();
+          const proj = String(b.project || '');
+          if (resolveProject(proj)) addNotice(proj, `🔐 예전 "항상 허용" 백업(${r.file})에서 권한 규칙 ${r.count}개를 되돌렸어요.`);
+          console.log(`권한 백업을 되돌렸어요: ${r.file} (${r.count}개)`);
+          return send(res, 200, { ok: true, ...r });
+        }
+        catch (e) { return send(res, 400, { error: e.message }); }
+      }
       // 읽음 기록 공유: 방마다 "마지막으로 읽은 답의 시각"을 모든 기기가 같이 쓴다 (더 늦은 시각만 남긴다)
       if (p === '/api/seen' && req.method === 'POST') {
         const b = await readBody(req);
         let changed = false;
         for (const [room, ts] of Object.entries(b.seen && typeof b.seen === 'object' ? b.seen : {}).slice(0, 200)) {
-          if (typeof ts !== 'number' || !Number.isFinite(ts) || room.length > 200) continue;
+          if (typeof ts !== 'number' || !Number.isFinite(ts) || room.length > 200 || isQuarantinedName(room)) continue;
           if (ts > (seenMap[room] || 0)) { seenMap[room] = ts; changed = true; }
         }
         if (changed) saveSeen();
-        return send(res, 200, { seen: seenMap });
+        return send(res, 200, { seen: publicSeen() });
       }
       // 삭제한 크루 목록 (크루 탭의 "삭제한 크루 복구하기"): 같은 때 지워진 한 크루가 한 줄. 30일 안에 복구할 수 있다
       if (p === '/api/trash' && req.method === 'GET') {
@@ -2157,17 +2590,19 @@ const server = http.createServer(async (req, res) => {
           if (!crew) continue; // 크루 없이 있던 방은 되살릴 크루가 없다
           const stamp = f.slice(0, 19);
           let conv = {};
-          try { conv = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, f), 'utf8')); } catch { /* 깨진 기록은 대화 0개로 */ }
+          const rdA = readConvPath(path.join(ARCHIVE_DIR, f));
+          conv = rdA.conv || {}; // 읽지 못한 기록은 요약만 0개로 보인다 (파일은 그대로)
           const key = `${stamp}|${crew}`;
           const e = found.get(key) || {
             id: '', crew, deletedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), messages: 0,
             hasFolder: fs.existsSync(path.join(TRASH_DIR, `${crew}_${stamp}`)),
           };
+          if (rdA.state === 'failed') e.damaged = true; // 읽지 못하는 기록: 목록에 보여 주고 30일이 지나도 자동으로 지우지 않는다
           e.messages += (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot').length;
           if (!e.id || rid === crew) e.id = f.slice(0, -5);
           found.set(key, e);
         }
-        const items = [...found.values()].filter((e) => e.hasFolder).sort((a, b) => b.deletedAt - a.deletedAt);
+        const items = [...found.values()].filter((e) => e.hasFolder || e.damaged).sort((a, b) => b.deletedAt - a.deletedAt);
         return send(res, 200, { items });
       }
       // 삭제한 크루를 지금 완전히 지운다 (휴지통 폴더와 보관된 대화). 되돌릴 수 없다
@@ -2214,6 +2649,7 @@ const server = http.createServer(async (req, res) => {
         if (fs.existsSync(dest)) return send(res, 409, { error: `같은 이름('${newName}')의 크루가 이미 있어요.` });
         if (!fs.existsSync(trashDir)) return send(res, 404, { error: '휴지통에서 크루 폴더를 찾지 못했어요. (30일이 지나면 완전히 지워져요)' });
         fs.renameSync(trashDir, dest);
+        clearCrewPerms(crew, newName); // 복구해도 권한은 0에서 시작 (되살리지 않는다)
         fs.mkdirSync(CONV_DIR, { recursive: true });
         const rooms = [];
         for (const f of fs.readdirSync(ARCHIVE_DIR)) {
@@ -2225,7 +2661,7 @@ const server = http.createServer(async (req, res) => {
           let to = newName + r.slice(crew.length);
           let from = r;
           let cv = null;
-          try { cv = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, f), 'utf8')); } catch { /* 깨진 기록은 옛 방 형식으로 */ }
+          cv = readConvPath(path.join(ARCHIVE_DIR, f)).conv || null; // 읽지 못한 기록은 고쳐 쓰지 않고 그대로 옮긴다
           const orig = cv && typeof cv.archivedFrom === 'string' && /^@[a-z0-9]{3,8}$/.test(cv.archivedFrom) ? cv.archivedFrom : '';
           if (orig) { to = orig; from = orig; } // 새 방은 원래 아이디(@번호)로 되돌린다
           fs.rmSync(convFile(to), { force: true });
@@ -2320,13 +2756,19 @@ const server = http.createServer(async (req, res) => {
           let rid;
           try { rid = decodeURIComponent(m[7]); } catch { continue; }
           let conv = {};
-          try { conv = JSON.parse(fs.readFileSync(path.join(ROOM_TRASH_DIR, n, 'conv.json'), 'utf8')); } catch { continue; }
+          let damaged = '';
+          { const rd = readConvPath(path.join(ROOM_TRASH_DIR, n, 'conv.json'));
+            if (rd.state === 'ok') conv = rd.conv;
+            else if (rd.state === 'failed') damaged = rd.reason || 'io';
+            else if (fs.existsSync(path.join(ROOM_TRASH_DIR, n, 'folder'))) damaged = 'missing'; // 대화 파일 없이 폴더만 남은 상자도 지우지 않고 보여 준다
+            else continue; }
           const talk = (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot');
           const last = talk[talk.length - 1];
           items.push({
             id: n, room: rid, crew: crewOf(rid), crewAlive: !!resolveProject(rid),
             deletedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(),
             messages: talk.length, last: last ? String(last.text || '').slice(0, 120) : '',
+            ...(damaged ? { damaged: true, reason: damaged } : {}),
           });
         }
         items.sort((a, b) => b.deletedAt - a.deletedAt);
@@ -2343,7 +2785,7 @@ const server = http.createServer(async (req, res) => {
         if (!resolveProject(rid)) return send(res, 409, { error: '이 채팅이 속한 크루가 지워져 있어요. 크루를 먼저 복구해 주세요.' });
         if (fs.existsSync(convFile(rid))) return send(res, 409, { error: '같은 이름의 채팅이 이미 있어요.' });
         let conv = {};
-        try { conv = JSON.parse(fs.readFileSync(path.join(box, 'conv.json'), 'utf8')); } catch { return send(res, 500, { error: '대화 기록을 읽지 못했어요.' }); }
+        { const rd = readConvPath(path.join(box, 'conv.json')); if (rd.state !== 'ok') return send(res, 423, { error: '대화 기록을 읽지 못했어요. 휴지통의 원본은 그대로 두었어요.', code: 'conv-unreadable', reason: rd.reason || 'missing' }); conv = rd.conv; }
         const dir = typeof conv.dir === 'string' && ROOM_DIR_RE.test(conv.dir) ? conv.dir : '';
         const back = dir ? path.join(ROOMS_DIR, dir) : '';
         if (back && fs.existsSync(path.join(box, 'folder'))) {
@@ -2362,8 +2804,9 @@ const server = http.createServer(async (req, res) => {
         const id = url.searchParams.get('archive');
         const file = path.join(ARCHIVE_DIR, `${id}.json`);
         if (!/^[\w.%-]+__[\w.%-]+$/.test(id) || path.dirname(file) !== ARCHIVE_DIR || !fs.existsSync(file)) return send(res, 404, { error: '그 대화를 찾을 수 없어요.' });
-        let conv = { messages: [] };
-        try { conv = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* 깨진 기록은 빈 대화로 */ }
+        const rd = readConvPath(file);
+        if (rd.state !== 'ok') return send(res, 423, { error: '이 대화 파일을 읽을 수 없어요. 원본은 그대로 두었어요.', code: 'conv-unreadable', reason: rd.reason || 'missing' }); // 읽지 못한 것을 빈 대화로 보여 주지 않는다
+        const conv = rd.conv;
         return send(res, 200, { sessionId: null, messages: conv.messages || [], running: false, runId: null, live: null, archived: true });
       }
       if (p === '/api/history' && req.method === 'GET') {
@@ -2411,6 +2854,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/upload' && req.method === 'POST') {
         const cwd = resolveProject(url.searchParams.get('project') || '');
         if (!cwd) return send(res, 400, { error: '알 수 없는 프로젝트' });
+        if (exportFolderLocked(cwd)) return send(res, 409, { error: '이 채팅을 내보내는 중이에요. 잠시 뒤에 올려 주세요.', code: 'export-running' });
         const ext = IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0].trim()];
         if (!ext) return send(res, 400, { error: '이미지 파일만 첨부할 수 있어요' });
         const data = await readRaw(req, 10e6);
@@ -2439,6 +2883,7 @@ const server = http.createServer(async (req, res) => {
         const dir = path.join(CREWS_DIR, name);
         if (fs.existsSync(dir)) return send(res, 409, { error: '같은 이름의 프로젝트가 이미 있어요.' });
         fs.mkdirSync(dir, { recursive: true });
+        clearCrewPerms(name); // 새 크루는 권한 0에서 시작
         return send(res, 200, { project: name });
       }
       if (p === '/api/project-settings' && req.method === 'GET') {
@@ -2458,6 +2903,7 @@ const server = http.createServer(async (req, res) => {
         const project = String(b.project || '');
         const dir = resolveCrew(project);
         if (!dir) return send(res, 400, { error: '알 수 없는 프로젝트' });
+        if (exportFolderLocked(dir)) return send(res, 409, { error: '이 크루의 폴더를 내보내는 중이에요. 잠시 뒤에 저장해 주세요.', code: 'export-running' }); // 지침(CLAUDE.md)은 내보내는 폴더 안의 파일이다
         const model = String(b.model || '');
         if (!MODELS.includes(model)) return send(res, 400, { error: '알 수 없는 모델' });
         const effort = String(b.effort || '');
@@ -2501,6 +2947,7 @@ const server = http.createServer(async (req, res) => {
             convCache.delete(r.rid);
           }
           if (projectConf[project]) { projectConf[newName] = projectConf[project]; delete projectConf[project]; saveProjectConf(); }
+          clearCrewPerms(project, newName); // 이름이 바뀌면 옛 이름·새 이름 권한을 모두 비운다
           return send(res, 200, { project: newName });
         }
         // 삭제: 바로 지우지 않고 휴지통(TRASH_DIR)으로 옮긴다
@@ -2508,6 +2955,7 @@ const server = http.createServer(async (req, res) => {
         const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-');
         fs.mkdirSync(trash, { recursive: true });
         fs.renameSync(dir, path.join(trash, `${project}_${stamp}`));
+        clearCrewPerms(project); // 삭제된 크루의 권한은 남기지 않는다
         // 대화는 크루와 따로 간다: 크루를 지워도 대화 기록은 남겨 두고, 채팅 목록에서 읽기만 되는 "삭제된 크루" 방으로 보여 준다
         // 첫 방과 다른 방들이 모두 남는다 (30일 안에 복구할 수 있다)
         if (rooms.length) {
@@ -2547,159 +2995,186 @@ const server = http.createServer(async (req, res) => {
         const legacy = !(roomDir && fs.existsSync(roomDir)); // 방 전용 폴더가 없는 옛 방은 크루 폴더에서 일했으므로 그 파일을 담는다
         const crewDir = crewDirOf(room);
         const srcDir = legacy ? (crewDir && fs.existsSync(crewDir) ? crewDir : '') : roomDir;
-        const files = [];
-        let bytes = 0;
-        let tooBig = false;
-        const walk = (d, rel) => {
-          for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-            if (tooBig) return;
-            const name = e.name;
-            if (e.isSymbolicLink() || name === 'node_modules' || name === '.git' || name === '.env' || GH_SECRET.test(name)) continue;
-            if (legacy && d === srcDir && (name === 'CLAUDE.md' || name.startsWith('.') || ROOM_DIR_RE.test(name))) continue;
-            const abs = path.join(d, name);
-            if (e.isDirectory()) walk(abs, `${rel}${name}/`);
-            else if (e.isFile()) {
-              const size = fs.statSync(abs).size;
-              bytes += size;
-              if (bytes > ZIP_MAX_BYTES) { tooBig = true; return; }
-              files.push({ abs, rel: `${rel}${name}`, size });
-            }
-          }
-        };
-        try { if (srcDir) walk(srcDir, ''); } catch { /* 읽을 수 없는 폴더는 건너뛴다 */ }
-        if (tooBig) return send(res, 413, { error: '결과물이 1GB를 넘어서 옮길 수 없어요. 큰 파일을 빼고 다시 해 주세요.' });
-        if (url.searchParams.get('check')) return send(res, 200, { bytes, files: files.length });
-        let crewMd = '';
-        try { crewMd = fs.readFileSync(path.join(crewDir || '', 'CLAUDE.md'), 'utf8').slice(0, 50000); } catch { /* 지침이 없는 크루 */ }
-        let meta = null;
+        const isCheck = !!url.searchParams.get('check');
+        const isPrepare = !!url.searchParams.get('prepare');
+        let exportRelease = () => {};
+        let timedOut = false;
+        let cancelBuild = null; // 만들기를 멈추는 함수 (만들기를 시작하면 채운다)
+        let abortPre = () => {};
+        const aborted = new Promise((_, rej) => { abortPre = () => rej(new Error('export-aborted')); });
+        aborted.catch(() => {}); // 쓰이지 않아도 처리되지 않은 거절로 남지 않게
+        // 답변이 진행 중이면 결과물 파일이 계속 바뀌므로 시작하지 않는다. 시작한 뒤에는 폴더를 잠가서, 감자 안의 일(답변·사진 올리기)이 끼어들지 못하게 한다
+        if (srcDir && runInFolder(srcDir)) return send(res, 409, { error: '답변이 진행 중이라 지금은 내보낼 수 없어요. 끝난 뒤에 해 주세요.', code: 'export-busy' });
+        if (srcDir && !isCheck) {
+          const release = exportLock(srcDir);
+          if (!release) return send(res, 409, { error: '이 채팅을 이미 내보내는 중이에요. 잠시 뒤에 다시 해 주세요.', code: 'export-running' });
+          // 잠금은 이 요청이 끝나는 곳(아래 finally)에서만 푼다. 연결이 끊겨도 만들기는 계속되므로, 끊김은 푸는 이유가 아니다.
+          // 시간 제한: 넘으면 내보내기 자체를 멈추고, 멈춘 뒤 finally에서 푼다
+          const runTimer = setTimeout(() => { timedOut = true; abortPre(); if (cancelBuild) cancelBuild(); }, EXPORT_RUN_MAX_MS);
+          if (runTimer.unref) runTimer.unref();
+          exportRelease = () => { clearTimeout(runTimer); release(); };
+        }
         try {
-          const raw = JSON.parse(url.searchParams.get('meta') || 'null');
-          if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-            meta = {};
-            for (const [k, v] of Object.entries(raw).slice(0, 10)) if (typeof v === 'string') meta[String(k).slice(0, 30)] = v.slice(0, 500);
-          }
-        } catch { /* 이름·아이콘 정보는 없어도 된다 */ }
-        const manifest = {
-          format: 'gamja-room', version: 1, exportedAt: new Date().toISOString(), crew: members[0] || crewOf(room),
-          title: String(url.searchParams.get('title') || '').slice(0, 80), meta, legacy, files: files.length,
-        };
-        const entries = [
-          { name: 'gamja-room.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) },
-          { name: 'conversation.json', data: Buffer.from(JSON.stringify({ messages, prefs: conv.prefs && typeof conv.prefs === 'object' ? conv.prefs : null })) },
-          ...(crewMd ? [{ name: 'crew/CLAUDE.md', data: Buffer.from(crewMd) }] : []),
-          ...files.map((f) => ({ name: `folder/${f.rel}`, file: f.abs })),
-        ];
-        const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-').slice(0, 16);
-        res.writeHead(200, {
-          'Content-Type': 'application/zip', 'Cache-Control': 'no-store',
-          'Content-Disposition': `attachment; filename="gamja-chat-${stamp}.zip"; filename*=UTF-8''${encodeURIComponent(`gamja-chat-${stamp}.zip`)}`,
-        });
-        try { await zipTool.writeZip(res, entries); res.end(); } catch (e) { console.error('내보내기 실패:', e.message); res.destroy(); }
-        return;
-      }
-      // 채팅 가져오기: 내보낸 zip(요청 본문)으로 새 채팅방을 만든다. 대화는 그대로 보여 주고, Claude에게는 요약 인계 노트를 붙여 맥락을 넘긴다
-      if (p === '/api/rooms/import' && req.method === 'POST') {
-        const len = Number(req.headers['content-length'] || 0);
-        if (len > ZIP_MAX_BYTES + 1024 * 1024) { send(res, 413, { error: 'zip이 1GB를 넘어서 가져올 수 없어요.' }); req.destroy(); return; }
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-        const tmp = path.join(DATA_DIR, `import-${Date.now()}.zip`);
-        let rid = '';
-        let newDir = '';
-        try {
-          const cap = { left: ZIP_MAX_BYTES + 1024 * 1024 };
-          const { Transform } = require('stream');
-          await require('stream/promises').pipeline(req, new Transform({ transform(c, _e, cb) { cap.left -= c.length; cb(cap.left < 0 ? new Error('zip이 1GB를 넘어서 가져올 수 없어요.') : null, c); } }), fs.createWriteStream(tmp));
-          let idx;
-          try { idx = zipTool.readZipIndex(tmp); } catch (e) { return send(res, 400, { error: e.message }); }
-          const byName = new Map();
-          let total = 0;
-          for (const e of idx) {
-            const rel = zipTool.safeRel(e.name);
-            if (!rel) { if (e.name.endsWith('/') && !e.name.includes('..')) continue; return send(res, 400, { error: '안전하지 않은 파일 이름이 들어 있어서 가져올 수 없어요.' }); }
-            if (e.name.endsWith('/')) continue;
-            total += e.usize;
-            byName.set(rel, e);
-          }
-          if (total > ZIP_MAX_BYTES) return send(res, 400, { error: '풀었을 때 크기가 1GB를 넘어서 가져올 수 없어요.' });
-          const mEntry = byName.get('gamja-room.json');
-          const cEntry = byName.get('conversation.json');
-          if (!mEntry || !cEntry) return send(res, 400, { error: '감자에서 내보낸 채팅 zip이 아니에요.' });
-          let manifest;
-          let cv;
-          try {
-            manifest = JSON.parse((await zipTool.readEntry(tmp, mEntry, 1e6)).toString('utf8'));
-            cv = JSON.parse((await zipTool.readEntry(tmp, cEntry, 256 * 1024 * 1024)).toString('utf8'));
-          } catch { return send(res, 400, { error: '채팅 정보를 읽을 수 없어요. 깨진 zip일 수 있어요.' }); }
-          if (!manifest || manifest.format !== 'gamja-room' || manifest.version !== 1) return send(res, 400, { error: '이 감자가 아직 모르는 형식이에요. 감자를 업데이트해 주세요.' });
-          const crew = String(manifest.crew || '');
-          if (!isProjectName(crew) || isReservedCrewName(crew)) return send(res, 400, { error: '크루 이름을 알 수 없어요.' });
-          const msgs = (Array.isArray(cv.messages) ? cv.messages : []).filter((m) => m && ROLES.has(m.role) && typeof m.text === 'string')
-            .map((m) => ({ role: m.role, text: m.text.slice(0, 200000), ts: Number.isFinite(m.ts) ? m.ts : Date.now() })).slice(-MAX_MESSAGES);
-          if (!msgs.length) return send(res, 400, { error: '가져올 대화가 없어요.' });
-          do { rid = `@${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`; } while (fs.existsSync(convFile(rid)));
-          newDir = path.join(ROOMS_DIR, `chat-${rid.slice(1)}`);
-          fs.mkdirSync(newDir, { recursive: true });
-          // 1) 결과물 풀기 (folder/ 아래)
-          const budget = { left: ZIP_MAX_BYTES };
-          let copied = 0;
-          for (const [rel, e] of byName) {
-            if (!rel.startsWith('folder/')) continue;
-            const sub = rel.slice(7);
-            const dest = path.join(newDir, sub);
-            if (!sub || !dest.startsWith(newDir + path.sep)) continue;
-            await zipTool.extractEntry(tmp, e, dest, budget);
-            copied++;
-          }
-          // 2) 크루: 없으면 지침과 함께 새로 만든다. 이미 있으면 그 크루에 방만 붙이고 지침은 덮어쓰지 않는다
-          let crewCreated = false;
-          if (!listProjects().includes(crew)) {
-            const crewDir = path.join(CREWS_DIR, crew);
-            fs.mkdirSync(crewDir, { recursive: true });
-            const mdEntry = byName.get('crew/CLAUDE.md');
-            if (mdEntry) {
-              const md = (await zipTool.readEntry(tmp, mdEntry, 200000)).toString('utf8').slice(0, 50000);
-              if (md.trim()) fs.writeFileSync(path.join(crewDir, 'CLAUDE.md'), md.endsWith('\n') ? md : md + '\n');
+          const files = [];
+          let bytes = 0;
+          let tooBig = false;
+          let bigFile = '';
+          const walk = (d, rel) => {
+            for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+              if (tooBig) return;
+              const name = e.name;
+              if (e.isSymbolicLink() || name === 'node_modules' || name === '.git' || name === '.env' || GH_SECRET.test(name)) continue;
+              if (legacy && d === srcDir && (name === 'CLAUDE.md' || name.startsWith('.') || ROOM_DIR_RE.test(name))) continue;
+              const abs = path.join(d, name);
+              if (e.isDirectory()) walk(abs, `${rel}${name}/`);
+              else if (e.isFile()) {
+                const st0 = fs.statSync(abs);
+                const size = st0.size;
+                bytes += size;
+                if (size > EXPORT_LIMITS.file) bigFile = `${rel}${name}`;
+                if (bytes > EXPORT_LIMITS.total) { tooBig = true; return; }
+                files.push({ abs, rel: `${rel}${name}`, size, mtimeMs: st0.mtimeMs });
+              }
             }
-            crewCreated = true;
+          };
+          try { if (srcDir) walk(srcDir, ''); } catch { /* 읽을 수 없는 폴더는 건너뛴다 */ }
+          const mb = (n) => Math.round(n / 1048576);
+          const tooLarge = (code, extra = {}) => send(res, 413, { error: '내보낼 결과물이 가져올 수 있는 크기를 넘어요.', code, max: EXPORT_LIMITS.upload, ...extra });
+          if (tooBig) return tooLarge('export-too-big', { size: bytes });
+          if (bigFile) return tooLarge('export-file-too-big', { file: bigFile, max: EXPORT_LIMITS.file });
+          // 가져오기가 거절할 이름·개수가 있으면 처음부터 만들지 않는다 (만들어도 다시 가져올 수 없다)
+          if (files.length + 3 > EXPORT_LIMITS.entries) return send(res, 413, { error: '파일이 너무 많아요.', code: 'export-too-many', max: EXPORT_LIMITS.entries });
+          const seenNames = new Set();
+          for (const f of files) {
+            const rel = `folder/${f.rel}`;
+            const np = !zipTool.safeRel(rel) ? 'unsafe-name' : zipScan.nameProblem(rel);
+            const dk = zipScan.dupKey(rel);
+            if (np) return send(res, 422, { error: '이름이 문제가 되는 파일이 있어요.', code: 'export-bad-name', file: f.rel });
+            if (seenNames.has(dk)) return send(res, 422, { error: '이름이 겹치는 파일이 있어요.', code: 'export-bad-name', file: f.rel });
+            seenNames.add(dk);
           }
-          // 3) 인계 노트: Claude에게 요약을 맡기고, 실패하면 최근 대화를 그대로 붙인다
-          const lines = msgs.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text)
-            .map((m) => `${m.role === 'user' ? '사용자' : '크루'}: ${m.text.replace(/\s+/g, ' ').slice(0, 600)}`);
-          let transcript = lines.join('\n');
-          if (transcript.length > 24000) transcript = '(앞부분 생략)\n' + transcript.slice(-24000);
-          const hid = `handoff-${Date.now()}`;
-          const sum = await askOnce({
-            cwd: newDir,
-            prompt: `아래는 사용자와 크루의 지난 대화예요. 새 채팅방에서 바로 이어서 일할 수 있도록 인계 노트를 써 주세요.\n"목표", "정해진 것", "진행 상황", "다음 할 일", "만든 파일" 다섯 부분으로 각 1~4줄, 전체 900자 안쪽으로 써요. 대화에 없는 내용은 지어내지 말고, 파일을 고치거나 명령을 실행하지 않아요.\n\n${transcript}`,
-            system: '당신은 대화를 인계 노트로 정리하는 도우미예요. 인사말 없이 노트 본문만 써요.',
-            model: settings.model, effort: settings.effort, runId: hid,
-          });
-          running.delete(hid);
-          const summarized = !!(sum.text && !sum.error && !sum.stopped);
-          const note = summarized ? sum.text.slice(0, 3000) : `(자동 요약에 실패해서 최근 대화를 그대로 붙였어요)\n${lines.slice(-10).join('\n')}`;
-          // 4) 새 방 저장
-          const conv = loadConv(rid);
-          conv.participants = [crew];
-          conv.crew = crew;
-          if (cv.prefs && typeof cv.prefs === 'object' && !Array.isArray(cv.prefs) && JSON.stringify(cv.prefs).length < 4000) conv.prefs = cv.prefs;
-          conv.dir = `chat-${rid.slice(1)}`;
-          conv.messages = msgs;
-          conv.messages.push({ role: 'notice', text: `📥 다른 감자에서 가져왔어요${copied ? ` (결과물 ${copied}개)` : ''}\n\n${note}`, ts: Date.now() });
-          conv.handoff = note;
-          saveConv(rid);
+          let crewMd = '';
+          try { crewMd = fs.readFileSync(path.join(crewDir || '', 'CLAUDE.md'), 'utf8').slice(0, 50000); } catch { /* 지침이 없는 크루 */ }
           let meta = null;
-          if (manifest.meta && typeof manifest.meta === 'object' && !Array.isArray(manifest.meta)) {
-            meta = {};
-            for (const [k, v] of Object.entries(manifest.meta).slice(0, 10)) if (typeof v === 'string') meta[String(k).slice(0, 30)] = v.slice(0, 500);
+          try {
+            const raw = JSON.parse(url.searchParams.get('meta') || 'null');
+            if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+              meta = {};
+              for (const [k, v] of Object.entries(raw).slice(0, 10)) if (typeof v === 'string') meta[String(k).slice(0, 30)] = v.slice(0, 500);
+            }
+          } catch { /* 이름·아이콘 정보는 없어도 된다 */ }
+          const manifest = {
+            format: 'gamja-room', version: 1, exportedAt: new Date().toISOString(), crew: members[0] || crewOf(room),
+            title: String(url.searchParams.get('title') || '').slice(0, 80), meta, legacy, files: files.length,
+          };
+          const convBuf = Buffer.from(JSON.stringify({ messages, prefs: conv.prefs && typeof conv.prefs === 'object' ? conv.prefs : null }));
+          if (convBuf.length > EXPORT_LIMITS.conv) return tooLarge('export-conv-too-big', { size: convBuf.length, max: EXPORT_LIMITS.conv });
+          const entries = [
+            { name: 'gamja-room.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) },
+            { name: 'conversation.json', data: convBuf },
+            ...(crewMd ? [{ name: 'crew/CLAUDE.md', data: Buffer.from(crewMd) }] : []),
+            ...files.map((f) => ({ name: `folder/${f.rel}`, file: f.abs, size: f.size, mtimeMs: f.mtimeMs })),
+          ];
+          // 압축률: 가져오기는 1MB 넘는 파일이 압축된 크기의 100배를 넘거나, 전체가 zip 크기의 100배를 넘으면 거절한다.
+          // 같은 글자가 반복되는 큰 파일·대화는 이 검사에 걸리므로, 내보내기도 같은 기준으로 미리 보고 처음부터 알린다.
+          // 싸게 표본으로 훑어 보고(40배 넘으면 위험 후보), 후보만 실제로 줄여 본다
+          {
+            const RATIO = EXPORT_LIMITS.ratio;
+            let compTotal = 0;
+            let rawTotal = 0;
+            const bad = (file) => tooLarge('export-too-compressible', { file, size: 0 });
+            const one = async (name, size, src, isFile) => {
+              rawTotal += size;
+              if (size <= 1048576) { compTotal += size; return null; }
+              let c;
+              const r = isFile ? zipTool.sampleRatio(src, size) : 0;
+              if (!isFile || r > 40) c = await zipTool.deflatedSize(src);
+              else c = Math.ceil(size / Math.max(r, 1));
+              compTotal += c;
+              return size > RATIO * Math.max(c, 1) ? name : null;
+            };
+            const hit = await one('conversation.json', convBuf.length, convBuf, false);
+            if (hit) return bad(hit);
+            // 시간 제한이 되면 읽기가 멈춰 있어도 기다리지 않고 멈춘다 (원본은 읽기만 한다)
+            try { for (const f of files) { const h = await Promise.race([one(f.rel, f.size, f.abs, true), aborted]); if (h) return bad(h); } }
+            catch (e) { if (timedOut) return send(res, 503, EXPORT_TIMEOUT_BODY); throw e; }
+            if (rawTotal > 1048576 && rawTotal > RATIO * Math.max(compTotal, 1)) return bad('');
           }
-          return send(res, 200, { room: rid, crew, crewCreated, copied, summarized, title: String(manifest.title || '').slice(0, 80), meta });
-        } catch (e) {
-          if (newDir && !fs.existsSync(convFile(rid))) fs.rmSync(newDir, { recursive: true, force: true }); // 중간에 실패하면 만들다 만 방은 치운다
-          console.error('가져오기 실패:', e.message);
-          if (!res.headersSent) return send(res, 500, { error: `가져오지 못했어요: ${e.message}` });
-        } finally { fs.rmSync(tmp, { force: true }); }
+          // 압축이 하나도 안 된다고 가정한 최대 크기. 이것이 400MB 이하면 어떤 경우에도 가져올 수 있는 크기다
+          const bound = zipTool.zipSizeUpperBound(entries.map((e) => ({ nameBytes: Buffer.byteLength(e.name), size: e.data ? e.data.length : e.size })));
+          if (url.searchParams.get('check')) {
+            if (bound > EXPORT_LIMITS.upload) return tooLarge('export-too-big', { size: bound });
+            return send(res, 200, { bytes, files: files.length, bound, max: EXPORT_LIMITS.upload });
+          }
+          if (bound > EXPORT_LIMITS.upload) return tooLarge('export-too-big', { size: bound });
+          const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-').slice(0, 16);
+          if (isPrepare) {
+            // 먼저 임시 파일로 끝까지 만들고 확인한 뒤에 내려받게 한다: 도중에 문제가 생기면 원인을 알려 줄 수 있고, 내려받는 속도와 상관없이 폴더 잠금이 짧게 끝난다
+            cleanExportTmp();
+            if (!trimExportJobs()) { return send(res, 409, { error: '다른 내보내기 파일을 내려받는 중이에요. 끝난 뒤에 다시 해 주세요.', code: 'export-running' }); }
+            if (timedOut) return send(res, 503, EXPORT_TIMEOUT_BODY);
+            fs.mkdirSync(EXPORT_TMP, { recursive: true });
+            const token = crypto.randomBytes(16).toString('hex');
+            const file = path.join(EXPORT_TMP, `${token}.zip`);
+            exportTmpBuilding.add(`${token}.zip`);
+            const ws = fs.createWriteStream(file);
+            const ended = new Promise((ok2, bad2) => { ws.once('finish', ok2); ws.once('error', bad2); ws.once('close', () => bad2(new Error('쓰기가 끊겼어요.'))); });
+            ended.catch(() => {});
+            cancelBuild = () => ws.destroy(); // 시간이 지나면 쓰기를 끊는다 → 만들기가 멈추고 아래 catch에서 임시 파일을 지운다
+            try {
+              await zipTool.writeZip(ws, entries, { maxBytes: EXPORT_LIMITS.upload, verify: { ratio: EXPORT_LIMITS.ratio, fileMax: EXPORT_LIMITS.file, totalMax: EXPORT_LIMITS.total } });
+              ws.end();
+              await ended;
+              cancelBuild = null;
+              const size = verifyExportZip(file, entries);
+              exportJobs.set(token, { file, name: `gamja-chat-${stamp}.zip`, size, made: Date.now(), exp: Date.now() + EXPORT_TTL_MS, downloading: 0, done: false, sid: sessionKey(req) });
+              return send(res, 200, { token, bytes: size, files: files.length });
+            } catch (e) {
+              ws.destroy();
+              try { fs.rmSync(file, { force: true }); } catch { /* 시작할 때 정리한다 */ }
+              const f = timedOut ? { status: 503, ...EXPORT_TIMEOUT_BODY } : exportFailure(e);
+              console.error(`내보내기 중단(${timedOut ? 'timeout' : e.code || 'error'}${e.entry ? ': ' + e.entry : ''}): ${e.message}`);
+              return send(res, f.status, { error: f.error, code: f.code, file: f.file, max: f.max });
+            } finally { cancelBuild = null; exportTmpBuilding.delete(`${token}.zip`); }
+          }
+          if (timedOut) return send(res, 503, EXPORT_TIMEOUT_BODY);
+          cancelBuild = () => res.destroy(); // 시간이 지나면 연결을 끊어 만들기를 멈춘다 (아래 catch)
+          res.writeHead(200, {
+            'Content-Type': 'application/zip', 'Cache-Control': 'no-store',
+            'Content-Disposition': `attachment; filename="gamja-chat-${stamp}.zip"; filename*=UTF-8''${encodeURIComponent(`gamja-chat-${stamp}.zip`)}`,
+          });
+          try { await zipTool.writeZip(res, entries, { maxBytes: EXPORT_LIMITS.upload, verify: { ratio: EXPORT_LIMITS.ratio, fileMax: EXPORT_LIMITS.file, totalMax: EXPORT_LIMITS.total } }); res.end(); }
+          catch (e) {
+            // 사전 확인 뒤에 파일이 바뀌었거나 한도를 넘으면 여기서 멈춘다. zip의 끝(중앙 디렉터리)을 쓰기 전이라 열 수 있는 zip은 만들어지지 않는다
+            console.error(`내보내기 중단(${timedOut ? 'timeout' : e.code || 'error'}${e.entry ? ': ' + e.entry : ''}): ${e.message}`);
+            res.destroy();
+          } finally { cancelBuild = null; }
+          return;
+        } finally { exportRelease(); }
+      }
+      // 만들어 둔 내보내기 zip 내려받기 (prepare로 만든 것). 다 받으면 임시 파일을 지운다
+      if (p === '/api/rooms/export/file' && req.method === 'GET') {
+        const job = exportJobs.get(String(url.searchParams.get('token') || ''));
+        if (!job || job.done || job.exp < Date.now() || !job.sid || !safeEqual(job.sid, sessionKey(req)) || !fs.existsSync(job.file)) return send(res, 404, { error: '내보낸 파일이 없어졌어요. 다시 내보내 주세요.', code: 'export-expired' });
+        const token = String(url.searchParams.get('token'));
+        let size;
+        try { size = fs.statSync(job.file).size; } catch { return send(res, 404, { error: '내보낸 파일이 없어졌어요. 다시 내보내 주세요.', code: 'export-expired' }); }
+        job.downloading++;
+        let counted = true;
+        res.once('close', () => { if (counted) { counted = false; job.downloading--; if (job.done && job.downloading === 0) dropExportJob(token); } });
+        res.writeHead(200, {
+          'Content-Type': 'application/zip', 'Cache-Control': 'no-store', 'Content-Length': size,
+          'Content-Disposition': `attachment; filename="${job.name}"; filename*=UTF-8''${encodeURIComponent(job.name)}`,
+        });
+        const rs = fs.createReadStream(job.file);
+        rs.on('error', () => res.destroy());
+        res.once('close', () => rs.destroy());
+        res.on('finish', () => { job.done = true; if (counted) { counted = false; job.downloading--; } dropExportJob(token); }); // 끝까지 보냈을 때만 이 파일만 지운다. 끊기면 기한(15분) 안에는 다시 받을 수 있다
+        rs.pipe(res);
         return;
       }
+      // 채팅 가져오기 (2단계): 검사 → 미리보기 → 설치/취소. 항상 새 크루로 설치한다 (tools/import-flow.js)
+      if (await importFlow.handle(req, res, p, url)) return;
       // 새 채팅으로 이어가기: 이 방의 대화를 요약한 인계 노트와 결과물(복사)을 가진 새 방을 만든다. 이전 방은 그대로 둔다
       if (p === '/api/rooms/continue' && req.method === 'POST') {
         const reqBody = await readBody(req);
@@ -2932,7 +3407,7 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/events' && req.method === 'GET') {
         // 🔔 감자 앱이 몇 초마다 묻는다: since 이후에 끝난 답변들
         const since = Number(url.searchParams.get('since')) || 0;
-        return send(res, 200, { now: Date.now(), events: doneEvents.filter((e) => e.ts > since), seen: seenMap }); // seen: 사용자가 방별로 마지막에 읽은 답의 시각 (감자 앱이 이미 읽은 답의 알림을 지울 때 쓴다)
+        return send(res, 200, { now: Date.now(), events: doneEvents.filter((e) => e.ts > since && !isQuarantinedName(e.project)), seen: publicSeen() }); // seen: 사용자가 방별로 마지막에 읽은 답의 시각 (감자 앱이 이미 읽은 답의 알림을 지울 때 쓴다)
       }
       if (p === '/api/status' && req.method === 'GET') {
         // 화면이 4초마다 확인하는 가벼운 상태 (새 메시지·진행 중 작업이 생겼는지)
@@ -2994,7 +3469,11 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/api/chat' && req.method === 'POST') {
         if (restarting) return send(res, 503, { error: '서버가 재시작 중이에요. 잠시 후 다시 보내 주세요.' });
-        return handleChat(req, res, await readBody(req));
+        const chatBody = await readBody(req);
+        { const mb = maint.chatBlocked(chatBody.project); if (mb) return send(res, mb.status, mb.body, mb.headers); }
+        { let cwd0 = null; try { cwd0 = resolveProject(String(chatBody.project || '')); } catch { cwd0 = null; }
+          if (cwd0 && exportFolderLocked(cwd0)) return send(res, 409, { error: '이 채팅을 내보내는 중이에요. 잠시 뒤에 보내 주세요.', code: 'export-running' }); }
+        return handleChat(req, res, chatBody);
       }
       if (p === '/api/stop' && req.method === 'POST') {
         const { runId } = await readBody(req);
@@ -3012,6 +3491,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return serveStatic(req, res, p);
     send(res, 405, 'method not allowed');
   } catch (e) {
+    if (e && e.code === 'GAMJA_CONV_UNREADABLE') { if (!res.headersSent) send(res, 423, { error: e.message, code: 'conv-unreadable', reason: e.reason }); else res.end(); return; }
+    if (e && e.code === 'GAMJA_LOCKED') { if (!res.headersSent) send(res, 423, { error: e.message, code: 'locked' }); else res.end(); return; }
     if (!res.headersSent) send(res, 400, { error: e.message });
     else res.end();
   }
@@ -3026,12 +3507,49 @@ function purgeTrash() {
     const m = /(\d{4})-(\d\d)-(\d\d)-(\d\d)-(\d\d)-(\d\d)/.exec(s);
     return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : 0;
   };
+  // 읽을 수 없는 대화(깨진 JSON·크기 초과·읽기 오류)와 그 곁의 폴더는 30일이 지나도 지우지 않는다. 사용자가 직접 지우거나 관리자가 처리할 때까지 보존
+  const held = new Set(); // 지우지 않을 크루 폴더 이름 "크루_시각"
+  const keep = (dir, n) => {
+    const full = path.join(dir, n);
+    if (dir === ROOM_TRASH_DIR) {
+      const r = readConvPath(path.join(full, 'conv.json'));
+      return r.state === 'failed' || (r.state === 'missing' && fs.existsSync(path.join(full, 'folder')));
+    }
+    if (dir === ARCHIVE_DIR) {
+      if (!/\.json$/.test(n)) return false;
+      if (readConvPath(full).state === 'failed') return true;
+      const m = /^(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)__(.+)\.json$/.exec(n); // 같은 크루·같은 때에 지워진 다른 기록도, 읽을 수 없는 기록이 있으면 함께 둔다
+      if (!m) return false;
+      let rid; try { rid = decodeURIComponent(m[2]); } catch { return false; }
+      const crew = crewOf(rid);
+      return !!crew && held.has(`${crew}_${m[1]}`);
+    }
+    if (dir === TRASH_DIR) {
+      if (held.has(n)) return true;
+      if (/\.conversation\.json$/.test(n)) return readConvPath(full).state === 'failed';
+    }
+    return false;
+  };
+  {
+    let af = [];
+    try { af = fs.readdirSync(ARCHIVE_DIR); } catch { af = []; }
+    for (const f of af) {
+      const m = /^(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)__(.+)\.json$/.exec(f);
+      if (!m || readConvPath(path.join(ARCHIVE_DIR, f)).state !== 'failed') continue;
+      let rid; try { rid = decodeURIComponent(m[2]); } catch { continue; }
+      const crew = crewOf(rid);
+      if (crew) held.add(`${crew}_${m[1]}`);
+    }
+  }
   const sweep = (dir, pick) => {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { return; }
     for (const n of names) {
       const t = pick(n);
-      if (t && t < limit) { try { fs.rmSync(path.join(dir, n), { recursive: true, force: true }); } catch { /* 못 지우면 다음에 다시 */ } }
+      if (t && t < limit) {
+        if (keep(dir, n)) { console.error(`휴지통 정리: 읽을 수 없는 대화라 지우지 않고 보존해요: ${n}`); continue; }
+        try { fs.rmSync(path.join(dir, n), { recursive: true, force: true }); } catch { /* 못 지우면 다음에 다시 */ }
+      }
     }
   };
   sweep(TRASH_DIR, (n) => {
@@ -3058,7 +3576,7 @@ if (PORT === 3000 && SUPERVISED) {
 }
 // 옮기지 못한 경우를 위해: 3000으로 떠 있으면 26514도 같이 연다
 if (PORT === 3000) {
-  const alt = http.createServer(server.listeners('request')[0]);
+  const alt = http.createServer(HTTP_OPTS, server.listeners('request')[0]);
   alt.on('error', (e) => console.error(`보조 포트 26514를 열지 못했어요: ${e.message}`));
   alt.listen(26514, HOST);
 }
@@ -3069,7 +3587,12 @@ server.listen(PORT, HOST, () => {
     for (const d of [DATA_DIR, CREWS_DIR, WORK_BASE, TRASH_DIR]) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { console.error(`폴더를 만들지 못했어요: ${d} (${e.message})`); } }
   }
   purgeTrash();
+  cleanExportTmp();
+  setInterval(writeActivityState, 500).unref();
+  importFlow.startup(); // 가져오기 임시 파일 정리 (2단계)
+  importFlow.recover().catch((e) => console.error('가져오기 복구 오류:', e.message)); // 끝나기 전에는 관련 API가 503 (3단계)
   setInterval(purgeTrash, 6 * 3600 * 1000).unref();
+  setInterval(cleanExportTmp, 5 * 60 * 1000).unref(); // 내려받지 않고 남은 임시 zip을 기한(15분)이 지나면 지운다
   // 재시작/복구 결과를 채팅에 알림
   let pending = null;
   try { pending = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8')); } catch {}

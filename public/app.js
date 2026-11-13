@@ -318,7 +318,7 @@
     if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('unauthorized'); }
     const data = await r.json().catch(() => ({}));
     if (data.code === 'lan-off') connPing(); // 폰에서 외부 접속을 껐다 → 안내줄을 바로 보여 준다
-    if (!r.ok) throw new Error(data.error || r.statusText);
+    if (!r.ok) { const e = new Error(data.code === 'conv-unreadable' ? window.GAMJA_I18N.t('err.convUnreadable') : data.code === 'export-running' && path !== '/api/rooms/export' ? window.GAMJA_I18N.t('export.writeWait') : (data.error || r.statusText)); e.code = data.code; e.data = data; throw e; }
     return data;
   }
 
@@ -360,6 +360,9 @@
     // 접속하면 항상 채팅 목록으로. 단, 알림을 눌러 특정 크루로 들어왔거나, 새로고침(감자알 업데이트 등)이면 있던 곳을 그대로 유지한다
     if (!firstOpen) return;
     firstOpen = false;
+    api('/api/perm/migration-notice').then((n) => { // 예전 "항상 허용" 규칙을 초기화했다면 한 번만 알린다
+      if (n && n.show) { alert(t('perm.resetNotice', { n: n.count })); api('/api/perm/migration-notice/ack', {}).catch(() => {}); }
+    }).catch(() => {});
     let last = null;
     try { last = sessionStorage.getItem('cc:tab'); } catch { /* 저장소를 못 쓰면 채팅 목록 */ }
     if (deepLink || last === 'room') { deepLink = false; showTab(null); }
@@ -910,7 +913,7 @@
     'function limit(){if(s<=1){s=1;x=0;y=0;return;}var mx=img.offsetWidth*(s-1)/2+40,my=img.offsetHeight*(s-1)/2+40;x=Math.max(-mx,Math.min(mx,x));y=Math.max(-my,Math.min(my,y));}',
     'function begin(t){var r=img.getBoundingClientRect(),p=mid(t),cx=r.left+r.width/2,cy=r.top+r.height/2;',
     'm={d:t.length>1?dist(t):0,s:s,n:t.length,cx:cx-x,cy:cy-y,qx:(p.x-cx)/s,qy:(p.y-cy)/s};}',
-    'document.addEventListener("touchstart",function(e){e.preventDefault();',
+    'document.addEventListener("touchstart",function(e){',
     'if(e.touches.length===1){var n=Date.now();if(n-last<300){s=s>1?1:2.5;if(s===1){x=0;y=0;}limit();ap();}last=n;}',
     'begin(e.touches);},{passive:false});',
     'document.addEventListener("touchmove",function(e){e.preventDefault();if(!m||!e.touches.length)return;',
@@ -918,7 +921,7 @@
     'if(m.n>1)s=Math.max(1,Math.min(MAX,m.s*dist(e.touches)/m.d));',
     'else if(s<=1)return;',
     'var p=mid(e.touches);x=p.x-m.cx-s*m.qx;y=p.y-m.cy-s*m.qy;limit();ap();},{passive:false});',
-    'function end(e){e.preventDefault();if(e.touches.length){begin(e.touches);}else{m=null;if(s<1.03){s=1;x=0;y=0;}limit();ap();}}',
+    'function end(e){if(e.touches.length){begin(e.touches);}else{m=null;if(s<1.03){s=1;x=0;y=0;}limit();ap();}}',
     'document.addEventListener("touchend",end,{passive:false});document.addEventListener("touchcancel",end,{passive:false});})();',
   ].join('');
   // 웹페이지·글 안에서 도는 두 손가락 확대·축소 (한 손가락 스크롤은 그대로)
@@ -928,8 +931,10 @@
     'addEventListener("touchmove",function(e){if(m&&e.touches.length===2){e.preventDefault();z=Math.max(.5,Math.min(4,m.z*d(e.touches)/m.d));h.style.zoom=z;}},{passive:false});' +
     'addEventListener("touchend",function(e){if(e.touches.length<2)m=null;},{passive:true});})();';
   // 파일 하나 열기: 종류마다 보는 방법이 다르다
+  let viewDl = null; // 지금 보고 있는 결과물의 내려받기 정보 { url, name }
   function openResult(f) {
     const url = madeUrl(f);
+    viewDl = { url, name: f.path.split('/').pop() };
     const abs = location.origin + url;
     const ext = fileExt(f.path);
     const page = (inner, zoom) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>` +
@@ -970,6 +975,15 @@
     if (what.doc) { frame.srcdoc = what.doc; } else { frame.removeAttribute('srcdoc'); frame.src = what.src; }
     viewEl.classList.remove('hidden');
   }
+  $('viewDownload').onclick = () => {
+    if (!viewDl) return;
+    const a = document.createElement('a');
+    a.href = viewDl.url;
+    a.download = viewDl.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
   $('viewBack').onclick = () => { viewEl.classList.add('hidden'); const fr = $('viewFrame'); fr.removeAttribute('srcdoc'); fr.src = 'about:blank'; };
   $('madeBtn').onclick = openMade;
   $('madeBack').onclick = () => madeEl.classList.add('hidden');
@@ -1603,7 +1617,7 @@
       const left = Math.max(0, 30 - days);
       const when = days === 0 ? T('trash.today') : T('trash.ago', { d: days });
       return `<div class="tool-card"><i class="fr-av">${escapeHtml(p.icon)}</i><div class="tool-mid"><b>${escapeHtml(p.text)}</b>` +
-        `<small>${escapeHtml(T('trash.meta', { when, left, n: it.messages }))}</small></div>` +
+        `<small>${escapeHtml(it.damaged ? T('trash.damaged', { when }) : T('trash.meta', { when, left, n: it.messages }))}</small></div>` +
         `<div class="trash-btns"><button class="tool-btn" type="button" data-restore="${escapeHtml(it.id)}">${escapeHtml(T('trash.restore'))}</button>` +
         `<button class="tool-btn danger" type="button" data-purge="${escapeHtml(it.id)}" data-name="${escapeHtml(p.text)}">${escapeHtml(T('trash.purge'))}</button></div></div>`;
     }).join('') : `<p class="empty">${escapeHtml(T('trash.empty'))}</p>`;
@@ -1644,7 +1658,7 @@
       const when = days === 0 ? T('trash.today') : T('trash.ago', { d: days });
       const name = roomText(it.room);
       return `<div class="tool-card"><i class="fr-av">${escapeHtml(crewParts(it.crew).icon)}</i><div class="tool-mid"><b>${escapeHtml(name)}</b>` +
-        `<small>${escapeHtml(T('rtrash.meta', { when, left, n: it.messages }))}</small>` +
+        `<small>${escapeHtml(it.damaged ? T('trash.damaged', { when }) : T('rtrash.meta', { when, left, n: it.messages }))}</small>` +
         (it.last ? `<small>${escapeHtml(plain(it.last).slice(0, 60))}</small>` : '') + `</div>` +
         `<div class="trash-btns"><button class="tool-btn" type="button" data-rrestore="${escapeHtml(it.id)}">${escapeHtml(T('trash.restore'))}</button>` +
         `<button class="tool-btn danger" type="button" data-rpurge="${escapeHtml(it.id)}" data-room="${escapeHtml(it.room)}" data-name="${escapeHtml(name)}">${escapeHtml(T('trash.purge'))}</button></div></div>`;
@@ -1797,8 +1811,6 @@
     proUi = !!d.info.pro; // 개발자 모드 (Termux 설치 명령 등을 보여 줄지)
     $('installRowTitle').textContent = window.GAMJA_I18N.t('install.row');
     $('installRowSub').textContent = window.GAMJA_I18N.t('install.rowSub');
-    $('permRowTitle').textContent = window.GAMJA_I18N.t('perm.rowTitle');
-    $('permRowSub').textContent = window.GAMJA_I18N.t('perm.rowSub');
     $('extRowTitle').textContent = window.GAMJA_I18N.t('ext.rowTitle');
     $('extRowSub').textContent = window.GAMJA_I18N.t('ext.rowSub');
     if (window.GamjaApp) $('infoApp').textContent = window.GamjaApp.appVersion();
@@ -2397,12 +2409,21 @@
     if (!history.length) return alert('아직 내보낼 대화가 없어요.');
     const q = `room=${encodeURIComponent(project)}`;
     let info;
-    try { info = await api(`/api/rooms/export?${q}&check=1`); } catch (err) { return alert(err.message); }
+    const exportErr = (err) => {
+      const key = err.code && `export.err.${err.code}`;
+      const d = err.data || {};
+      alert(key && T(key) !== key ? T(key, { max: fmtSize(d.max || 0), size: fmtSize(d.size || 0), file: d.file || '' }) : (err.message || T('export.err.export-failed')));
+    };
+    try { info = await api(`/api/rooms/export?${q}&check=1`); } catch (err) { return exportErr(err); }
     if (!(await gSheet({ title: T('room.export'), message: T('room.exportConfirm', { files: info.files, size: fmtSize(info.bytes) }), ok: T('room.exportOk') }))) return;
     const meta = store.get(`cc:crew:${crewOf(project)}`, null);
     const title = getRoomTitles()[project] || '';
+    // 먼저 감자알이 zip을 끝까지 만들고 확인한 뒤에 내려받는다: 도중에 문제가 생기면 이유를 알려 줄 수 있다
+    toast(T('room.exportPreparing'));
+    let made;
+    try { made = await api(`/api/rooms/export?${q}&prepare=1&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`); } catch (err) { return exportErr(err); }
     const a = document.createElement('a');
-    a.href = `/api/rooms/export?${q}&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`;
+    a.href = `/api/rooms/export/file?token=${encodeURIComponent(made.token)}`;
     a.download = '';
     window.gaTrack('chat_export');
     document.body.appendChild(a);
@@ -2410,37 +2431,202 @@
     a.remove();
     alert(T('room.exportStarted'));
   };
-  // 채팅 가져오기: 내보낸 zip으로 새 채팅방을 만든다 (대화 전체 + 결과물, 크루가 없으면 지침과 함께 만든다)
+  // 채팅 가져오기 (2단계): 검사 → 미리보기 → 설치. 항상 새 크루로 설치한다. 미리보기의 글은 모두 textContent로만 넣는다
+  const IMPORT_PENDING = 'gamja.importPending';
+  const impErr = (r, fallback) => {
+    const T = window.GAMJA_I18N.t;
+    const k = 'import.err.' + (r && r.code);
+    return r && r.code && T(k) !== k ? T(k) : (r && r.error) || fallback || '';
+  };
+  async function importCall(path, opt = {}) {
+    let resp = await fetch(path, { credentials: 'same-origin', ...opt });
+    // 감자알이 복구 중(503)이거나 마무리 중(409 busy)이면 몇 번 기다렸다가 다시 보낸다 (본문이 없는 요청이나 작은 요청만)
+    for (let i = 0; i < 5 && (resp.status === 503 || (resp.status === 409 && opt.method !== 'POST')) && typeof opt.body !== 'object' && !(opt.body && opt.body.size > 1e6); i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      resp = await fetch(path, { credentials: 'same-origin', ...opt });
+    }
+    if (resp.status === 401) { showLogin(); return { status: 401, r: {} }; }
+    return { status: resp.status, r: await resp.json().catch(() => ({})) };
+  }
+  const importPost = (what, id) => importCall('/api/rooms/import/' + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ importId: id }) });
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  // 설치가 끝난 뒤: 새 크루의 이름·아이콘은 감자알이 정한 것을 쓰고, 폴더 이름은 보이지 않는다
+  async function finishImport(r) {
+    const T = window.GAMJA_I18N.t;
+    sessionStorage.removeItem(IMPORT_PENDING);
+    window.gaTrack('chat_import');
+    store.set(`cc:crew:${r.crewFolder}`, { ...(r.meta || {}), name: r.displayName });
+    rememberRoomCrew(r.roomId, r.crewFolder);
+    const titles = getRoomTitles();
+    titles[r.roomId] = (r.title || T('import.title.room')).slice(0, 40);
+    store.set('cc:roomTitle', titles);
+    newChatEl.classList.add('hidden');
+    roomEl.classList.add('hidden');
+    await loadProjects();
+    await refreshChats();
+    selectProject(r.roomId);
+    toast(T('import.done'));
+  }
+  // 연결이 끊긴 뒤에는 다시 설치하지 않고 먼저 상태를 물어본다 (설치 중이면 끝날 때까지 기다린다).
+  // 결과가 분명할 때만 done/failed로 답한다. 시간이 다 되도록 알 수 없으면 실패로 단정하지 않고 { unclear: true }
+  // (final: 감자알이 "설치는 끝났지만 지금 상태는 확인 못 함"이라고 확정해서 알려 준 경우)
+  async function importWaitResult(id, tries = 40) {
+    for (let i = 0; i < tries; i++) {
+      let s;
+      try { s = await importCall('/api/rooms/import/status?id=' + id); } catch { s = null; }
+      if (s && s.r.status === 'done') return s.r;
+      if (s && s.r.status === 'unclear') return { unclear: true, final: true };
+      if (s && (s.r.status === 'failed' || s.status === 410 || s.status === 403)) return { failed: true, ...s.r };
+      await new Promise((ok) => setTimeout(ok, 3000));
+    }
+    return { unclear: true, final: false };
+  }
+  // 결과가 불분명할 때: 실패라고 말하지 않고, 기록을 남겨 둔 채 감자가 천천히 계속 확인한다 (15초마다 최대 10분)
+  let importBg = false;
+  async function importUnclear(id, final) {
+    const T = window.GAMJA_I18N.t;
+    if (final) {
+      sessionStorage.removeItem(IMPORT_PENDING);
+      alert(T('import.err.unclear'));
+      await loadProjects();
+      await refreshChats();
+      return;
+    }
+    alert(T('import.pending'));
+    if (importBg) return;
+    importBg = true;
+    try {
+      for (let i = 0; i < 40 && sessionStorage.getItem(IMPORT_PENDING) === id; i++) {
+        await new Promise((ok) => setTimeout(ok, 15000));
+        const r = await importWaitResult(id, 1);
+        if (r.unclear && !r.final) continue;
+        if (r.unclear) { await importUnclear(id, true); break; }
+        if (r.failed) { sessionStorage.removeItem(IMPORT_PENDING); alert(impErr(r, T('import.err.install-failed'))); break; }
+        await finishImport(r);
+        break;
+      }
+    } finally { importBg = false; }
+  }
+  // 미리보기 시트: 확인 체크를 해야 설치 버튼이 켜진다. 결과는 true(설치)/false(취소)
+  function importPreview(info) {
+    const T = window.GAMJA_I18N.t;
+    return new Promise((resolve) => {
+      const dim = mk('div', 'sheet-dim ui');
+      const card = mk('div', 'sheet-card import-pv');
+      const done = (v) => { dim.remove(); resolve(v); };
+      card.appendChild(mk('div', 'sheet-grab'));
+      card.appendChild(mk('h4', '', T('import.pv.title')));
+      const body = mk('div', 'import-pv-body');
+      const line = (cls, text) => body.appendChild(mk('p', cls, text));
+      line('import-pv-main', `${info.icon ? info.icon + ' ' : ''}${T('import.pv.newcrew', { name: info.displayName })}`);
+      line('', T('import.pv.newcrewNote'));
+      if (info.sameNameExists) line('import-pv-warn', T('import.pv.sameName'));
+      line('', T('import.pv.stats', { msgs: info.messageCount, files: info.filesTotal, size: fmtSize(info.bytes) }));
+      if (info.title) line('', T('import.pv.chatTitle', { title: info.title }));
+      const w = info.warnings || {};
+      if (w.terms && w.terms.length) line('import-pv-warn', T('import.pv.warnTerms', { list: w.terms.join(', ') }));
+      if (w.keyLike && w.keyLike.length) line('import-pv-warn', T('import.pv.warnKeys', { list: w.keyLike.join(', ') }));
+      if (w.urls && w.urls.length) line('import-pv-warn', T('import.pv.warnUrls', { list: w.urls.join(', ') }));
+      if (info.hiddenRemoved) line('import-pv-warn', T('import.pv.warnHidden', { n: info.hiddenRemoved }));
+      body.appendChild(mk('h5', '', T('import.pv.instr')));
+      body.appendChild(mk('pre', 'import-pv-pre', info.crewMd === null ? T('import.pv.noInstr') : info.crewMd));
+      body.appendChild(mk('h5', '', T('import.pv.files')));
+      const ul = mk('ul', 'import-pv-files');
+      for (const f of info.files) {
+        const li = mk('li', f.flag ? 'flag-' + f.flag : '', `${f.path} (${fmtSize(f.size)})`);
+        if (f.flag) li.appendChild(mk('small', '', ' · ' + T('import.pv.flag.' + f.flag)));
+        ul.appendChild(li);
+      }
+      if (info.filesTotal > info.files.length) ul.appendChild(mk('li', '', T('import.pv.more', { n: info.filesTotal - info.files.length })));
+      body.appendChild(ul);
+      if (info.skipped && info.skipped.length) {
+        body.appendChild(mk('h5', '', T('import.pv.skippedTitle', { n: info.skipped.length })));
+        const sk = mk('ul', 'import-pv-files');
+        for (const f of info.skipped.slice(0, 50)) {
+          const rk = 'import.pv.reason.' + f.reason;
+          sk.appendChild(mk('li', 'flag-skipped', `${f.path} · ${T(rk) !== rk ? T(rk) : T('import.pv.flag.skipped')}`));
+        }
+        body.appendChild(sk);
+      }
+      if (info.preview && info.preview.length) {
+        body.appendChild(mk('h5', '', T('import.pv.talk')));
+        for (const m of info.preview) body.appendChild(mk('p', 'import-pv-talk', `${m.role === 'user' ? '🙂' : '🥔'} ${m.text}`));
+      }
+      line('import-pv-sha', T('import.pv.sha', { sha: info.sha256 }));
+      line('import-pv-sha', T('import.pv.shaNote'));
+      line('import-pv-warn', T('import.pv.claudeNote'));
+      card.appendChild(body);
+      const lab = mk('label', 'import-pv-trust');
+      const cb = mk('input');
+      cb.type = 'checkbox';
+      lab.appendChild(cb);
+      lab.appendChild(mk('span', '', ' ' + T('import.pv.trust')));
+      card.appendChild(lab);
+      const row = mk('div', 'import-pv-btns');
+      const no = mk('button', 'sheet-sub-btn', T('import.pv.cancel'));
+      const yes = mk('button', 'sheet-main', T('import.pv.install'));
+      no.type = 'button';
+      yes.type = 'button';
+      yes.disabled = true;
+      cb.onchange = () => { yes.disabled = !cb.checked; };
+      no.onclick = () => done(false);
+      yes.onclick = () => { if (cb.checked) done(true); };
+      dim.onclick = (e) => { if (e.target === dim) done(false); };
+      row.appendChild(no);
+      row.appendChild(yes);
+      card.appendChild(row);
+      dim.appendChild(card);
+      document.body.appendChild(dim);
+    });
+  }
   $('importBtn').onclick = () => { $('importFile').value = ''; $('importFile').click(); };
   $('importFile').onchange = async () => {
     const T = window.GAMJA_I18N.t;
     const f = $('importFile').files[0];
     if (!f) return;
-    if (f.size > 1024 * 1024 * 1024) return alert(T('import.tooBig'));
-    if (!(await gSheet({ title: T('import.title'), message: T('import.confirm', { name: f.name, size: fmtSize(f.size) }), ok: T('import.ok') }))) return;
+    if (f.size > 400 * 1024 * 1024) return alert(T('import.tooBig'));
     const btn = $('importBtn');
     const label = btn.textContent;
-    btn.disabled = true;
-    btn.classList.add('busy');
-    btn.textContent = T('import.busy');
-    let r;
+    const busy = (text) => { btn.disabled = true; btn.classList.add('busy'); btn.textContent = text; };
+    const idle = () => { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; };
+    busy(T('import.inspecting'));
+    let ins;
     try {
-      const resp = await fetch('/api/rooms/import', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: f, credentials: 'same-origin' });
-      if (resp.status === 401) { showLogin(); return; }
-      r = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(r.error || resp.statusText);
-    } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
-    window.gaTrack('chat_import');
-    if (r.meta) store.set(`cc:crew:${r.crew}`, { ...r.meta, name: r.crew });
-    if (r.room.startsWith('@')) rememberRoomCrew(r.room, r.crew || '');
-    const titles = getRoomTitles();
-    titles[r.room] = (r.title || T('import.title.room')).slice(0, 40);
-    store.set('cc:roomTitle', titles);
-    newChatEl.classList.add('hidden');
-    roomEl.classList.add('hidden');
-    await refreshChats();
-    selectProject(r.room);
+      ins = await importCall('/api/rooms/import/inspect', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: f });
+    } catch (err) { idle(); return alert(err.message); }
+    if (ins.status === 401) return idle();
+    if (ins.status !== 200) { idle(); return alert(impErr(ins.r, 'HTTP ' + ins.status)); }
+    idle();
+    const id = ins.r.importId;
+    if (!(await importPreview(ins.r))) { importPost('cancel', id).catch(() => {}); return; }
+    busy(T('import.installing'));
+    sessionStorage.setItem(IMPORT_PENDING, id);
+    let res;
+    try {
+      const c = await importPost('commit', id);
+      if (c.status === 401) return idle();
+      res = c.status === 200 && c.r.status === 'done' ? c.r
+        : c.status === 200 && c.r.status === 'unclear' ? { unclear: true, final: true }
+        : c.r && c.r.code === 'committing' ? { unclear: true, final: false } // 이미 설치 중: 실패가 아니다
+        : { failed: true, ...c.r };
+    } catch {
+      btn.textContent = T('import.checking');
+      res = await importWaitResult(id); // 연결이 끊겼으면 다시 설치하지 않고 결과부터 확인
+    }
+    idle();
+    if (res.unclear) return importUnclear(id, res.final);
+    if (res.failed) { sessionStorage.removeItem(IMPORT_PENDING); return alert(impErr(res, T('import.err.install-failed'))); }
+    await finishImport(res);
   };
+  // 설치 도중 화면이 새로고침됐다면, 감자알에 결과를 물어서 이어 마무리한다
+  setTimeout(async () => {
+    const id = sessionStorage.getItem(IMPORT_PENDING);
+    if (!id) return;
+    const res = await importWaitResult(id);
+    if (res.unclear) await importUnclear(id, res.final);
+    else if (res.failed) sessionStorage.removeItem(IMPORT_PENDING);
+    else await finishImport(res);
+  }, 3000);
 
   // ---------- 🌐 외부 접속 주소 (https 터널) ----------
   const tunnelEl = $('tunnelPanel');
@@ -3075,7 +3261,7 @@
         for (const a of sending) {
           const r = await fetch('/api/upload' + q(), { method: 'POST', headers: { 'Content-Type': a.blob.type }, body: a.blob });
           const d = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(d.error || r.statusText);
+          if (!r.ok) throw new Error(d.code === 'export-running' ? window.GAMJA_I18N.t('export.writeWait') : (d.error || r.statusText));
           images.push(d.name);
         }
       } catch (err) {
@@ -3131,7 +3317,7 @@
         signal: abortCtl.signal,
       });
       if (r.status === 401) { rejected = true; showLogin(); throw new Error('로그인이 필요합니다'); }
-      if (!r.ok) { rejected = true; throw new Error((await r.json().catch(() => ({}))).error || r.statusText); }
+      if (!r.ok) { rejected = true; const ed = await r.json().catch(() => ({})); throw new Error(ed.code === 'export-running' ? window.GAMJA_I18N.t('export.writeWait') : (ed.error || r.statusText)); }
 
       const reader = r.body.getReader();
       const dec = new TextDecoder();
