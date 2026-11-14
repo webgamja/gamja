@@ -394,6 +394,9 @@
   const GB_ICON = '<svg class="gb-ico" viewBox="0 0 138 136" aria-hidden="true"><path fill="#6DBE4A" d="M60,70C20,70 4,40 8,6C46,6 66,30 60,70Z"/><path fill="#58AA3A" d="M68,70C62,34 84,6 130,4C136,44 110,70 68,70Z"/><path d="M64,60L64,128" fill="none" stroke="#4E9A35" stroke-width="14" stroke-linecap="round"/></svg>';
   const gbMark = (a) => (a && a.tested ? GB_ICON : '');
   const gbNote = (a) => (a && a.tested ? `<small class="gb-note">${escapeHtml(window.GAMJA_I18N.t('badge.note'))}</small>` : '');
+  // 이 폴더의 크루가 시험한 템플릿으로 새로 만든 것인지: 만들 때 cc:gb:폴더에 표시해 둔다 (옛 크루는 표시가 없어 배지가 안 붙는다)
+  const hasGb = (n) => !!n && store.get(`cc:gb:${crewOf(n)}`, '') === '1';
+  const gbMarkOf = (n) => (hasGb(n) ? GB_ICON : '');
   // 목록에 보이는 이름: 템플릿·가져온 크루는 "🍽️ 메뉴판·가격표", 직접 만든 폴더는 "📁 폴더이름"
   // 방이 어느 크루의 방인지. 옛 방("크루@번호")은 아이디 앞부분이 크루이고, 새 방("@번호")은 감자알이 알려 준 값을 이 기기에 기억해 둔다. 첫 방은 크루 이름 그대로
   let roomCrews = {};
@@ -531,7 +534,7 @@
     const rowHtml = (n) => {
       const { icon, text } = crewParts(n);
       return `<button class="fr-row${n === '' ? ' me' : ''}" data-crew="${escapeHtml(n)}"><i class="fr-av">${escapeHtml(icon)}</i>` +
-        `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span></button>`;
+        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span></button>`;
     };
     const list = (names) => `<div class="fr-list">${names.map(rowHtml).join('')}</div>`;
     const all = ['', ...projectList];
@@ -816,7 +819,7 @@
     const { icon, text } = crewParts(name);
     const g = crewGroup(name);
     $('shIcon').textContent = icon;
-    $('shName').textContent = text;
+    $('shName').innerHTML = gbMarkOf(name) + escapeHtml(text);
     $('shBlurb').textContent = crewBlurb(name);
     $('shGroup').textContent = name === '' ? '기본 대화' : g.name;
     const fav = getFavs().includes(name);
@@ -1048,7 +1051,7 @@
           `<button class="pick-card" data-persona="${x.id}"><span class="pick-icon">${x.icon}</span><span><b>${escapeHtml(x.name)}</b><small>${escapeHtml(x.desc)}</small></span></button>`).join('') +
         '<h3>⭐ 깊게 도와주는 전문가 크루</h3>' +
         window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => a.featured)).map((a) =>
-          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('') +
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b><small>${a.blurb}</small></span></button>`).join('') +
         '<h3>분야별로 보기</h3>' + GROUPS.map((g) =>
         `<button class="pick-card" data-group="${g.id}"><span class="pick-icon">${g.icon}</span><span><b>${g.name}</b><small>${g.desc}</small></span></button>`).join('') +
         makeButtonsHtml() +
@@ -1078,12 +1081,12 @@
       $('agentTitle').textContent = `${ps.icon} ${ps.name}`;
       agentBody.innerHTML = `<p class="settings-note">${escapeHtml(ps.desc)}. 위에 있을수록 먼저 써 보시길 권해요.</p>` +
         ps.agents.map((id) => AGENTS.find((a) => a.id === id)).filter(Boolean).map((a) =>
-          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('');
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b><small>${a.blurb}</small></span></button>`).join('');
     } else {
       const g = GROUPS.find((x) => x.id === agentView);
       $('agentTitle').textContent = `${g.icon} ${g.name}`;
       agentBody.innerHTML = AGENTS.filter((a) => a.group === agentView).map((a) =>
-        `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('');
+        `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b><small>${a.blurb}</small></span></button>`).join('');
     }
     agentBody.scrollTop = 0;
   }
@@ -1114,6 +1117,7 @@
     }
     if (created) window.gaTrack('crew_create', { kind: tpl ? 'agent' : 'crew' });
     if (tpl) store.set(`cc:tpl:${folder}`, tpl);
+    if (created && tpl && (window.GAMJA_TEMPLATES.AGENTS.find((x) => x.id === tpl) || {}).tested) store.set(`cc:gb:${folder}`, '1'); // 시험한 템플릿으로 새로 만든 크루에만 배지
     if (meta) store.set(`cc:crew:${folder}`, meta); // 가져온 크루의 이름·아이콘·예시 문장 (빈 방에서 보여 줌)
     clipCrew = null;
     agentEl.classList.add('hidden');
@@ -1908,7 +1912,7 @@
         ? `<button id="roomRestore" class="fr-row" type="button"><i class="fr-av">${escapeHtml(p.icon)}</i><span class="fr-mid"><b>${escapeHtml(p.text)}</b><small>${escapeHtml(blurb)}</small></span><span class="fr-pill">${escapeHtml(T('gone.restoreShort'))}</span></button>`
         : members.map((m) => { // 참여자 목록 (지금은 한 명). 누르면 그 크루의 설정
           const mp = crewParts(m);
-          return `<button class="fr-row" data-member="${escapeHtml(m)}" type="button"><i class="fr-av">${escapeHtml(mp.icon)}</i><span class="fr-mid"><b>${escapeHtml(mp.text)}</b><small>${escapeHtml(crewBlurb(m))}</small></span><span>›</span></button>`;
+          return `<button class="fr-row" data-member="${escapeHtml(m)}" type="button"><i class="fr-av">${escapeHtml(mp.icon)}</i><span class="fr-mid"><b>${gbMarkOf(m)}${escapeHtml(mp.text)}</b><small>${escapeHtml(crewBlurb(m))}</small></span><span>›</span></button>`;
         }).join('')) +
       '</div>' +
       (gone || !GROUP_CHAT_ENABLED ? '' : project.includes('@') && members.length < MAX_ROOM_MEMBERS
@@ -1939,7 +1943,7 @@
       const { icon, text } = crewParts(n);
       const on = ncMembers.includes(n);
       return `<button class="fr-row${on ? ' sel' : ''}" data-pick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
-        `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
+        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
     }).join('');
     $('newChatForm').innerHTML =
       `<h3>${escapeHtml(T('newchat.name'))}</h3><input id="ncName" maxlength="40" placeholder="${escapeHtml(T('newchat.namePh'))}" value="${escapeHtml(ncName)}" autocomplete="off">` +
@@ -1979,7 +1983,7 @@
     const rowHtml = (n) => {
       const { icon, text } = crewParts(n);
       return `<button class="fr-row${n === '' ? ' me' : ''}${isSel(n) ? ' sel' : ''}" data-pick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
-        `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-go">${isSel(n) ? '✓' : '›'}</span></button>`;
+        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-go">${isSel(n) ? '✓' : '›'}</span></button>`;
     };
     const list = (names) => `<div class="fr-list">${names.map(rowHtml).join('')}</div>`;
     const shelf = (agents) => '<div class="fr-shelf">' + agents.map((a) =>
@@ -1989,7 +1993,7 @@
     const q = ncQuery.trim().toLowerCase();
     if (ncAll) { // 추천 크루 전체 보기: 묶음별로 모두 보여 준다 (고르면 크루 탭에 추가될 크루로 정해진다)
       const agentRow = (a) => `<button class="fr-row" data-pick-agent="${escapeHtml(a.id)}" type="button"><i class="fr-av">${escapeHtml(a.icon)}</i>` +
-        `<span class="fr-mid"><b>${gbMark(a)}${escapeHtml(stripCrew(a.name))}</b>${gbNote(a)}<small>${escapeHtml(a.blurb)}</small></span><span class="nc-go">›</span></button>`;
+        `<span class="fr-mid"><b>${gbMark(a)}${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small></span><span class="nc-go">›</span></button>`;
       const all = GROUPS.map((g) => {
         const as = rec.filter((a) => a.group === g.id);
         return as.length ? `<div class="fr-sec"><span>${escapeHtml(g.icon)} ${escapeHtml(g.name)} ${as.length}</span></div><div class="fr-list">${as.map(agentRow).join('')}</div>` : '';
@@ -2147,7 +2151,7 @@
       const { icon, text } = crewParts(n);
       const on = invPick.includes(n);
       return `<button class="fr-row${on ? ' sel' : ''}" data-ipick="${escapeHtml(n)}" type="button"><i class="fr-av">${escapeHtml(icon)}</i>` +
-        `<span class="fr-mid"><b>${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
+        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span><span class="nc-check">${on ? '✓' : ''}</span></button>`;
     }).join('') : `<p class="settings-note">${escapeHtml(T('invite.none'))}</p>`;
     $('inviteNote').textContent = T('invite.note', { slots });
     $('inviteGo').disabled = !invPick.length;
@@ -2839,7 +2843,11 @@
     projEl.classList.add('hidden');
   };
   $('projDelete').onclick = async () => {
-    if (!(await gSheet({ title: window.GAMJA_I18N.t('crew.deleteTitle'), message: window.GAMJA_I18N.t('crew.deleteConfirm', { name: projTarget }), ok: window.GAMJA_I18N.t('room.deleteOk'), danger: true }))) return;
+    const T = window.GAMJA_I18N.t;
+    await refreshChats(); // 지우기 전에 이 크루로 대화 중인 방이 몇 개인지 센다
+    const rooms = chats.filter((c) => !c.archive && (c.members && c.members.length ? c.members.includes(projTarget) : crewOf(c.name) === projTarget)).length;
+    const message = T('crew.deleteConfirm', { name: projTarget }) + (rooms ? '\n\n' + T('crew.deleteRooms', { n: rooms }) : '');
+    if (!(await gSheet({ title: T('crew.deleteTitle'), message, ok: T('room.deleteOk'), danger: true }))) return;
     try { await api('/api/projects/delete', { project: projTarget }); } catch (err) { return alert(err.message); }
     const wasCurrent = projTarget === crewOf(project);
     projEl.classList.add('hidden');
