@@ -269,6 +269,91 @@ function saveProjectConf() {
   fs.writeFileSync(projectConfFile(), JSON.stringify(projectConf, null, 2));
 }
 
+// ---------- 크루 지침 버전 기록 ----------
+// 시험한 템플릿으로 만든 크루는 projectConf[크루].tpl = { id, ver, hash }를 갖는다. hash는 그때 저장한 CLAUDE.md의 요약값이라,
+// 지금 파일의 요약값과 다르면 사용자가 직접 고친 것이다. 업데이트 전의 지침은 data/crew-backups/<크루>/에 3개까지 보관한다
+const instrHash = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16);
+const readInstr = (dir) => { try { return fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'); } catch { return ''; } };
+const crewBackupDir = (name) => path.join(DATA_DIR, 'crew-backups', encodeURIComponent(name));
+const crewBackups = (name) => { try { return fs.readdirSync(crewBackupDir(name)).filter((f) => f.endsWith('.json')).sort(); } catch { return []; } };
+const cleanTpl = (t) => (t && typeof t.id === 'string' && typeof t.ver === 'string' && t.id.length <= 40 && t.ver.length <= 20 ? { id: t.id, ver: t.ver } : null);
+function crewTplInfo(name) { // 화면이 배지·"새 버전이 있어요"를 정하는 데 쓰는 정보
+  const hash = instrHash(readInstr(path.join(CREWS_DIR, name)));
+  const t = projectConf[name] && projectConf[name].tpl;
+  return { hash, tpl: t ? { id: t.id, ver: t.ver, edited: t.hash !== hash } : null, backups: crewBackups(name).length };
+}
+
+// ---------- 크루 목록(GitHub: webgamja/gamja-crews) ----------
+// index.json만 읽어 새 버전을 알려 주고, 사용자가 업데이트를 누를 때만 지침 파일을 받는다. 받은 글은 목록의 해시와 같아야 적용한다
+// 주소는 이 저장소로 고정한다(테스트에서만 CREWS_BASE_URL로 바꾼다)
+const CREWS_BASE = (process.env.CREWS_BASE_URL || 'https://raw.githubusercontent.com/webgamja/gamja-crews/main').replace(/\/+$/, '');
+const CREWS_INDEX_FILE = () => path.join(DATA_DIR, 'crews-index.json');
+const CREWS_INDEX_TTL = 24 * 60 * 60 * 1000;
+const CREWS_MAX_INDEX = 256 * 1024;
+const CREWS_MAX_MD = 64 * 1024;
+let crewsIndex = null; // { at, crews: [...] }
+let crewsFetching = null;
+function fetchText(url, max, redirects = 3) {
+  return new Promise((resolve, reject) => {
+    const lib = url.startsWith('https:') ? require('https') : http;
+    const req = lib.get(url, { headers: { 'User-Agent': 'gamja' }, timeout: 8000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        if (!next.startsWith(CREWS_BASE)) return reject(new Error('허용하지 않는 주소예요.'));
+        return resolve(fetchText(next, max, redirects - 1));
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+      const chunks = []; let n = 0;
+      res.on('data', (d) => { n += d.length; if (n > max) { req.destroy(new Error('too large')); } else chunks.push(d); });
+      res.on('end', () => { try { resolve(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))); } catch { reject(new Error('not utf-8')); } });
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+}
+const VER_PAT = /^\d{1,3}(\.\d{1,3}){0,2}$/;
+const HASH_PAT = /^[0-9a-f]{16}$/;
+function parseCrewsIndex(text) { // 모양이 틀린 항목은 버린다
+  const j = JSON.parse(text);
+  if (!j || j.format !== 'gamja-crews' || j.version !== 1 || !Array.isArray(j.crews)) throw new Error('bad index');
+  const crews = [];
+  for (const c of j.crews) {
+    if (!c || typeof c.id !== 'string' || !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(c.id)) continue;
+    if (!VER_PAT.test(String(c.latest)) || !HASH_PAT.test(String(c.hash))) continue;
+    crews.push({ id: c.id, latest: String(c.latest), hash: c.hash, official: c.official === true, old: (Array.isArray(c.old) ? c.old : []).filter((h) => HASH_PAT.test(String(h))).slice(0, 50) });
+  }
+  return crews;
+}
+function loadCrewsIndexFile() {
+  try { const j = JSON.parse(fs.readFileSync(CREWS_INDEX_FILE(), 'utf8')); if (j && Array.isArray(j.crews)) crewsIndex = { at: Number(j.at) || 0, crews: j.crews }; } catch {}
+}
+async function getCrewsIndex(force) { // 실패하면 저장해 둔 목록(없으면 빈 목록)을 쓴다. 오류는 화면에 알리지 않는다
+  if (!crewsIndex) loadCrewsIndexFile();
+  if (!force && crewsIndex && Date.now() - crewsIndex.at < CREWS_INDEX_TTL) return crewsIndex;
+  if (!crewsFetching) {
+    crewsFetching = fetchText(`${CREWS_BASE}/index.json`, CREWS_MAX_INDEX)
+      .then((text) => {
+        crewsIndex = { at: Date.now(), crews: parseCrewsIndex(text) };
+        fs.writeFileSync(CREWS_INDEX_FILE(), JSON.stringify(crewsIndex));
+      })
+      .catch(() => { if (crewsIndex) crewsIndex.at = Math.max(crewsIndex.at, Date.now() - CREWS_INDEX_TTL + 60 * 60 * 1000); }) // 실패하면 1시간 뒤에 다시 시도
+      .finally(() => { crewsFetching = null; });
+  }
+  await crewsFetching;
+  return crewsIndex || { at: 0, crews: [] };
+}
+async function fetchCrewInstructions(id, ver) { // 목록의 최신 버전만 받고, 해시가 다르면 거절한다
+  const idx = await getCrewsIndex(false);
+  const e = idx.crews.find((c) => c.id === id);
+  if (!e || e.latest !== ver) throw new Error('목록에 없는 버전이에요. 크루 탭을 새로 열어 다시 해 주세요.');
+  let text;
+  try { text = await fetchText(`${CREWS_BASE}/crews/${encodeURIComponent(id)}/${encodeURIComponent(ver)}.md`, CREWS_MAX_MD); } catch { throw new Error('새 지침을 받지 못했어요. 인터넷 연결을 확인해 주세요.'); }
+  if (instrHash(text) !== e.hash) throw new Error('받은 지침이 목록과 달라서 적용하지 않았어요.');
+  return text;
+}
+
 // 이름이 실제 ~/projects 하위 폴더일 때만 경로 반환 (경로 조작 방지)
 // 채팅방 번호(rid): 첫 방은 크루 폴더 이름 그대로(예전 대화 기록이 그대로 이어진다), 같은 크루의 다른 방은 "크루@짧은번호".
 // 대화·진행 중 작업은 방 번호로, 폴더와 설정은 크루(= @ 앞부분)로 찾는다
@@ -2414,7 +2499,10 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         return send(res, 200, { command: `pkg install -y curl && curl -fsSL ${proto}://${host}/install/${makeInstallToken()} | bash` });
       }
       if (p === '/api/projects' && req.method === 'GET') {
-        return send(res, 200, { root: CREWS_DIR, projects: listProjects() });
+        const names = listProjects();
+        const crews = {};
+        for (const n of names) crews[n] = crewTplInfo(n);
+        return send(res, 200, { root: CREWS_DIR, projects: names, crews });
       }
       if (p === '/api/chats' && req.method === 'GET') {
         // 💬 채팅 목록: 크루마다 마지막 말, 시간, 작업 중 여부, 최근 답변 시각(안 읽음 계산용)을 한 번에 알려 준다
@@ -2894,7 +2982,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         try { instructions = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'); } catch {}
         return send(res, 200, {
           project, instructions, model: projectConf[project]?.model || '', models: MODELS,
-          effort: projectConf[project]?.effort || '',
+          effort: projectConf[project]?.effort || '', info: project ? crewTplInfo(project) : null,
           locked: !project || holdsApp(dir), // 루트·GAMJA 폴더는 이름 바꾸기·삭제 불가
         });
       }
@@ -2913,12 +3001,62 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const text = String(b.instructions || '').slice(0, 50000);
         if (text.trim()) fs.writeFileSync(md, text.endsWith('\n') ? text : text + '\n');
         else fs.rmSync(md, { force: true });
+        const newTpl = cleanTpl(b.tpl); // 시험한 템플릿으로 새로 만들 때만 온다: 어떤 버전의 지침으로 만들었는지 기록
+        if (newTpl && text.trim()) projectConf[project] = { ...projectConf[project], tpl: { ...newTpl, hash: instrHash(text.endsWith('\n') ? text : text + '\n') } };
         if (model) projectConf[project] = { ...projectConf[project], model };
         else if (projectConf[project]) delete projectConf[project].model;
         if (effort) projectConf[project] = { ...projectConf[project], effort };
         else if (projectConf[project]) delete projectConf[project].effort;
         saveProjectConf();
         return send(res, 200, { ok: true });
+      }
+      if (p === '/api/crew-index' && req.method === 'GET') {
+        const idx = await getCrewsIndex(url.searchParams.get('refresh') === '1');
+        return send(res, 200, { at: idx.at, crews: idx.crews });
+      }
+      if (p === '/api/crew-update' && req.method === 'POST') {
+        // 지침 업데이트: 지금 지침을 백업하고 새 버전 지침으로 바꾼다 (사용자가 누를 때만)
+        const b = await readBody(req);
+        const project = String(b.project || '');
+        const dir = resolveCrew(project);
+        if (!project || !dir || holdsApp(dir)) return send(res, 400, { error: '이 크루는 업데이트할 수 없어요.' });
+        if (exportFolderLocked(dir)) return send(res, 409, { error: '이 크루의 폴더를 내보내는 중이에요. 잠시 뒤에 해 주세요.', code: 'export-running' });
+        const tpl = cleanTpl(b.tpl);
+        let text0;
+        if (b.remote === true) { // GitHub 크루 목록에서 받는다
+          try { text0 = tpl ? await fetchCrewInstructions(tpl.id, tpl.ver) : ''; } catch (e) { return send(res, 502, { error: e.message }); }
+        } else text0 = String(b.instructions || '').slice(0, 50000);
+        if (!tpl || !text0.trim()) return send(res, 400, { error: '새 지침을 받지 못했어요.' });
+        const text = text0.endsWith('\n') ? text0 : text0 + '\n';
+        const bdir = crewBackupDir(project);
+        fs.mkdirSync(bdir, { recursive: true });
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        fs.writeFileSync(path.join(bdir, `${stamp}.json`), JSON.stringify({ ts: Date.now(), instructions: readInstr(dir), tpl: (projectConf[project] && projectConf[project].tpl) || null }));
+        for (const old of crewBackups(project).slice(0, -3)) fs.rmSync(path.join(bdir, old), { force: true }); // 최근 3개만
+        fs.writeFileSync(path.join(dir, 'CLAUDE.md'), text);
+        projectConf[project] = { ...projectConf[project], tpl: { ...tpl, hash: instrHash(text) } };
+        saveProjectConf();
+        return send(res, 200, { ok: true, info: crewTplInfo(project) });
+      }
+      if (p === '/api/crew-update-undo' && req.method === 'POST') {
+        // 마지막 업데이트 되돌리기: 가장 최근 백업의 지침과 버전 기록으로 돌린다
+        const b = await readBody(req);
+        const project = String(b.project || '');
+        const dir = resolveCrew(project);
+        if (!project || !dir || holdsApp(dir)) return send(res, 400, { error: '이 크루는 되돌릴 수 없어요.' });
+        if (exportFolderLocked(dir)) return send(res, 409, { error: '이 크루의 폴더를 내보내는 중이에요. 잠시 뒤에 해 주세요.', code: 'export-running' });
+        const list = crewBackups(project);
+        if (!list.length) return send(res, 404, { error: '되돌릴 백업이 없어요.' });
+        const file = path.join(crewBackupDir(project), list[list.length - 1]);
+        let bk;
+        try { bk = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return send(res, 500, { error: '백업 파일을 읽지 못했어요.' }); }
+        if (String(bk.instructions || '').trim()) fs.writeFileSync(path.join(dir, 'CLAUDE.md'), String(bk.instructions));
+        else fs.rmSync(path.join(dir, 'CLAUDE.md'), { force: true });
+        projectConf[project] = { ...projectConf[project] };
+        if (bk.tpl) projectConf[project].tpl = bk.tpl; else delete projectConf[project].tpl;
+        saveProjectConf();
+        fs.rmSync(file, { force: true });
+        return send(res, 200, { ok: true, info: crewTplInfo(project) });
       }
       if ((p === '/api/projects/rename' || p === '/api/projects/delete') && req.method === 'POST') {
         const b = await readBody(req);
@@ -2947,6 +3085,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             convCache.delete(r.rid);
           }
           if (projectConf[project]) { projectConf[newName] = projectConf[project]; delete projectConf[project]; saveProjectConf(); }
+          try { if (fs.existsSync(crewBackupDir(project))) fs.renameSync(crewBackupDir(project), crewBackupDir(newName)); } catch { /* 백업을 못 옮겨도 이름 바꾸기는 계속 */ }
           clearCrewPerms(project, newName); // 이름이 바뀌면 옛 이름·새 이름 권한을 모두 비운다
           return send(res, 200, { project: newName });
         }

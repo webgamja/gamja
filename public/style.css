@@ -1014,3 +1014,6 @@ input.switch:disabled { opacity: .5; cursor: default; }
 small.gb-note { display: block; min-height: 0; white-space: normal; overflow: visible; color: #3f7a2a; font-weight: 700; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gb-note { color: #a8dc8c; } }
 :root[data-theme="dark"] .gb-note { color: #a8dc8c; }
+.upd-pill { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; border: 1px solid #E3B168; background: #FFF0C9; color: #8a5a12; font-size: 11px; font-weight: 800; font-style: normal; vertical-align: 2px; white-space: nowrap; }
+@media (prefers-color-scheme: dark) { .upd-pill { background: #3a2c10; border-color: #8a6420; color: #f0cf8a; } }
+[data-theme="dark"] .upd-pill { background: #3a2c10; border-color: #8a6420; color: #f0cf8a; }

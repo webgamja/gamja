@@ -394,8 +394,41 @@
   const GB_ICON = '<svg class="gb-ico" viewBox="0 0 138 136" aria-hidden="true"><path fill="#6DBE4A" d="M60,70C20,70 4,40 8,6C46,6 66,30 60,70Z"/><path fill="#58AA3A" d="M68,70C62,34 84,6 130,4C136,44 110,70 68,70Z"/><path d="M64,60L64,128" fill="none" stroke="#4E9A35" stroke-width="14" stroke-linecap="round"/></svg>';
   const gbMark = (a) => (a && a.tested ? GB_ICON : '');
   const gbNote = (a) => (a && a.tested ? `<small class="gb-note">${escapeHtml(window.GAMJA_I18N.t('badge.note'))}</small>` : '');
-  // 이 폴더의 크루가 시험한 템플릿으로 새로 만든 것인지: 만들 때 cc:gb:폴더에 표시해 둔다 (옛 크루는 표시가 없어 배지가 안 붙는다)
-  const hasGb = (n) => !!n && store.get(`cc:gb:${crewOf(n)}`, '') === '1';
+  // 크루별 지침 버전 정보 (감자알이 알려 준다): { 폴더: { hash, tpl: { id, ver, edited } | null, backups } }
+  // 배지는 시험한 템플릿 버전으로 만들었거나 업데이트했고, 그 뒤 지침을 직접 고치지 않은 크루에만 붙는다
+  let crewInfo = {};
+  const hasGb = (n) => { const i = n ? crewInfo[crewOf(n)] : null; return !!(i && i.tpl && !i.tpl.edited); };
+  // GitHub 크루 목록(감자알이 하루 한 번 받아 둔다)에서 온 최신 버전. 앱에 든 버전보다 높으면 그쪽을 쓰고, 못 받으면 앱에 든 버전을 쓴다
+  let crewsRemote = {};
+  let crewsRemoteAsked = false;
+  const verNum = (v) => String(v).split('.').map(Number);
+  const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0; } return false; };
+  function tplDef(id) {
+    const b = AGENTS.find((a) => a.id === id && a.version);
+    const r = crewsRemote[id];
+    if (r && (!b || verNewer(r.latest, b.version))) return { id, version: r.latest, currentHash: r.hash, oldHashes: r.old || [], remote: true };
+    return b || null;
+  }
+  async function loadCrewsRemote() { // 조용히 실패한다(인터넷이 없어도 화면은 그대로)
+    try {
+      const d = await api('/api/crew-index');
+      crewsRemote = {};
+      for (const c of d.crews || []) crewsRemote[c.id] = c;
+      if (!$('homePanel').classList.contains('hidden') && $('crewListBox')) renderCrewList();
+    } catch {}
+  }
+  // 새 버전이 있는지: 버전 기록이 있으면 버전을 비교하고, 기록이 없는 옛 크루는 지침이 알려진 옛 글이면 "고친 적 없음", 아니면 "직접 고침"으로 본다
+  function updInfo(n) {
+    const f = n ? crewOf(n) : '';
+    if (!f) return null;
+    const info = crewInfo[f] || {};
+    const id = info.tpl ? info.tpl.id : store.get(`cc:tpl:${f}`, '');
+    const def = tplDef(id);
+    if (!def) return null;
+    if (info.tpl) return info.tpl.ver !== def.version ? { def, edited: info.tpl.edited } : null;
+    if (!info.hash || info.hash === def.currentHash) return null;
+    return { def, edited: !(def.oldHashes || []).includes(info.hash) };
+  }
   const gbMarkOf = (n) => (hasGb(n) ? GB_ICON : '');
   // 목록에 보이는 이름: 템플릿·가져온 크루는 "🍽️ 메뉴판·가격표", 직접 만든 폴더는 "📁 폴더이름"
   // 방이 어느 크루의 방인지. 옛 방("크루@번호")은 아이디 앞부분이 크루이고, 새 방("@번호")은 감자알이 알려 준 값을 이 기기에 기억해 둔다. 첫 방은 크루 이름 그대로
@@ -452,8 +485,9 @@
     if (!gone && !chats.some((c) => c.name === project)) refreshChats().then(() => { if (chats.some((c) => c.name === project)) applyGone(); }); // 참여자 정보를 아직 못 받았으면 받은 뒤에 다시 맞춘다
   }
   async function loadProjects() {
-    const { projects } = await api('/api/projects');
+    const { projects, crews } = await api('/api/projects');
     projectList = projects;
+    crewInfo = crews || {};
     if (project && !isGone(project) && crewOf(project) && !projects.includes(crewOf(project))) { // 보던 크루가 없어졌으면(삭제 등) 감자 톡톡으로
       const gone = project;
       project = '';
@@ -464,6 +498,7 @@
     }
     updateHomeBtn();
     if (!$('homePanel').classList.contains('hidden')) renderHome();
+    if (!crewsRemoteAsked) { crewsRemoteAsked = true; loadCrewsRemote(); }
   }
   async function switchProject(name) {
     const prev = project;
@@ -534,7 +569,7 @@
     const rowHtml = (n) => {
       const { icon, text } = crewParts(n);
       return `<button class="fr-row${n === '' ? ' me' : ''}" data-crew="${escapeHtml(n)}"><i class="fr-av">${escapeHtml(icon)}</i>` +
-        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}</b><small>${escapeHtml(crewBlurb(n))}</small></span></button>`;
+        `<span class="fr-mid"><b>${gbMarkOf(n)}${escapeHtml(text)}${updInfo(n) ? `<em class="upd-pill">${escapeHtml(window.GAMJA_I18N.t('upd.pill'))}</em>` : ''}</b><small>${escapeHtml(crewBlurb(n))}</small></span></button>`;
     };
     const list = (names) => `<div class="fr-list">${names.map(rowHtml).join('')}</div>`;
     const all = ['', ...projectList];
@@ -820,6 +855,8 @@
     const g = crewGroup(name);
     $('shIcon').textContent = icon;
     $('shName').innerHTML = gbMarkOf(name) + escapeHtml(text);
+    $('shUpd').classList.toggle('hidden', !updInfo(name));
+    $('shUpd').textContent = window.GAMJA_I18N.t('upd.sheetBtn');
     $('shBlurb').textContent = crewBlurb(name);
     $('shGroup').textContent = name === '' ? '기본 대화' : g.name;
     const fav = getFavs().includes(name);
@@ -830,6 +867,7 @@
   }
   const closeSheet = () => sheetEl.classList.add('hidden');
   sheetEl.addEventListener('click', (e) => { if (e.target === sheetEl) closeSheet(); });
+  $('shUpd').onclick = () => { const n = sheetTarget; closeSheet(); doCrewUpdate(n); };
   $('shChat').onclick = () => { const n = sheetTarget; closeSheet(); openNewChat(n); }; // 채팅 시작 화면이 열리고, 고른 크루가 참여자에 들어가 있다
   $('shShare').onclick = () => { const n = sheetTarget; closeSheet(); openShare(n); };
   $('shSet').onclick = () => { const n = sheetTarget; closeSheet(); openProjectSettings(n); };
@@ -1112,12 +1150,13 @@
       created = false; // 이미 있는 크루면 지침을 덮어쓰지 않고 그 방으로만 간다
     }
     if (created) {
-      try { await api('/api/project-settings', { project: folder, instructions, model: '', effort: '' }); }
+      const def = tpl ? AGENTS.find((x) => x.id === tpl && x.version) : null; // 시험한 템플릿이면 어떤 버전으로 만들었는지 기록한다
+      try { await api('/api/project-settings', { project: folder, instructions, model: '', effort: '', ...(def ? { tpl: { id: def.id, ver: def.version } } : {}) }); }
       catch (err) { return alert(err.message); }
     }
     if (created) window.gaTrack('crew_create', { kind: tpl ? 'agent' : 'crew' });
     if (tpl) store.set(`cc:tpl:${folder}`, tpl);
-    if (created && tpl && (window.GAMJA_TEMPLATES.AGENTS.find((x) => x.id === tpl) || {}).tested) store.set(`cc:gb:${folder}`, '1'); // 시험한 템플릿으로 새로 만든 크루에만 배지
+    if (created) { try { await loadProjects(); } catch { /* 목록은 곧 다시 받는다 */ } } // 버전 기록(배지)을 바로 반영
     if (meta) store.set(`cc:crew:${folder}`, meta); // 가져온 크루의 이름·아이콘·예시 문장 (빈 방에서 보여 줌)
     clipCrew = null;
     agentEl.classList.add('hidden');
@@ -2784,6 +2823,8 @@
     try { d = await api('/api/project-settings?project=' + encodeURIComponent(name)); } catch (err) { return alert(err.message); }
     $('projTitle').textContent = name ? `⚙️ ${crewLabel(name)}` : `⚙️ ${ROOT_NAME}`;
     projLoadedInstructions = d.instructions;
+    if (name && d.info) crewInfo[name] = d.info;
+    renderTplBox(name);
     // "직접 만들기"와 같은 입력 양식. 감자 톡톡(루트)과 감자 앱이 들어 있는 폴더는 이름·아이콘을 바꾸지 않고 맡은 일만 보여 준다
     const withInfo = !!name && !d.locked;
     const meta = name ? crewMeta(name) : null;
@@ -2797,6 +2838,48 @@
     $('projDelete').classList.toggle('hidden', d.locked);
     $('projExport').classList.toggle('hidden', !name); // 홈 대화는 내보낼 크루가 없다
     projEl.classList.remove('hidden');
+  }
+  // ⚙️ 크루 설정의 "지침 버전" 상자: 지금 버전, 새 버전 업데이트, 이전 지침으로 되돌리기
+  function renderTplBox(name) {
+    const T = window.GAMJA_I18N.t;
+    const box = $('projTplBox');
+    const info = name ? crewInfo[name] : null;
+    const u = updInfo(name);
+    const rec = info && info.tpl;
+    if (!info || (!rec && !u && !info.backups)) { box.innerHTML = ''; return; }
+    let h = `<h3>${escapeHtml(T('upd.boxTitle'))}</h3>`;
+    if (rec) h += `<p class="settings-note">${escapeHtml(T(rec.edited ? 'upd.verEdited' : 'upd.ver', { ver: rec.ver }))}</p>`;
+    if (u) h += `<button class="settings-ghost" data-tpl="update" type="button">${escapeHtml(T('upd.btn', { ver: u.def.version }))}</button>`;
+    if (info.backups) h += `<button class="settings-ghost" data-tpl="undo" type="button">${escapeHtml(T('upd.undo'))}</button>`;
+    box.innerHTML = h;
+  }
+  $('projTplBox').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tpl]');
+    if (!b) return;
+    if (b.dataset.tpl === 'update') doCrewUpdate(projTarget); else undoCrewUpdate(projTarget);
+  });
+  // 지침 업데이트: 확인(바뀐 점, 직접 고쳤으면 경고) → 감자알이 백업하고 바꾼다. 같은 크루로 나눈 모든 채팅방이 다음 메시지부터 새 지침을 쓴다
+  async function doCrewUpdate(name) {
+    const T = window.GAMJA_I18N.t;
+    const u = updInfo(name);
+    if (!u) return;
+    const ver = u.def.version;
+    const chKey = `tplchg.${u.def.id}.${ver}`;
+    const changes = T(chKey);
+    const message = (changes !== chKey ? T('upd.msg', { ver, changes }) : T('upd.msgPlain', { ver })) + (u.edited ? '\n\n' + T('upd.edited') : '');
+    if (!(await gSheet({ title: T('upd.title'), message, ok: T('upd.ok'), cancel: T('upd.later') }))) return;
+    try { await api('/api/crew-update', { project: name, tpl: { id: u.def.id, ver }, ...(u.def.remote ? { remote: true } : { instructions: u.def.instructions }) }); } catch (err) { return alert(err.message); }
+    await loadProjects();
+    if (!projEl.classList.contains('hidden') && projTarget === name) await openProjectSettings(name);
+    toast(T('upd.done', { ver }));
+  }
+  async function undoCrewUpdate(name) {
+    const T = window.GAMJA_I18N.t;
+    if (!(await gSheet({ title: T('upd.undoTitle'), message: T('upd.undoMsg'), ok: T('upd.undoOk'), cancel: T('upd.later') }))) return;
+    try { await api('/api/crew-update-undo', { project: name }); } catch (err) { return alert(err.message); }
+    await loadProjects();
+    if (!projEl.classList.contains('hidden') && projTarget === name) await openProjectSettings(name);
+    toast(T('upd.undone'));
   }
   // 바꾸는 즉시 저장: 모델·생각 깊이는 고르는 순간, 지침은 글칸 밖을 누를 때. 이름 바꾸기는 따로 버튼으로
   async function autoSaveProject() {

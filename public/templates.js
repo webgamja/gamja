@@ -48,7 +48,7 @@
   const AGENTS = [
     // ---------- 🏢 회사 ----------
     {
-      id: 'c-site', tested: true, group: 'company', icon: '🌐', name: '홈페이지 크루', folder: '회사-홈페이지',
+      id: 'c-site', tested: true, version: '3.2', currentHash: 'fdbd1f7d35af2755', oldHashes: ['8b1c6269717d10be', '6020468a72b89482'], group: 'company', icon: '🌐', name: '홈페이지 크루', folder: '회사-홈페이지',
       blurb: '소개 페이지, 문의 폼, 서비스 안내',
       examples: ['우리 회사 소개 페이지 만들어 줘', '문의하기 폼이 있는 한 장짜리 사이트로 바꿔 줘', '모바일에서 더 보기 좋게 고쳐 줘'],
       // v3.2 지침 (2026-11 크루 양성 시험 01~55번 결과로 채택). 공통 규칙(COMMON)을 지침 안에 이미 포함하므로 make()를 쓰지 않는다.
