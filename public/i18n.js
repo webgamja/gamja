@@ -237,6 +237,7 @@
 
   // ---------- 새 화면의 글 (키로 적는 방식) ----------
   add('ko', {
+    'badge.note': '감자가 직접 다듬고 키워요',
     'perm.resetNotice': '예전에 "항상 허용"해 둔 명령 {n}개를 안전을 위해 초기화했어요.\n필요하면 다음에 허용 카드가 뜰 때 다시 허용해 주세요.\n(예전 규칙은 폰에 백업으로 남아 있어요)',
     'crew.make': '✏️ 직접 만들기',
     'crew.makeSub': '이름과 맡길 일 적기 ›',
@@ -605,6 +606,7 @@
     'tools.note': '와이파이에 연결하고 충전기를 꽂은 채로 설치하는 걸 권해요. 설치하는 동안에는 크루에게 일을 시키지 마세요.',
   });
   add('en', {
+    'badge.note': 'Refined and grown by the Gamja',
     'perm.resetNotice': 'For safety, we reset {n} command(s) you had set to "Always allow".\nIf you need them, allow them again the next time an approval card appears.\n(The old rules are kept as a backup on this phone.)',
     'crew.make': '✏️ Create your own',
     'crew.makeSub': 'Write a name and a job ›',

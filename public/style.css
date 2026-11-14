@@ -1008,3 +1008,9 @@ input.switch:disabled { opacity: .5; cursor: default; }
 /* 마이크를 쓸 수 없는 곳(http 주소 등): 흐린 마이크에 빗금. 빗금은 밝은 화면·어두운 화면 모두에서 보이는 붉은색 */
 .cbtn.mic-off { opacity: .6; }
 .gi-s .x { fill: none; stroke: #d6603c; stroke-width: 2; }
+
+/* 🌱 감자 배지 (시험하고 다듬은 크루) */
+.gb-ico { width: 1.05em; height: 1.05em; margin-right: 4px; vertical-align: -0.14em; flex: none; }
+small.gb-note { display: block; min-height: 0; white-space: normal; overflow: visible; color: #3f7a2a; font-weight: 700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gb-note { color: #a8dc8c; } }
+:root[data-theme="dark"] .gb-note { color: #a8dc8c; }

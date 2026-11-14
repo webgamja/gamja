@@ -390,6 +390,10 @@
   const ROOT_NAME = '🥔 감자 톡톡'; // 특정 크루를 고르기 전의 기본 대화 (~/projects 전체)
   // 이름 끝의 "크루"는 화면에서 뺀다 (너무 크루크루 하지 않게). 가져온 크루의 옛 이름에도 똑같이 적용한다
   const stripCrew = (s) => String(s || '').replace(/\s*크루$/, '');
+  // 🌱 감자 배지: 시험하고 다듬은 크루(templates.js의 tested)에만 붙는다. 이름 앞 떡잎 아이콘 + 한 줄 설명
+  const GB_ICON = '<svg class="gb-ico" viewBox="0 0 138 136" aria-hidden="true"><path fill="#6DBE4A" d="M60,70C20,70 4,40 8,6C46,6 66,30 60,70Z"/><path fill="#58AA3A" d="M68,70C62,34 84,6 130,4C136,44 110,70 68,70Z"/><path d="M64,60L64,128" fill="none" stroke="#4E9A35" stroke-width="14" stroke-linecap="round"/></svg>';
+  const gbMark = (a) => (a && a.tested ? GB_ICON : '');
+  const gbNote = (a) => (a && a.tested ? `<small class="gb-note">${escapeHtml(window.GAMJA_I18N.t('badge.note'))}</small>` : '');
   // 목록에 보이는 이름: 템플릿·가져온 크루는 "🍽️ 메뉴판·가격표", 직접 만든 폴더는 "📁 폴더이름"
   // 방이 어느 크루의 방인지. 옛 방("크루@번호")은 아이디 앞부분이 크루이고, 새 방("@번호")은 감자알이 알려 준 값을 이 기기에 기억해 둔다. 첫 방은 크루 이름 그대로
   let roomCrews = {};
@@ -552,7 +556,7 @@
       const rec = window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => !projectList.includes(a.folder))).slice(0, 8);
       if (rec.length) {
         html += '<div class="fr-sec"><span>추천 크루</span><button class="fr-more" data-store="1" type="button">전체 보기 ›</button></div><div class="fr-shelf">' +
-          rec.map((a) => `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.blurb)}</small>` +
+          rec.map((a) => `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${gbMark(a)}${escapeHtml(a.name)}</b>${gbNote(a)}<small>${escapeHtml(a.blurb)}</small>` +
             `<button class="fr-pill" data-add="${escapeHtml(a.id)}" type="button">추가</button></div>`).join('') + '</div>';
       }
       // 직접 만들기는 크루 탭에서 바로 보이게 둔다 (추천 크루에도 있다)
@@ -1044,7 +1048,7 @@
           `<button class="pick-card" data-persona="${x.id}"><span class="pick-icon">${x.icon}</span><span><b>${escapeHtml(x.name)}</b><small>${escapeHtml(x.desc)}</small></span></button>`).join('') +
         '<h3>⭐ 깊게 도와주는 전문가 크루</h3>' +
         window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => a.featured)).map((a) =>
-          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('') +
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('') +
         '<h3>분야별로 보기</h3>' + GROUPS.map((g) =>
         `<button class="pick-card" data-group="${g.id}"><span class="pick-icon">${g.icon}</span><span><b>${g.name}</b><small>${g.desc}</small></span></button>`).join('') +
         makeButtonsHtml() +
@@ -1074,12 +1078,12 @@
       $('agentTitle').textContent = `${ps.icon} ${ps.name}`;
       agentBody.innerHTML = `<p class="settings-note">${escapeHtml(ps.desc)}. 위에 있을수록 먼저 써 보시길 권해요.</p>` +
         ps.agents.map((id) => AGENTS.find((a) => a.id === id)).filter(Boolean).map((a) =>
-          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('');
+          `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('');
     } else {
       const g = GROUPS.find((x) => x.id === agentView);
       $('agentTitle').textContent = `${g.icon} ${g.name}`;
       agentBody.innerHTML = AGENTS.filter((a) => a.group === agentView).map((a) =>
-        `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${a.name}</b><small>${a.blurb}</small></span></button>`).join('');
+        `<button class="pick-card" data-agent="${a.id}"><span class="pick-icon">${a.icon}</span><span><b>${gbMark(a)}${a.name}</b>${gbNote(a)}<small>${a.blurb}</small></span></button>`).join('');
     }
     agentBody.scrollTop = 0;
   }
@@ -1979,13 +1983,13 @@
     };
     const list = (names) => `<div class="fr-list">${names.map(rowHtml).join('')}</div>`;
     const shelf = (agents) => '<div class="fr-shelf">' + agents.map((a) =>
-      `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small>` +
+      `<div class="fr-card"><i class="fr-av big">${escapeHtml(a.icon)}</i><b>${gbMark(a)}${escapeHtml(stripCrew(a.name))}</b>${gbNote(a)}<small>${escapeHtml(a.blurb)}</small>` +
       `<button class="fr-pill" data-pick-agent="${escapeHtml(a.id)}" type="button">${escapeHtml(T('newchat.choose'))}</button></div>`).join('') + '</div>';
     const rec = window.GAMJA_TEMPLATES.featuredFirst(AGENTS.filter((a) => !projectList.includes(a.folder)));
     const q = ncQuery.trim().toLowerCase();
     if (ncAll) { // 추천 크루 전체 보기: 묶음별로 모두 보여 준다 (고르면 크루 탭에 추가될 크루로 정해진다)
       const agentRow = (a) => `<button class="fr-row" data-pick-agent="${escapeHtml(a.id)}" type="button"><i class="fr-av">${escapeHtml(a.icon)}</i>` +
-        `<span class="fr-mid"><b>${escapeHtml(stripCrew(a.name))}</b><small>${escapeHtml(a.blurb)}</small></span><span class="nc-go">›</span></button>`;
+        `<span class="fr-mid"><b>${gbMark(a)}${escapeHtml(stripCrew(a.name))}</b>${gbNote(a)}<small>${escapeHtml(a.blurb)}</small></span><span class="nc-go">›</span></button>`;
       const all = GROUPS.map((g) => {
         const as = rec.filter((a) => a.group === g.id);
         return as.length ? `<div class="fr-sec"><span>${escapeHtml(g.icon)} ${escapeHtml(g.name)} ${as.length}</span></div><div class="fr-list">${as.map(agentRow).join('')}</div>` : '';
