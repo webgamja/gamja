@@ -600,7 +600,6 @@
       // 직접 만들기는 크루 탭에서 바로 보이게 둔다 (추천 크루에도 있다)
       html += makeButtonsHtml();
       // 삭제한 크루가 있을 때만: 30일 안에 되살리거나 완전히 지운다
-      if (trashItems.length) html += `<button class="fr-join" data-trash="1" type="button">${escapeHtml(window.GAMJA_I18N.t('trash.row'))}<span>${trashItems.length} ›</span></button>`;
     }
     box.innerHTML = html;
   }
@@ -1144,30 +1143,53 @@
     if (go && runId === 'pending') return alert('사진을 올리는 중이에요. 올리기가 끝난 뒤에 만들 수 있어요.');
     if (go && runId) detachRun(); // 보던 방의 작업은 감자알에서 계속된다
     let created = true;
-    try { await api('/api/projects', { name: folder }); }
+    // 지운 크루를 같은 이름으로 다시 추가하면 옛 대화방이 되살아난다. 같은 템플릿이면 묻지 않고 잇고, 다른 크루면 한 번 묻는다
+    const T0 = window.GAMJA_I18N.t;
+    let resumeItems = []; // 되살릴 보관분 (최신순)
+    let resumed = false; // 보관해 둔 폴더를 되살렸는지
+    if (!projectList.includes(folder)) {
+      await loadTrash();
+      const olds = trashItems.filter((it) => it.crew === folder && !it.damaged).sort((a, b) => b.deletedAt - a.deletedAt);
+      if (olds.length) {
+        const oldTpl = olds[0].tpl || store.get(`cc:tpl:${folder}`, '');
+        const same = !!tpl && tpl !== 'custom' && oldTpl === tpl;
+        if (same || await gSheet({ title: T0('again.title', { name: crewParts(folder).text }), message: T0('again.msg'), ok: T0('again.ok'), cancel: T0('again.new') })) resumeItems = olds;
+      }
+    }
+    if (resumeItems.length && resumeItems[0].hasFolder) {
+      try { await restoreArchived(resumeItems[0].id, false, { quiet: true }); resumed = true; } catch (err) { return alert(err.message); }
+    }
+    try { if (resumed) throw new Error('이미 있어요'); await api('/api/projects', { name: folder }); }
     catch (err) {
       if (!/이미 있어요/.test(err.message)) return alert(err.message);
       created = false; // 이미 있는 크루면 지침을 덮어쓰지 않고 그 방으로만 간다
     }
     if (created) {
       const def = tpl ? AGENTS.find((x) => x.id === tpl && x.version) : null; // 시험한 템플릿이면 어떤 버전으로 만들었는지 기록한다
-      try { await api('/api/project-settings', { project: folder, instructions, model: '', effort: '', ...(def ? { tpl: { id: def.id, ver: def.version } } : {}) }); }
+      const tdef = tpl ? AGENTS.find((x) => x.id === tpl) : null; // 템플릿이 권하는 모델·생각 깊이 (없으면 전체 설정 따르기)
+      try { await api('/api/project-settings', { project: folder, instructions, model: (tdef && tdef.model) || '', effort: (tdef && tdef.effort) || '', ...(def ? { tpl: { id: def.id, ver: def.version } } : {}) }); }
       catch (err) { return alert(err.message); }
     }
     if (created) window.gaTrack('crew_create', { kind: tpl ? 'agent' : 'crew' });
-    if (tpl) store.set(`cc:tpl:${folder}`, tpl);
+    if (tpl && !resumed) store.set(`cc:tpl:${folder}`, tpl);
     if (created) { try { await loadProjects(); } catch { /* 목록은 곧 다시 받는다 */ } } // 버전 기록(배지)을 바로 반영
-    if (meta) store.set(`cc:crew:${folder}`, meta); // 가져온 크루의 이름·아이콘·예시 문장 (빈 방에서 보여 줌)
+    // 새로 만든 크루(보관 폴더가 없던 경우)와 더 오래된 보관분은 대화방만 되살린다
+    let reopened = resumed;
+    for (const it of resumeItems.slice(resumed ? 1 : 0)) {
+      try { await restoreArchived(it.id, false, { quiet: true, roomsOnly: true }); reopened = true; } catch { /* 한 보관분이 안 돼도 나머지는 계속 */ }
+    }
+    if (resumeItems.length) { await loadTrash(); }
+    if (meta && !resumed) store.set(`cc:crew:${folder}`, meta); // 가져온 크루의 이름·아이콘·예시 문장 (빈 방에서 보여 줌)
     clipCrew = null;
     agentEl.classList.add('hidden');
     if (!go) {
       await loadProjects();
       renderHome();
-      return toast(created ? '✅ 크루를 추가했어요. 위의 내 크루에서 찾을 수 있어요' : '이미 있는 크루예요');
+      return toast(reopened ? T0('again.done') : created ? '✅ 크루를 추가했어요. 위의 내 크루에서 찾을 수 있어요' : '이미 있는 크루예요');
     }
     showTab(null); // 크루 탭에서 크루를 추가했으면 그 크루 방으로 바로 간다
     await switchProject(folder);
-    toast(created ? '✅ 크루를 추가했어요. 아래 예시를 눌러 시작해 보세요' : '이미 있는 크루예요. 그 방으로 이동했어요');
+    toast(reopened ? T0('again.done') : created ? '✅ 크루를 추가했어요. 아래 예시를 눌러 시작해 보세요' : '이미 있는 크루예요. 그 방으로 이동했어요');
   }
   // 직접 만들기 화면에서 "크루 만들기": 이름·아이콘·소개·묶음은 이 기기에 저장하고, 폴더 이름은 이름에서 만든다
   async function createCustomAgent() {
@@ -1598,14 +1620,15 @@
   }
   // 크루 복구: 휴지통의 크루 폴더·대화·모델 설정을 되돌리고, 이 방을 살아 있는 크루의 방으로 바꾼다
   // 삭제한 크루를 되살린다. go: 되살린 뒤 그 크루 방으로 갈지 (크루 탭의 "삭제한 크루 복구하기"에서는 가지 않는다)
-  async function restoreArchived(archiveId, go) {
+  async function restoreArchived(archiveId, go, opts = {}) {
     const T = window.GAMJA_I18N.t;
     const old = `~${archiveId}`;
     const oldCrew = crewOf(goneName(old));
     let newName = '';
     let r;
     for (;;) { // 같은 이름의 크루가 이미 있으면 새 이름을 물어서 다시 시도한다
-      try { r = await api('/api/archive/restore', { id: archiveId, ...(newName ? { newName } : {}) }); break; } catch (err) {
+      try { r = await api('/api/archive/restore', { id: archiveId, ...(newName ? { newName } : {}), ...(opts.roomsOnly ? { roomsOnly: true } : {}) }); break; } catch (err) {
+        if (opts.roomsOnly) throw err;
         if (!/같은 이름/.test(err.message)) return alert(err.message);
         const input = await gSheet({ message: T('gone.rename', { name: newName || oldCrew }), field: { value: `${newName || oldCrew}-2` } });
         if (!input || !input.trim()) return;
@@ -1637,7 +1660,7 @@
       roomEl.classList.add('hidden');
       await switchProject(target);
     } else await loadProjects();
-    toast(T('gone.restored'));
+    if (!opts.quiet) toast(T('gone.restored'));
     return r;
   }
   const restoreGoneCrew = () => restoreArchived(project.slice(1), true);
@@ -2248,7 +2271,7 @@
   });
   $('roomDelete').onclick = async () => {
     const T = window.GAMJA_I18N.t;
-    if (!(await gSheet({ title: T('room.deleteTitle'), message: T('room.deleteConfirm', { name: roomText(project) }), ok: T('room.deleteOk'), danger: true }))) return;
+    if (!(await gSheet({ title: T('room.deleteTitle'), message: T(isGone(project) ? 'room.deleteConfirmGone' : 'room.deleteConfirm', { name: roomText(project) }), ok: T('room.deleteOk'), danger: true }))) return;
     if (runId || remoteRunId) return alert(T('chat.eraseBusy'));
     const name = project;
     try {
@@ -2928,7 +2951,11 @@
   $('projDelete').onclick = async () => {
     const T = window.GAMJA_I18N.t;
     await refreshChats(); // 지우기 전에 이 크루로 대화 중인 방이 몇 개인지 센다
-    const rooms = chats.filter((c) => !c.archive && (c.members && c.members.length ? c.members.includes(projTarget) : crewOf(c.name) === projTarget)).length;
+    // 채팅 목록에 실제로 보이는 방만 센다 (대화도 방 열기도 고정도 없는 크루의 빈 첫 방은 목록에 안 보이므로 세지 않는다)
+    const opened = store.get('cc:roomMade', {});
+    const pinned = getRoomPins();
+    const rooms = chats.filter((c) => !c.archive && (c.members && c.members.length ? c.members.includes(projTarget) : crewOf(c.name) === projTarget)
+      && (c.extra || c.ts || opened[c.name] || pinned[c.name])).length;
     const message = T('crew.deleteConfirm', { name: projTarget }) + (rooms ? '\n\n' + T('crew.deleteRooms', { n: rooms }) : '');
     if (!(await gSheet({ title: T('crew.deleteTitle'), message, ok: T('room.deleteOk'), danger: true }))) return;
     try { await api('/api/projects/delete', { project: projTarget }); } catch (err) { return alert(err.message); }

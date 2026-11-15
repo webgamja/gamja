@@ -85,10 +85,10 @@ const H = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16
   const d = fresh('upd'); fs.writeFileSync(path.join(d, 'data', 'perm-migration.json'), MIG);
   // 가짜 GitHub: index.json과 지침 파일을 돌려준다
   const MDGOOD = '# 원격 지침 v4\n'; let mdServe = MDGOOD;
-  const idx = () => JSON.stringify({ format: 'gamja-crews', version: 1, crews: [{ id: 'c-site', latest: '4.0', hash: H(MDGOOD), official: true, old: [H(V1X)] }, { id: '../evil', latest: '1', hash: 'zz' }] });
+  const idx = () => JSON.stringify({ format: 'gamja-crews', version: 1, crews: [{ id: 'c-site', latest: '4.0.0', hash: H(MDGOOD), official: true, old: [H(V1X)] }, { id: '../evil', latest: '1', hash: 'zz' }] });
   const fake = http.createServer((q, r) => {
     if (q.url === '/index.json') { r.end(idx()); return; }
-    if (q.url === '/crews/c-site/4.0.md') { r.end(mdServe); return; }
+    if (q.url === '/crews/c-site/4.0.0.md') { r.end(mdServe); return; }
     r.statusCode = 404; r.end('no');
   });
   await new Promise((rs) => fake.listen(0, '127.0.0.1', rs));
@@ -96,10 +96,10 @@ const H = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16
   const crew = '홈테스트';
   ok('mk', (await s.api('POST', '/api/projects', { name: crew })).status === 200);
   const V1 = '지침 v1\n';
-  let r = await s.api('POST', '/api/project-settings', { project: crew, instructions: V1, tpl: { id: 'c-site', ver: '3.1' } });
+  let r = await s.api('POST', '/api/project-settings', { project: crew, instructions: V1, tpl: { id: 'c-site', ver: '3.1.0' } });
   ok('settings', r.status === 200, r.status);
   let info = (await s.api('GET', '/api/projects')).json.crews?.[crew];
-  ok('tpl.recorded', info?.tpl?.id === 'c-site' && info.tpl.ver === '3.1' && info.tpl.edited === false, JSON.stringify(info));
+  ok('tpl.recorded', info?.tpl?.id === 'c-site' && info.tpl.ver === '3.1.0' && info.tpl.edited === false, JSON.stringify(info));
   ok('hash', info?.hash === H(V1), info?.hash + ' vs ' + H(V1));
   // 직접 수정 → edited
   const f = path.join(d, 'projects', crew, 'CLAUDE.md');
@@ -108,8 +108,8 @@ const H = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16
   ok('edited.true', info.tpl.edited === true);
   // 업데이트
   const V2 = '지침 v2\n';
-  r = await s.api('POST', '/api/crew-update', { project: crew, tpl: { id: 'c-site', ver: '3.2' }, instructions: V2 });
-  ok('update', r.status === 200 && r.json.info?.tpl?.ver === '3.2' && r.json.info.tpl.edited === false, JSON.stringify(r.json));
+  r = await s.api('POST', '/api/crew-update', { project: crew, tpl: { id: 'c-site', ver: '3.2.0' }, instructions: V2 });
+  ok('update', r.status === 200 && r.json.info?.tpl?.ver === '3.2.0' && r.json.info.tpl.edited === false, JSON.stringify(r.json));
   ok('update.file', fs.readFileSync(f, 'utf8') === V2);
   ok('update.backup', r.json.info.backups === 1, r.json.info.backups);
   // 되돌리기
@@ -117,42 +117,45 @@ const H = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 16
   ok('undo', r.status === 200, JSON.stringify(r.json));
   ok('undo.file', fs.readFileSync(f, 'utf8') === V1 + '내가 고침\n');
   info = (await s.api('GET', '/api/projects')).json.crews[crew];
-  ok('undo.tpl', info.tpl.ver === '3.1' && info.tpl.edited === true && info.backups === 0, JSON.stringify(info));
+  ok('undo.tpl', info.tpl.ver === '3.1.0' && info.tpl.edited === true && info.backups === 0, JSON.stringify(info));
   r = await s.api('POST', '/api/crew-update-undo', { project: crew });
   ok('undo.none404', r.status === 404, r.status);
   // 백업 3개 유지
-  for (let i = 0; i < 5; i++) { await s.api('POST', '/api/crew-update', { project: crew, tpl: { id: 'c-site', ver: '3.2' }, instructions: 'x' + i + '\n' }); await sleep(20); }
+  for (let i = 0; i < 5; i++) { await s.api('POST', '/api/crew-update', { project: crew, tpl: { id: 'c-site', ver: '3.2.0' }, instructions: 'x' + i + '\n' }); await sleep(20); }
   info = (await s.api('GET', '/api/projects')).json.crews[crew];
   ok('backup.max3', info.backups === 3, info.backups);
   // 이름 바꾸기 → 기록 이동
   r = await s.api('POST', '/api/projects/rename', { project: crew, newName: '홈테스트2' });
   ok('rename', r.status === 200, r.status);
   info = (await s.api('GET', '/api/projects')).json.crews['홈테스트2'];
-  ok('rename.moved', info?.tpl?.ver === '3.2' && info.backups === 3, JSON.stringify(info));
+  ok('rename.moved', info?.tpl?.ver === '3.2.0' && info.backups === 3, JSON.stringify(info));
   // 잘못된 입력
   r = await s.api('POST', '/api/crew-update', { project: crew, tpl: { id: 5, ver: 'x' }, instructions: 'x' });
   ok('bad.tpl', r.status >= 400 || !r.json.info?.tpl, r.status);
+  // 옛 기록("3.2")은 3.2.0으로 읽는다
+  { const c0 = '옛기록'; await s.api('POST', '/api/projects', { name: c0 }); await s.api('POST', '/api/project-settings', { project: c0, instructions: V1X, tpl: { id: 'c-site', ver: '3.2' } });
+    ok('normver', (await s.api('GET', '/api/projects')).json.crews[c0].tpl.ver === '3.2.0'); }
   // ---------- GitHub 크루 목록 ----------
   const c2 = '원격테스트';
   await s.api('POST', '/api/projects', { name: c2 });
-  await s.api('POST', '/api/project-settings', { project: c2, instructions: V1X, tpl: { id: 'c-site', ver: '3.2' } });
+  await s.api('POST', '/api/project-settings', { project: c2, instructions: V1X, tpl: { id: 'c-site', ver: '3.2.0' } });
   r = await s.api('GET', '/api/crew-index');
-  ok('index.fetch', r.status === 200 && r.json.crews.length === 1 && r.json.crews[0].latest === '4.0' && r.json.crews[0].official === true, JSON.stringify(r.json));
+  ok('index.fetch', r.status === 200 && r.json.crews.length === 1 && r.json.crews[0].latest === '4.0.0' && r.json.crews[0].official === true, JSON.stringify(r.json));
   ok('index.drops.bad', !r.json.crews.some((c) => c.id.includes('evil')));
   ok('index.cached.file', fs.existsSync(path.join(d, 'data', 'crews-index.json')));
-  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '3.9' }, remote: true });
+  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '3.9.0' }, remote: true });
   ok('remote.badver', r.status === 502, r.status + ' ' + r.json.error);
   mdServe = '# 바꿔치기\n';
-  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0' }, remote: true });
+  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0.0' }, remote: true });
   ok('remote.hashmismatch', r.status === 502 && fs.readFileSync(path.join(d, 'projects', c2, 'CLAUDE.md'), 'utf8') === V1X, r.status + ' ' + r.json.error);
   mdServe = MDGOOD;
-  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0' }, remote: true });
-  ok('remote.ok', r.status === 200 && fs.readFileSync(path.join(d, 'projects', c2, 'CLAUDE.md'), 'utf8') === MDGOOD && r.json.info.tpl.ver === '4.0' && r.json.info.backups === 1, r.status + JSON.stringify(r.json));
+  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0.0' }, remote: true });
+  ok('remote.ok', r.status === 200 && fs.readFileSync(path.join(d, 'projects', c2, 'CLAUDE.md'), 'utf8') === MDGOOD && r.json.info.tpl.ver === '4.0.0' && r.json.info.backups === 1, r.status + JSON.stringify(r.json));
   mdServe = 'x'.repeat(70000); // 목록의 해시와 달라도, 크기 제한에서 먼저 막힌다
-  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0' }, remote: true });
+  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0.0' }, remote: true });
   ok('remote.toolarge', r.status === 502, r.status);
   await new Promise((rs) => fake.close(rs)); // 인터넷 끊김
-  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0' }, remote: true });
+  r = await s.api('POST', '/api/crew-update', { project: c2, tpl: { id: 'c-site', ver: '4.0.0' }, remote: true });
   ok('remote.offline', r.status === 502 && /인터넷/.test(r.json.error), r.status + ' ' + r.json.error);
   r = await s.api('GET', '/api/crew-index?refresh=1');
   ok('index.offline.fallback', r.status === 200 && r.json.crews.length === 1, JSON.stringify(r.json));

@@ -276,11 +276,13 @@ const instrHash = (t) => crypto.createHash('sha256').update(t).digest('hex').sli
 const readInstr = (dir) => { try { return fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'); } catch { return ''; } };
 const crewBackupDir = (name) => path.join(DATA_DIR, 'crew-backups', encodeURIComponent(name));
 const crewBackups = (name) => { try { return fs.readdirSync(crewBackupDir(name)).filter((f) => f.endsWith('.json')).sort(); } catch { return []; } };
-const cleanTpl = (t) => (t && typeof t.id === 'string' && typeof t.ver === 'string' && t.id.length <= 40 && t.ver.length <= 20 ? { id: t.id, ver: t.ver } : null);
+// 크루 버전은 n.n.n 모양으로 통일한다. 옛 기록("3.2")도 "3.2.0"으로 읽는다
+const normVer = (v) => { const m = /^(\d{1,3})(?:\.(\d{1,3}))?(?:\.(\d{1,3}))?$/.exec(String(v)); return m ? `${m[1]}.${m[2] || 0}.${m[3] || 0}` : String(v); };
+const cleanTpl = (t) => (t && typeof t.id === 'string' && typeof t.ver === 'string' && t.id.length <= 40 && t.ver.length <= 20 ? { id: t.id, ver: normVer(t.ver) } : null);
 function crewTplInfo(name) { // 화면이 배지·"새 버전이 있어요"를 정하는 데 쓰는 정보
   const hash = instrHash(readInstr(path.join(CREWS_DIR, name)));
   const t = projectConf[name] && projectConf[name].tpl;
-  return { hash, tpl: t ? { id: t.id, ver: t.ver, edited: t.hash !== hash } : null, backups: crewBackups(name).length };
+  return { hash, tpl: t ? { id: t.id, ver: normVer(t.ver), edited: t.hash !== hash } : null, backups: crewBackups(name).length };
 }
 
 // ---------- 크루 목록(GitHub: webgamja/gamja-crews) ----------
@@ -322,7 +324,7 @@ function parseCrewsIndex(text) { // 모양이 틀린 항목은 버린다
   for (const c of j.crews) {
     if (!c || typeof c.id !== 'string' || !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(c.id)) continue;
     if (!VER_PAT.test(String(c.latest)) || !HASH_PAT.test(String(c.hash))) continue;
-    crews.push({ id: c.id, latest: String(c.latest), hash: c.hash, official: c.official === true, old: (Array.isArray(c.old) ? c.old : []).filter((h) => HASH_PAT.test(String(h))).slice(0, 50) });
+    crews.push({ id: c.id, latest: normVer(c.latest), hash: c.hash, official: c.official === true, old: (Array.isArray(c.old) ? c.old : []).filter((h) => HASH_PAT.test(String(h))).slice(0, 50) });
   }
   return crews;
 }
@@ -347,7 +349,7 @@ async function getCrewsIndex(force) { // 실패하면 저장해 둔 목록(없�
 async function fetchCrewInstructions(id, ver) { // 목록의 최신 버전만 받고, 해시가 다르면 거절한다
   const idx = await getCrewsIndex(false);
   const e = idx.crews.find((c) => c.id === id);
-  if (!e || e.latest !== ver) throw new Error('목록에 없는 버전이에요. 크루 탭을 새로 열어 다시 해 주세요.');
+  if (!e || e.latest !== normVer(ver)) throw new Error('목록에 없는 버전이에요. 크루 탭을 새로 열어 다시 해 주세요.');
   let text;
   try { text = await fetchText(`${CREWS_BASE}/crews/${encodeURIComponent(id)}/${encodeURIComponent(ver)}.md`, CREWS_MAX_MD); } catch { throw new Error('새 지침을 받지 못했어요. 인터넷 연결을 확인해 주세요.'); }
   if (instrHash(text) !== e.hash) throw new Error('받은 지침이 목록과 달라서 적용하지 않았어요.');
@@ -2684,13 +2686,15 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           const e = found.get(key) || {
             id: '', crew, deletedAt: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), messages: 0,
             hasFolder: fs.existsSync(path.join(TRASH_DIR, `${crew}_${stamp}`)),
+            tpl: '',
           };
+          try { const cf = JSON.parse(fs.readFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(crew)}.conf`), 'utf8')); if (cf && cf.tpl && typeof cf.tpl.id === 'string') e.tpl = cf.tpl.id; } catch { /* 보관한 설정이 없으면 템플릿은 모른다 */ }
           if (rdA.state === 'failed') e.damaged = true; // 읽지 못하는 기록: 목록에 보여 주고 30일이 지나도 자동으로 지우지 않는다
           e.messages += (conv.messages || []).filter((x) => x.role === 'user' || x.role === 'bot').length;
           if (!e.id || rid === crew) e.id = f.slice(0, -5);
           found.set(key, e);
         }
-        const items = [...found.values()].filter((e) => e.hasFolder || e.damaged).sort((a, b) => b.deletedAt - a.deletedAt);
+        const items = [...found.values()].sort((a, b) => b.deletedAt - a.deletedAt);
         return send(res, 200, { items });
       }
       // 삭제한 크루를 지금 완전히 지운다 (휴지통 폴더와 보관된 대화). 되돌릴 수 없다
@@ -2734,10 +2738,15 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         if (isReservedCrewName(newName)) return send(res, 400, { error: '감자가 쓰는 이름이라 크루 이름으로 쓸 수 없어요.' });
         const trashDir = path.join(TRASH_DIR, `${crew}_${stamp}`);
         const dest = path.join(CREWS_DIR, newName);
-        if (fs.existsSync(dest)) return send(res, 409, { error: `같은 이름('${newName}')의 크루가 이미 있어요.` });
-        if (!fs.existsSync(trashDir)) return send(res, 404, { error: '휴지통에서 크루 폴더를 찾지 못했어요. (30일이 지나면 완전히 지워져요)' });
-        fs.renameSync(trashDir, dest);
-        clearCrewPerms(crew, newName); // 복구해도 권한은 0에서 시작 (되살리지 않는다)
+        // roomsOnly: 크루(폴더)는 이미 있고 옛 대화방만 되살린다 (같은 크루를 다시 추가했을 때, 보관 폴더가 없어졌거나 더 오래된 보관분일 때)
+        const roomsOnly = b.roomsOnly === true;
+        if (roomsOnly) { if (!fs.existsSync(dest)) return send(res, 404, { error: '크루를 찾을 수 없어요.' }); }
+        else {
+          if (fs.existsSync(dest)) return send(res, 409, { error: `같은 이름('${newName}')의 크루가 이미 있어요.` });
+          if (!fs.existsSync(trashDir)) return send(res, 404, { error: '보관된 크루 폴더가 없어요. (30일이 지나면 폴더는 정리돼요)' });
+          fs.renameSync(trashDir, dest);
+          clearCrewPerms(crew, newName); // 복구해도 권한은 0에서 시작 (되살리지 않는다)
+        }
         fs.mkdirSync(CONV_DIR, { recursive: true });
         const rooms = [];
         for (const f of fs.readdirSync(ARCHIVE_DIR)) {
@@ -2752,6 +2761,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           cv = readConvPath(path.join(ARCHIVE_DIR, f)).conv || null; // 읽지 못한 기록은 고쳐 쓰지 않고 그대로 옮긴다
           const orig = cv && typeof cv.archivedFrom === 'string' && /^@[a-z0-9]{3,8}$/.test(cv.archivedFrom) ? cv.archivedFrom : '';
           if (orig) { to = orig; from = orig; } // 새 방은 원래 아이디(@번호)로 되돌린다
+          if (roomsOnly && !orig && fs.existsSync(convFile(to))) continue; // 이미 있는 첫 방은 덮어쓰지 않는다 (그 옛 대화는 읽기 전용으로 남는다)
           fs.rmSync(convFile(to), { force: true });
           fs.renameSync(path.join(ARCHIVE_DIR, f), convFile(to));
           convCache.delete(to);
@@ -2764,8 +2774,8 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           rooms.push({ id: f.slice(0, -5), from, to });
         }
         const confFile = path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(crew)}.conf`);
-        try { projectConf[newName] = JSON.parse(fs.readFileSync(confFile, 'utf8')); saveProjectConf(); } catch { /* 보관한 설정이 없으면 기본값 */ }
-        fs.rmSync(confFile, { force: true });
+        if (!roomsOnly) { try { projectConf[newName] = JSON.parse(fs.readFileSync(confFile, 'utf8')); saveProjectConf(); } catch { /* 보관한 설정이 없으면 기본값 */ } }
+        if (!roomsOnly || !fs.readdirSync(ARCHIVE_DIR).some((x) => x.startsWith(`${stamp}__`) && x.endsWith('.json'))) fs.rmSync(confFile, { force: true });
         return send(res, 200, { project: newName, rooms });
       }
       // 같은 크루의 새 채팅방 만들기 / 크루의 첫 방이 아닌 방 지우기
@@ -3696,7 +3706,27 @@ function purgeTrash() {
     return m ? stampTime(m[1]) : 0;
   });
   sweep(ROOM_TRASH_DIR, (n) => (/^\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d__/.test(n) ? stampTime(n) : 0));
-  sweep(ARCHIVE_DIR, (n) => (/^\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d__/.test(n) ? stampTime(n) : 0));
+  // 삭제한 크루의 대화방은 30일이 지나도 지우지 않는다 (읽기 전용으로 남고, 지우려면 채팅방 삭제). 폴더(TRASH_DIR)만 정리한다.
+  // 대화가 한 번도 없던 크루의 빈 보관 표시와, 대화가 모두 사라진 뒤 남은 설정 파일만 30일 뒤 치운다
+  {
+    let af = [];
+    try { af = fs.readdirSync(ARCHIVE_DIR); } catch { af = []; }
+    const jsonOf = (n) => { const mm = /^(.+?)__(.+)\.json$/.exec(n); if (!mm) return null; try { return { stamp: mm[1], crew: crewOf(decodeURIComponent(mm[2])) }; } catch { return null; } };
+    for (const n of af) {
+      const m = /^(\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d)__(.+)\.(json|conf)$/.exec(n);
+      if (!m || !(stampTime(m[1]) < limit)) continue;
+      let rid; try { rid = decodeURIComponent(m[2]); } catch { continue; }
+      const full = path.join(ARCHIVE_DIR, n);
+      try {
+        if (m[3] === 'conf') { if (!af.some((x) => { const j = jsonOf(x); return j && j.stamp === m[1] && j.crew === rid; })) fs.rmSync(full, { force: true }); continue; }
+        if (rid !== crewOf(rid)) continue;
+        const rd = readConvPath(full);
+        if (rd.state === 'failed') continue;
+        if (!((rd.conv || {}).messages || []).some((x) => x.role === 'user' || x.role === 'bot')
+          && !af.some((x) => { const j = jsonOf(x); return x !== n && j && j.stamp === m[1] && j.crew === rid; })) fs.rmSync(full, { force: true });
+      } catch { /* 못 지우면 다음에 다시 */ }
+    }
+  }
 }
 
 // 예전에 설치한 폰(.env에 PORT=3000)은 26514로 옮긴다: .env의 PORT 줄만 바꾸고 끝내면, start.sh 루프가 3초 뒤 새 포트로 다시 띄운다 (앱도 .env를 읽어서 같은 포트로 붙는다)
