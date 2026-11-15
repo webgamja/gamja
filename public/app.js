@@ -1447,14 +1447,17 @@
   // 그래서 음성 대화 중이거나 소리를 읽어 주는 중이면 새로고침을 미루고, 끝나면 한다 (읽어 주기가 멈추지 않을 때를 대비해 90초까지만 기다린다)
   let reloadSince = 0;
   const speaking = () => !!(synth && (synth.speaking || synth.pending));
+  let importBusyNow = false; // 이사오기 올리기·설치 중
   function requestReload() {
-    if (voice.on || speaking()) { if (!reloadSince) reloadSince = Date.now(); return false; }
+    // 알림창이 열려 있거나 이사오기를 올리는 중이면 닫을 때까지 미룬다 (알림창이 뜨자마자 사라지지 않게)
+    if (voice.on || speaking() || gsOpen || importBusyNow) { if (!reloadSince) reloadSince = Date.now(); return false; }
     location.reload();
     return true;
   }
   setInterval(() => {
     if (!reloadSince || runId || remoteRunId) return;
     if (voice.on || (speaking() && Date.now() - reloadSince < 90000)) return;
+    if ((gsOpen || importBusyNow) && Date.now() - reloadSince < 600000) return; // 알림창·이사오기 중에는 최대 10분까지 미룬다
     reloadSince = 0;
     location.reload();
   }, 1000);
@@ -2708,6 +2711,9 @@
     const label = btn.textContent;
     const busy = (text) => { btn.disabled = true; btn.classList.add('busy'); btn.textContent = text; };
     const idle = () => { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; };
+    importBusyNow = true;
+    try { await importRun(); } finally { importBusyNow = false; }
+    async function importRun() {
     busy(T('import.inspecting'));
     let ins;
     // 고른 파일을 먼저 폰 안(메모리)으로 읽어 둔다: 폰에 내려받지 않은 파일(드라이브·카톡 등)이나 고른 뒤 바뀐 파일은 여기서 걸러져 이유를 알려 줄 수 있고,
@@ -2755,6 +2761,7 @@
     if (res.unclear) return importUnclear(id, res.final);
     if (res.failed) { sessionStorage.removeItem(IMPORT_PENDING); return alert(impErr(res, T('import.err.install-failed'))); }
     await finishImport(res);
+    }
   };
   // 설치 도중 화면이 새로고침됐다면, 감자알에 결과를 물어서 이어 마무리한다
   setTimeout(async () => {
