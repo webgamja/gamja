@@ -2715,11 +2715,20 @@
     let data;
     try { data = await f.arrayBuffer(); }
     catch { idle(); return alert(T('import.err.unreadable')); }
+    const boot0 = bootId;
     try {
       ins = await importCall('/api/rooms/import/inspect', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: data });
     } catch (err) {
+      // 끊긴 이유를 가리려고, 감자알이 살아 있는지·그 사이 다시 켜졌는지 확인해서 함께 보여 준다 (화면을 캡처해서 알려 주세요)
+      let alive = false, reboot = false;
+      for (let i = 0; i < 4 && !alive; i++) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        try { const m = await fetch('/api/me', { credentials: 'same-origin' }); if (m.ok) { alive = true; const j = await m.json(); reboot = !!(boot0 && j.boot && j.boot !== boot0); } } catch { /* 아직 안 됨 */ }
+      }
       idle();
-      return alert(err && err.name === 'TypeError' ? T('import.err.network') : (err && err.message) || T('import.err.network'));
+      const yn = (b) => T(b ? 'import.diag.yes' : 'import.diag.no');
+      const diag = T('import.diag', { err: `${(err && err.name) || 'Error'}: ${(err && err.message) || ''}`, size: fmtSize(f.size), alive: yn(alive), reboot: yn(reboot) });
+      return alert((err && err.name === 'TypeError' ? T('import.err.network') : (err && err.message) || T('import.err.network')) + '\n\n' + diag);
     }
     data = null;
     if (ins.status === 401) return idle();

@@ -240,7 +240,10 @@ function createImportFlow(d) {
   }
 
   // 1) 검사: 저장만 하고 설치하지 않는다
+  // 가져오기 검사의 시작·끝·오류를 한 줄씩 남긴다 (연결이 끊기는 문제를 나중에 따져 볼 수 있게)
+  const dbg = (msg) => { try { fs.appendFileSync(path.join(d.DATA_DIR, 'import-debug.log'), `${new Date().toISOString()} pid=${process.pid} ${msg}\n`); } catch (_) { /* 기록 실패는 무시 */ } };
   async function inspect(req, res) {
+    dbg(`inspect 시작 length=${req.headers['content-length'] || '?'} node=${process.version}`);
     sweep();
     const sess = sessionOf(req);
     if (job) {
@@ -262,8 +265,10 @@ function createImportFlow(d) {
       const sameNameExists = names.includes(built.info.displayName);
       mine.info = { ...built.info, sameNameExists, sha256: mine.sha256, expiresAt: mine.expiresAt };
       mine.state = 'inspected';
+      dbg(`inspect 끝 받은=${got}바이트`);
       return d.send(res, 200, { importId: id, ...mine.info });
     } catch (e) {
+      dbg(`inspect 오류 ${e && e.code ? e.code : ''} ${e && e.message}`);
       dropJob(mine);
       if (e instanceof ImportError) return d.send(res, e.status, { error: e.message, code: e.code });
       console.error('가져오기 검사 실패:', e.message);
