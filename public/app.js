@@ -2710,9 +2710,18 @@
     const idle = () => { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; };
     busy(T('import.inspecting'));
     let ins;
+    // 고른 파일을 먼저 폰 안(메모리)으로 읽어 둔다: 폰에 내려받지 않은 파일(드라이브·카톡 등)이나 고른 뒤 바뀐 파일은 여기서 걸러져 이유를 알려 줄 수 있고,
+    // 올리는 도중 파일이 바뀌어 끊기는 일도 없다
+    let data;
+    try { data = await f.arrayBuffer(); }
+    catch { idle(); return alert(T('import.err.unreadable')); }
     try {
-      ins = await importCall('/api/rooms/import/inspect', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: f });
-    } catch (err) { idle(); return alert(err.message); }
+      ins = await importCall('/api/rooms/import/inspect', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: data });
+    } catch (err) {
+      idle();
+      return alert(err && err.name === 'TypeError' ? T('import.err.network') : (err && err.message) || T('import.err.network'));
+    }
+    data = null;
     if (ins.status === 401) return idle();
     if (ins.status !== 200) { idle(); return alert(impErr(ins.r, 'HTTP ' + ins.status)); }
     idle();
