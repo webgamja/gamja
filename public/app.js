@@ -253,17 +253,18 @@
   let gsOpen = null; // 지금 열려 있는 시트 { bg, close }
   //   field: { value, placeholder, readonly } — 글칸이 있는 시트. 입력받는 시트(readonly 아님)는 확인하면 글자를, 취소하면 null을 돌려준다.
   //   읽기 전용 글칸은 복사할 글을 보여 줄 때 쓴다 (gCopy)
-  function gSheet({ title = '', message = '', ok = '', cancel = '', danger = false, alertOnly = false, field = null } = {}) {
+  function gSheet({ title = '', message = '', ok = '', cancel = '', danger = false, alertOnly = false, field = null, pre = null } = {}) {
     const T = window.GAMJA_I18N.t;
     return new Promise((resolve) => {
       if (gsOpen) gsOpen.close(false);
       const bg = document.createElement('div');
       bg.className = 'gs-bg';
-      bg.innerHTML = '<div class="gs" role="dialog" aria-modal="true">' + (title ? '<h2></h2>' : '') + (message ? '<p></p>' : '') +
+      bg.innerHTML = '<div class="gs" role="dialog" aria-modal="true">' + (title ? '<h2></h2>' : '') + (message ? '<p></p>' : '') + (pre !== null ? '<pre class="gs-pre"></pre>' : '') +
         (field ? '<textarea class="gs-field" rows="2" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>' : '') +
         `<div class="gs-btns"><button class="gs-ok${danger ? ' danger' : ''}" type="button"></button>${alertOnly ? '' : '<button class="gs-cancel" type="button"></button>'}</div></div>`;
       if (title) bg.querySelector('h2').textContent = title;
       if (message) bg.querySelector('p').textContent = message;
+      if (pre !== null) { const el = bg.querySelector('.gs-pre'); el.textContent = pre; setTimeout(() => { el.scrollTop = el.scrollHeight; }); }
       const input = field ? bg.querySelector('.gs-field') : null;
       if (input) {
         input.value = field.value || '';
@@ -445,10 +446,13 @@
     return meta ? `${meta.icon || '📁'} ${stripCrew(meta.name || p)}` : `📁 ${p}`;
   }
   let projectList = []; // 크루(프로젝트 폴더) 이름들
+  let fabApp = null; // 켜 둔 앱 버튼의 상태 (아래 renderFab · refreshFab)
+  let fabRoom = '';
   // 왼쪽 위 버튼: 지금 있는 곳을 보여 준다
   function updateHomeBtn() {
     const members = roomMembers(project);
     $('homeBtn').textContent = `← ${crewParts(members.length > 1 ? members[0] : project).icon} ${roomText(project)}`; // ←를 누르면 채팅 목록으로
+    if (fabRoom !== project) { fabApp = null; if ($('appFab')) { renderFab(); refreshFab(); } }
     $('madeBtn').classList.remove('hidden'); // 감자 톡톡도 결과물 폴더가 있고, 크루가 지워진 채팅방도 방에 남은 결과물을 볼 수 있다
     applyGone();
   }
@@ -893,8 +897,7 @@
     try { d = await api('/api/preview-files' + q()); } catch (err) { return alert(err.message); }
     // 다른 기기에서 열 주소: 이 폰 안(127.0.0.1)에서 보고 있으면 같은 와이파이 주소를 알려 준다
     const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
-    madeData = { files: d.files, base: `/preview/${d.token}/${encodeURIComponent(d.project)}/`, origin: local ? (d.lan[0] || '') : location.origin, app: null, appLog: null };
-    try { madeData.app = (await api('/api/apps' + q())).app; } catch { /* 켜 둔 앱 정보를 못 받으면 줄을 안 보여 준다 */ }
+    madeData = { files: d.files, base: `/preview/${d.token}/${encodeURIComponent(d.project)}/`, origin: local ? (d.lan[0] || '') : location.origin };
     if (madeKind !== 'all' && !d.files.some((f) => f.kind === madeKind)) madeKind = 'all';
     $('madeTitle').textContent = `👀 ${crewParts(project).text}의 결과물`;
     renderMade();
@@ -918,7 +921,7 @@
       body = shown.map(({ f, i }) =>
         `<button class="pick-card" data-i="${i}"><span class="pick-icon">${KIND_ICON[f.kind]}</span><span><b>${escapeHtml(f.path)}</b><small>${KIND_NAME[f.kind]} · ${ago(f.mtime)} · ${kb(f.size)}</small></span></button>`).join('');
     }
-    madeBody.innerHTML = appBlock() + (files.length ? `<div class="made-tabs">${tabs}</div>` : '') + body +
+    madeBody.innerHTML = (files.length ? `<div class="made-tabs">${tabs}</div>` : '') + body +
       (origin && files.some((f) => f.kind === 'web')
         ? `<h3>다른 기기에서 웹페이지를 보려면</h3><p class="settings-row"><b>${escapeHtml(origin + base)}</b></p>` +
           '<button id="madeCopy" class="settings-save" type="button">📋 주소 복사</button>' +
@@ -928,8 +931,6 @@
         ? '<p class="settings-note">ⓘ 만든 웹페이지는 안전을 위해 <b>격리된 상태</b>로 열려요. 그래서 글을 저장해 두는 기능(브라우저 저장소)은 미리보기에서 동작하지 않을 수 있어요. 모두에게 공개하는 건 GAMJA Pro에서 해요.</p>'
         : '');
     madeBody.onclick = (e) => {
-      const ab = e.target.closest('[data-app]');
-      if (ab) return appAction(ab.dataset.app);
       const tab = e.target.closest('[data-kind]');
       if (tab) { madeKind = tab.dataset.kind; return renderMade(); }
       const item = e.target.closest('[data-i]');
@@ -940,26 +941,52 @@
       }
     };
   }
-  // 🟢 켜 둔 앱 줄 (크루가 gamja-make app start로 켠 웹 서버): 상태 · 열기 · 다시 켜기 · 끄기 · 기록
-  function appBlock() {
-    const a = madeData.app;
-    if (!a) return '';
+  // 🟢 켜 둔 앱 버튼 (크루가 gamja-make app start로 켠 웹 서버): 상단바 아래 오른쪽에 떠 있다. 앱이 있는 방에서만 보인다.
+  // 누르면 작은 메뉴(열기 · 기록 보기 · 다시 켜기 · 끄기). 상태는 10초마다 새로 받아 온다
+  const fabEl = $('appFab');
+  const fabMenu = $('appFabMenu');
+  const fabOn = (a) => a && (a.state === 'running' || a.state === 'starting');
+  function renderFab() {
     const T = window.GAMJA_I18N.t;
-    const on = a.state === 'running' || a.state === 'starting';
+    const fabEl = $('appFab'), fabMenu = $('appFabMenu');
+    const a = fabApp && fabApp.state !== 'stopped' ? fabApp : null; // 끈 앱은 버튼을 감춘다 (화면을 가리지 않게)
+    fabEl.classList.toggle('hidden', !a);
+    if (!a) { fabMenu.classList.add('hidden'); return; }
+    const st = ['running', 'starting', 'crashed'].includes(a.state) ? a.state : 'stopped';
+    fabEl.dataset.state = st;
+    $('appFabLabel').textContent = T(`app.fab.${st}`);
     const time = a.startedAt ? new Date(a.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const line = T(`app.${['running', 'starting', 'crashed'].includes(a.state) ? a.state : 'stopped'}`, { port: a.port, time });
-    const btn = (k, label) => `<button type="button" class="settings-ghost" data-app="${k}">${escapeHtml(label)}</button>`;
-    return `<div class="made-app"><h3>${escapeHtml(T('app.title'))}</h3>` +
-      `<p class="settings-row"><b>${escapeHtml(line)}</b><br><small>${escapeHtml(a.cmd)}${a.dir ? ` · ${escapeHtml(a.dir)}` : ''}</small></p>` +
-      (a.note && !on ? `<p class="settings-note">${escapeHtml(a.note)}</p>` : '') +
-      `<div class="made-app-btns">${on ? btn('open', T('app.open')) : ''}${btn('restart', T('app.restart'))}${on ? btn('stop', T('app.stop')) : ''}${btn('log', T('app.log'))}</div>` +
-      (on ? `<p class="settings-note">${escapeHtml(T('app.openHint', { url: `http://localhost:${a.port}` }))}</p>` : '') +
-      (madeData.appLog !== null ? `<pre class="made-app-log">${escapeHtml(madeData.appLog || T('app.logEmpty'))}</pre>` : '') + '</div>';
+    const on = fabOn(a);
+    const item = (k, icon, label, cls = '') => `<button type="button" class="app-fab-item${cls}" data-app="${k}"><span class="app-fab-ic">${icon}</span>${escapeHtml(label)}</button>`;
+    fabMenu.innerHTML = `<div class="app-fab-head"><b>${escapeHtml(T('app.title'))}</b><small>${escapeHtml(T(`app.${st}`, { port: a.port, time }))}</small>` +
+      `<small class="app-fab-cmd">${escapeHtml(a.cmd)}</small></div>` +
+      (a.note && !on ? `<p class="app-fab-note">${escapeHtml(a.note)}</p>` : '') +
+      (on ? item('open', '↗', T('app.open')) : '') + item('log', '≡', T('app.log')) + item('restart', '↻', T('app.restart')) +
+      (on ? '<hr>' + item('stop', '■', T('app.stop'), ' danger') : '');
   }
+  async function refreshFab() {
+    const room = project;
+    if (!room || els.app.classList.contains('hidden')) return;
+    let a = null;
+    try { a = (await api('/api/apps?project=' + encodeURIComponent(room))).app || null; } catch { return; }
+    if (room !== project) return;
+    if (fabRoom !== room) $('appFabMenu').classList.add('hidden');
+    fabRoom = room;
+    fabApp = a;
+    renderFab();
+  }
+  setInterval(() => { if (document.visibilityState === 'visible') refreshFab(); }, 10000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshFab(); });
+  $('appFabBtn').onclick = (e) => { e.stopPropagation(); fabMenu.classList.toggle('hidden'); };
+  document.addEventListener('click', (e) => { if (!fabEl.contains(e.target)) fabMenu.classList.add('hidden'); });
+  fabMenu.onclick = (e) => { const b = e.target.closest('[data-app]'); if (b) appAction(b.dataset.app); };
+  // 대화를 위로 올려 읽는 동안은 글자를 숨기고 점만 남긴다
+  els.messages.addEventListener('scroll', () => fabEl.classList.toggle('mini', !nearBottom()), { passive: true });
   async function appAction(k) {
     const T = window.GAMJA_I18N.t;
-    const a = madeData.app;
+    const a = fabApp;
     if (!a) return;
+    fabMenu.classList.add('hidden');
     if (k === 'open') {
       const url = `http://localhost:${a.port}`;
       const app = window.GamjaApp;
@@ -967,20 +994,20 @@
       return window.open(url, '_blank');
     }
     if (k === 'log') {
-      if (madeData.appLog !== null) madeData.appLog = null;
-      else { try { madeData.appLog = (await api('/api/apps' + q() + '&log=1')).log || ''; } catch (err) { return alert(err.message); } }
-      return renderMade();
+      let log = '';
+      try { log = (await api('/api/apps?project=' + encodeURIComponent(project) + '&log=1')).log || ''; } catch (err) { return alert(err.message); }
+      return gSheet({ title: T('app.log'), pre: log || T('app.logEmpty'), alertOnly: true });
     }
     if (k === 'stop' && !(await gSheet({ title: T('app.stop'), message: T('app.stopConfirm'), ok: T('app.stop'), danger: true }))) return;
+    fabApp = { ...a, state: 'starting' };
+    if (k === 'restart') renderFab();
     toast(T('app.busy'));
     try {
       const r = await api('/api/apps/action', { project, action: k });
-      if (r.app) madeData.app = r.app;
       if (r.error) alert(r.error);
       else toast(T(k === 'stop' ? 'app.stoppedToast' : 'app.restartedToast'));
-      if (madeData.appLog !== null) madeData.appLog = (await api('/api/apps' + q() + '&log=1')).log || '';
     } catch (err) { alert(err.message); }
-    renderMade();
+    await refreshFab();
   }
   // 이미지 보기 안에서 도는 확대·이동 기능: 두 손가락으로 확대·축소(손가락 사이 지점 기준), 확대하면 한 손가락으로 이동, 두 번 두드리면 확대/원래대로.
   // 감자 화면 전체가 아니라 사진만 커져서 위쪽 줄은 그대로 있다

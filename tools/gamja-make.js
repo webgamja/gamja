@@ -16,7 +16,8 @@ function inside(p, { mustExist = false } = {}) {
   if (!p) die('파일 이름이 빠졌어요.');
   const abs = path.resolve(CWD, p);
   if (abs !== CWD && !abs.startsWith(CWD + path.sep)) die(`이 크루 폴더 안의 파일만 쓸 수 있어요: ${p}`);
-  if (abs.split(path.sep).some((s) => s.startsWith('.') && s !== '')) die(`점(.)으로 시작하는 파일·폴더는 쓸 수 없어요: ${p}`);
+  // 방 폴더 안쪽 경로만 본다 (채팅방 폴더는 /root/projects/.rooms/… 처럼 점 폴더 안에 있다)
+  if (path.relative(CWD, abs).split(path.sep).some((s) => s.startsWith('.') && s !== '')) die(`점(.)으로 시작하는 파일·폴더는 쓸 수 없어요: ${p}`);
   if (mustExist && !fs.existsSync(abs)) die(`파일이 없어요: ${p}`);
   return abs;
 }

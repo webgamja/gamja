@@ -748,12 +748,37 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 결과물: 종류별 탭과 이미지 바둑판 */
 .made-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .made-tabs::-webkit-scrollbar { display: none; }
-.made-app { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(46, 160, 67, .08); border: 1px solid rgba(46, 160, 67, .35); }
-.made-app h3 { margin: 0 0 4px; }
-.made-app .settings-row { margin: 4px 0; }
-.made-app-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
-.made-app-btns .settings-ghost { width: auto; flex: 1 1 auto; margin: 0; }
-.made-app-log { max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 8px; border-radius: 8px; background: #111; color: #ddd; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+/* 켜 둔 앱 버튼: 상단바 아래 오른쪽에 떠 있는 알약. 대화를 올려 읽을 때는 점만 남는다 */
+.app-fab { position: absolute; right: var(--side); top: calc(100% + 8px); z-index: 9; display: flex; flex-direction: column; align-items: flex-end; }
+.app-fab-btn {
+  display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px 0 12px; border-radius: 17px;
+  background: var(--bot); color: var(--bot-fg); border: 1px solid rgba(34,165,90,.3); font: 600 14px/1 inherit; font-family: inherit;
+  box-shadow: 0 3px 10px rgba(0,0,0,.14); transition: padding .15s, gap .15s;
+}
+.app-fab-btn:active { filter: brightness(.95); }
+.app-fab-dot { width: 10px; height: 10px; border-radius: 50%; background: #22a55a; flex: none; animation: fabBlink 2.4s ease-in-out infinite; }
+@keyframes fabBlink { 50% { opacity: .35; } }
+.app-fab[data-state="starting"] .app-fab-btn { border-color: rgba(224,169,21,.45); }
+.app-fab[data-state="starting"] .app-fab-dot { background: none; border: 2.5px solid #e0a915; border-right-color: transparent; width: 12px; height: 12px; box-sizing: border-box; animation: fabSpin .8s linear infinite; }
+@keyframes fabSpin { to { transform: rotate(360deg); } }
+.app-fab[data-state="crashed"] .app-fab-btn { background: #fff4f4; color: #b4282d; border-color: rgba(229,72,77,.4); }
+.app-fab[data-state="crashed"] .app-fab-dot, .app-fab[data-state="stopped"] .app-fab-dot { animation: none; }
+.app-fab[data-state="crashed"] .app-fab-dot { background: var(--danger); }
+.app-fab[data-state="stopped"] .app-fab-dot { background: var(--muted); }
+.app-fab[data-state="stopped"] .app-fab-btn { border-color: var(--border); color: var(--muted); }
+.app-fab.mini .app-fab-btn { padding: 0 11px; gap: 0; }
+.app-fab.mini #appFabLabel { display: none; }
+.app-fab-menu { margin-top: 8px; min-width: 240px; max-width: calc(100vw - 2 * var(--side)); background: var(--bot); color: var(--bot-fg); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 6px 0; }
+.app-fab-head { display: flex; flex-direction: column; gap: 3px; padding: 10px 16px 10px; border-bottom: 1px solid var(--border); }
+.app-fab-head small { color: var(--muted); font-size: 12px; }
+.app-fab-cmd { font-family: ui-monospace, monospace; word-break: break-all; }
+.app-fab-note { margin: 0; padding: 8px 16px; font-size: 12px; color: var(--danger); border-bottom: 1px solid var(--border); }
+.app-fab-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: 0; color: inherit; font: 15px inherit; font-family: inherit; text-align: left; }
+.app-fab-item:active { background: rgba(0,0,0,.06); }
+.app-fab-item.danger { color: var(--danger); }
+.app-fab-ic { width: 18px; text-align: center; }
+.app-fab-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.gs-pre { max-height: 50vh; overflow: auto; margin: 0 0 12px; padding: 10px; border-radius: 10px; background: #111; color: #ddd; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; text-align: left; }
 .made-tabs button { flex: none; padding: 8px 14px; border: 0; border-radius: 16px; background: var(--ui-card); color: var(--ui-sub); font-size: 14px; font-weight: 700; }
 .made-tabs button.on { background: var(--me); color: var(--me-fg); }
 .made-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
