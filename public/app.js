@@ -4,7 +4,7 @@
     login: $('login'), loginForm: $('loginForm'), pw: $('pw'), loginErr: $('loginErr'),
     app: $('app'), messages: $('messages'), input: $('input'),
     send: $('sendBtn'), mic: $('micBtn'), newBtn: $('newBtn'),
-    menuBtn: $('menuBtn'), menu: $('menu'), sessionInfo: $('sessionInfo'), logout: $('logoutBtn'),
+    menuBtn: $('menuBtn'), menu: $('menu'), logout: $('logoutBtn'),
     status: $('status'), statusText: $('statusText'),
   };
 
@@ -197,7 +197,7 @@
     ttsOn = roomPrefs.tts !== undefined ? !!roomPrefs.tts : gTts();
     const z = roomPrefs.zoom !== undefined ? snapZoom(Number(roomPrefs.zoom) || 1) : gZoom();
     if (z !== msgZoom) applyMsgZoom(z);
-    renderTts(); renderVoiceBtns(); renderZoomRow(); renderRoomPrefs();
+    renderTts(); renderVoiceBtns(); renderZoomRow();
   }
   // 이 방의 설정 하나를 바꾼다 (val이 undefined면 기본값 따르기). 감자알에 저장해서 다른 기기에서도 같게 보인다
   function setRoomPref(key, val) {
@@ -212,12 +212,6 @@
     if (JSON.stringify(p) === JSON.stringify(roomPrefs)) return;
     roomPrefs = p;
     applyPrefs();
-  }
-  function renderRoomPrefs() {
-    const T = window.GAMJA_I18N.t;
-    const has = Object.keys(roomPrefs).length > 0;
-    $('roomPrefsNote').textContent = T(has ? 'room.prefsSome' : 'room.prefsNone');
-    $('roomPrefsReset').classList.toggle('hidden', !has);
   }
   let pinch = null;
   const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -471,16 +465,13 @@
     els.input.disabled = off;
     els.input.placeholder = gone ? T('gone.placeholder') : off ? T('room.groupOff') : group ? T('room.groupPh') : '메시지 입력';
     if (off) els.send.disabled = true; else updateSendState();
-    for (const id of ['compactBtn', 'newBtn', 'ttsBtn', 'voiceBtn']) $(id).classList.toggle('hidden', gone);
-    $('compactBtn').classList.toggle('hidden', gone || group);
-    $('roomCompactNote').classList.toggle('hidden', gone || group);
+    for (const id of ['newBtn', 'ttsBtn', 'voiceBtn']) $(id).classList.toggle('hidden', gone);
     const noContinue = gone || group || crewOf(project) === ''; // 감자 톡톡(크루 없는 방)에서는 이어가기를 숨긴다
     $('continueBtn').classList.toggle('hidden', noContinue);
     $('roomContinueNote').classList.toggle('hidden', noContinue);
     $('exportBtn').classList.toggle('hidden', noContinue);
     $('roomExportNote').classList.toggle('hidden', noContinue);
     $('roomActions').classList.toggle('hidden', gone); // 삭제된 크루의 방에서는 대화 관리를 보여 주지 않는다
-    $('roomPrefs').classList.toggle('hidden', gone);
     $('attachBtn').classList.toggle('hidden', gone || group);
     if (!gone && !chats.some((c) => c.name === project)) refreshChats().then(() => { if (chats.some((c) => c.name === project)) applyGone(); }); // 참여자 정보를 아직 못 받았으면 받은 뒤에 다시 맞춘다
   }
@@ -1543,7 +1534,6 @@
     const older = partial ? history.slice(0, olderQueue.length) : lazy ? history.slice(0, history.length - FIRST_PAINT) : [];
     for (const m of lazy ? history.slice(older.length) : history) addMessage(m);
     if (data.archived) addGoneNote();
-    updateSessionInfo();
 
     // 진행 중인 응답이 있으면 (다른 기기에서 보냈거나, 화면이 꺼져 연결이 끊긴 경우) 따라가며 보여준다
     remoteRunId = data.running ? data.runId : null;
@@ -1813,9 +1803,6 @@
       : '';
     els.messages.innerHTML = `<div class="empty">✳︎<br><b>${escapeHtml(roomText(project))}</b>에서 새 대화를 시작하세요.<br>파일 수정은 자동 승인(acceptEdits)됩니다.${chips}</div>`;
   }
-  function updateSessionInfo() {
-    els.sessionInfo.textContent = `크루: ${project ? crewLabel(project) : ROOT_NAME}\n세션: ${sessionId || '새 대화'}`;
-  }
   els.newBtn.onclick = async () => {
     els.menu.classList.add('hidden');
     if (runId || remoteRunId) return alert('응답 중에는 대화를 지울 수 없어요. 먼저 중지하세요.');
@@ -1823,18 +1810,6 @@
     stopSpeaking();
     try { await api('/api/history/reset', { project }); } catch (err) { return alert(err.message); }
     roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫고 새 대화를 보여 준다
-    loadConversation();
-  };
-  // 터미널 등에서 시작한 기존 Claude Code 세션을 이 프로젝트 대화로 불러온다
-  $('resumeForm').onsubmit = async (e) => {
-    e.preventDefault();
-    const id = $('resumeInput').value.trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return alert('세션 ID 형식이 아니에요. (예: 44bd115a-6d55-...)');
-    if (runId || remoteRunId) return alert('응답이 끝난 뒤에 바꿀 수 있어요.');
-    if (history.length && !(await gSheet({ title: '세션을 이어갈까요?', message: '지금 화면의 대화 대신 이 세션을 이어가요.', ok: '이어가기' }))) return;
-    try { await api('/api/history/resume', { project, sessionId: id }); } catch (err) { return alert(err.message); }
-    $('resumeInput').value = '';
-    els.menu.classList.add('hidden');
     loadConversation();
   };
   // 서버 재시작 / 이전 버전으로 되돌리기 (결과는 채팅 알림으로 표시)
@@ -1956,17 +1931,12 @@
     const members = ((chats.find((c) => c.name === project) || {}).members || [crewOf(project)]);
     $('roomTitleH').textContent = T('room.title');
     // 대화 관리: 새 대화와 대화 압축은 ⋯ 메뉴가 아니라 여기서 한다
-    $('roomPrefsH').textContent = T('room.prefsTitle');
-    $('roomPrefsReset').textContent = T('room.prefsReset');
-    renderRoomPrefs();
     $('roomManageH').textContent = T('room.manage');
     $('newBtn').textContent = T('room.new');
     $('roomNewNote').textContent = T('room.newNote');
-    $('compactBtn').textContent = T('room.compact');
-    $('roomCompactNote').textContent = T('room.compactNote');
-    $('continueBtn').textContent = T('room.continue');
+    if (!busyOn('continueBtn')) $('continueBtn').textContent = T('room.continue');
     $('roomContinueNote').textContent = T('room.continueNote');
-    if (!exportTimer) $('exportBtn').textContent = T('room.export'); // 짐 싸는 중에는 돌아가는 글을 그대로 둔다
+    if (!busyOn('exportBtn')) $('exportBtn').textContent = T('room.export'); // 짐 싸는 중에는 돌아가는 글을 그대로 둔다
     $('roomExportNote').textContent = T('room.exportNote');
     $('roomForm').innerHTML =
       `<h3>${escapeHtml(T('room.name'))}</h3><input id="roomName" maxlength="40" placeholder="${escapeHtml(p.text)}" value="${escapeHtml(getRoomTitles()[project] || '')}" autocomplete="off">` +
@@ -1984,7 +1954,6 @@
         ? `<button id="roomInvite" class="fr-join" type="button">${escapeHtml(T('room.invite'))}<span>›</span></button>`
         : `<button class="fr-join" type="button" disabled>${escapeHtml(T('room.invite'))}<span>${escapeHtml(T(project.includes('@') ? 'room.inviteFull' : 'room.inviteFirst', { max: MAX_ROOM_MEMBERS }))}</span></button>`) +
       `<p class="settings-note">${escapeHtml(T(gone ? 'room.memberNoteGone' : 'room.memberNote'))}</p>`;
-    $('projChatInfo').classList.toggle('hidden', gone);
     $('roomDeleteNote').textContent = T(gone ? 'room.deleteNoteGone' : 'room.deleteNote');
     $('roomDelete').textContent = T('room.delete');
     // 감자 톡톡(기본 대화방)은 지울 수 없다: 처음 접속한 이용자에게 늘 있어야 하는 방이라 삭제 버튼과 설명을 숨긴다 (대화만 지우려면 "대화 모두 지우기")
@@ -2435,16 +2404,6 @@
     });
   }
 
-  // ---------- 🗜 대화 압축 ----------
-  $('compactBtn').onclick = async () => {
-    els.menu.classList.add('hidden');
-    if (runId || remoteRunId) return alert('응답이 끝난 뒤에 해 주세요.');
-    if (!(await gSheet({ title: '대화를 압축할까요?', message: '화면의 대화 기록은 그대로 남고, Claude의 기억만 요약본으로 바뀌어요. 오래된 세부 내용은 일부 빠질 수 있어요.', ok: '압축하기' }))) return;
-    try { await api('/api/compact', { project }); } catch (err) { return alert(err.message); }
-    roomEl.classList.add('hidden'); // 채팅방 설정에서 눌렀으면 설정 화면을 닫는다
-    loadConversation(); // 진행 상황을 따라가며 보여 준다
-  };
-
   // 새 채팅으로 이어가기: 서버가 대화를 요약하고 결과물을 복사한 새 방을 만들면, 그 방을 연다
   $('continueBtn').onclick = async () => {
     const T = window.GAMJA_I18N.t;
@@ -2454,19 +2413,15 @@
     let legacy = false;
     try { legacy = !!(await api('/api/rooms/continue', { room: project, check: true })).legacy; } catch (err) { return alert(err.message); }
     if (!(await gSheet({ title: T('room.continue'), message: T(legacy ? 'room.continueConfirmLegacy' : 'room.continueConfirm'), ok: T('room.continueOk') }))) return;
-    const btn = $('continueBtn');
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.classList.add('busy'); // 돌아가는 동그라미로 멈춘 게 아님을 보여 준다
-    btn.textContent = T('room.continueBusy');
+    const stopBusy = busyStart('continueBtn', 'room.continue'); // 짐 싸는 동안 돌아가는 동그라미와 바뀌는 글
     let r;
-    try { r = await api('/api/rooms/continue', { room: project }); } catch (err) { return alert(err.message); } finally { btn.disabled = false; btn.classList.remove('busy'); btn.textContent = label; }
+    try { r = await api('/api/rooms/continue', { room: project }); } catch (err) { return alert(err.message); } finally { stopBusy(); }
     window.gaTrack('chat_continue');
     const crew = r.members && r.members[0];
     if (r.room.startsWith('@')) rememberRoomCrew(r.room, crew || '');
     const titles = getRoomTitles();
     const oldName = titles[project] || crewParts(project).text;
-    titles[r.room] = T('room.continueTitle', { name: oldName }).slice(0, 40);
+    titles[r.room] = movedTitle(oldName);
     store.set('cc:roomTitle', titles);
     roomEl.classList.add('hidden');
     if (r.skippedBig) alert(T('room.continueSkippedBig'));
@@ -2476,26 +2431,28 @@
   // 채팅 내보내기: 대화·결과물·크루 지침을 zip으로 내려받는다
   const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(n >= 1.07e8 ? 0 : 1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
   // 이사가기 짐을 싸는 동안: 돌아가는 동그라미 + 재밌는 글이 2.5초마다 바뀐다. 방을 나갔다 들어와도 이어서 보인다
-  let exportTimer = 0;
-  function exportBusyStart() {
+  const busyTimers = {}; // 버튼 id → 글자를 바꾸는 타이머
+  const busyOn = (id) => !!busyTimers[id];
+  function busyStart(id, labelKey) {
     const T = window.GAMJA_I18N.t;
-    const btn = $('exportBtn');
+    const btn = $(id);
     let i = Math.floor(Math.random() * 8);
     const show = () => { btn.textContent = T('room.exportFun' + (i++ % 8 + 1)); };
     btn.disabled = true;
     btn.classList.add('busy');
-    clearInterval(exportTimer);
+    clearInterval(busyTimers[id]);
     show();
-    exportTimer = setInterval(show, 2500);
+    busyTimers[id] = setInterval(show, 2500);
+    return () => { // 끝내기
+      clearInterval(busyTimers[id]);
+      delete busyTimers[id];
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      btn.textContent = window.GAMJA_I18N.t(labelKey);
+    };
   }
-  function exportBusyStop() {
-    clearInterval(exportTimer);
-    exportTimer = 0;
-    const btn = $('exportBtn');
-    btn.disabled = false;
-    btn.classList.remove('busy');
-    btn.textContent = window.GAMJA_I18N.t('room.export');
-  }
+  const exportBusyStart = () => { exportBusyStop = busyStart('exportBtn', 'room.export'); };
+  let exportBusyStop = () => {};
   $('exportBtn').onclick = async () => {
     const T = window.GAMJA_I18N.t;
     els.menu.classList.add('hidden');
@@ -2554,6 +2511,15 @@
   const importPost = (what, id) => importCall('/api/rooms/import/' + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ importId: id }) });
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   // 설치가 끝난 뒤: 새 크루의 이름·아이콘은 감자알이 정한 것을 쓰고, 폴더 이름은 보이지 않는다
+  // 이사 온 방 이름 규칙 (다른 밭으로 이사오기·같은 밭으로 이사가기 공통): "[이사] 이름(년월일시분)", 최대 40자
+  function movedTitle(name) {
+    const MOVE = window.GAMJA_I18N.t('import.tag');
+    const d = new Date();
+    const pad2 = (x) => String(x).padStart(2, '0');
+    const stamp = `${pad2(d.getFullYear() % 100)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+    const base = String(name).replace(/^\[이사\]\s*|^\[Moved\]\s*/, '').replace(/\(\d{10}\)$/, '').trim();
+    return `${MOVE} ${base.slice(0, 40 - MOVE.length - 13)}(${stamp})`;
+  }
   async function finishImport(r) {
     const T = window.GAMJA_I18N.t;
     sessionStorage.removeItem(IMPORT_PENDING);
@@ -2561,14 +2527,11 @@
     // 추천 크루와 구분되게 크루·방 이름 앞에 [이사]를 붙이고, 방 이름 뒤에는 이사 온 시각(년월일시분)을 붙인다
     const MOVE = T('import.tag');
     const tagged = (n) => (String(n).startsWith(MOVE) ? String(n) : `${MOVE} ${n}`);
-    const d = new Date();
-    const pad2 = (x) => String(x).padStart(2, '0');
-    const stamp = `${pad2(d.getFullYear() % 100)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`;
     store.set(`cc:crew:${r.crewFolder}`, { ...(r.meta || {}), icon: (r.meta && r.meta.icon) || '📁', name: tagged(r.displayName) });
     rememberRoomCrew(r.roomId, r.crewFolder);
     const titles = getRoomTitles();
-    const base = String(r.title || T('import.title.room')).replace(/^\[이사\]\s*|^\[Moved\]\s*/, '').replace(/\(\d{10}\)$/, '').trim();
-    titles[r.roomId] = `${MOVE} ${base.slice(0, 40 - MOVE.length - 13)}(${stamp})`;
+    const base = r.title || T('import.title.room');
+    titles[r.roomId] = movedTitle(base);
     store.set('cc:roomTitle', titles);
     newChatEl.classList.add('hidden');
     roomEl.classList.add('hidden');
@@ -3544,7 +3507,7 @@
           switch (event) {
             case 'start': runId = d.runId; break;
             case 'session':
-              if (d.sessionId) { sessionId = d.sessionId; updateSessionInfo(); }
+              if (d.sessionId) { sessionId = d.sessionId; }
               break;
             case 'delta':
               if (lastWasTool && bot.text && !bot.text.endsWith('\n\n')) bot.text += '\n\n';
@@ -3565,7 +3528,7 @@
               break;
             case 'result': {
               finished = true;
-              if (d.sessionId) { sessionId = d.sessionId; updateSessionInfo(); }
+              if (d.sessionId) { sessionId = d.sessionId; }
               bot.meta = d.meta || ''; // 서버가 만든 "시간 · 토큰" 표시
               if (d.install) bot.install = d.install;
               if (d.denied) bot.denied = d.denied;
@@ -4072,12 +4035,6 @@
     gsOpen = { bg, close };
     synth.onvoiceschanged = () => { drawList(); renderVoiceBtns(); }; // 목소리 목록이 늦게 도착하는 브라우저를 위해
   }
-  $('roomPrefsReset').onclick = () => { // 이 방의 설정을 모두 지우고 더보기의 기본값을 따르게 한다
-    roomPrefs = {};
-    applyPrefs();
-    if (project && !isGone(project)) api('/api/room-prefs', { room: project, prefs: {} }).catch(() => {});
-    toast(window.GAMJA_I18N.t('room.prefsResetDone'));
-  };
   $('voiceBtn').onclick = () => openVoicePicker('room');
   $('setVoiceBtn').onclick = () => openVoicePicker('global');
   if (synth) synth.addEventListener('voiceschanged', renderVoiceBtns);

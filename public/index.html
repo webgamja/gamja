@@ -330,7 +330,7 @@
     </div>
   </section>
 
-  <!-- 💬 채팅방 설정 (채팅방 ⋯ 메뉴): 채팅방 이름 · 참여자 · 대화 정보 · 채팅방 삭제. 크루 자체의 설정은 참여자(크루)를 눌러 들어간다 -->
+  <!-- 💬 채팅방 설정 (채팅방 ⋯ 메뉴): 채팅방 이름 · 참여자 · 대화 관리 · 채팅방 삭제. 크루 자체의 설정은 참여자(크루)를 눌러 들어간다 -->
   <section id="roomSettings" class="settings ui ui-big hidden">
     <header class="settings-bar">
       <button id="roomBack" class="icon-btn" title="닫기">←</button>
@@ -339,23 +339,8 @@
     <div class="settings-body">
       <h1 id="roomTitleH" class="ui-title"></h1>
       <div id="roomForm"></div>
-      <div id="projChatInfo">
-        <h3>💬 대화 정보</h3>
-        <div id="sessionInfo" class="menu-info"></div>
-        <form id="resumeForm" class="resume-form">
-          <input id="resumeInput" placeholder="세션 ID 붙여넣기 (터미널에서 하던 대화 이어가기)" autocomplete="off" autocapitalize="off" spellcheck="false">
-          <button type="submit">이어가기</button>
-        </form>
-      </div>
-      <div id="roomPrefs">
-        <h3 id="roomPrefsH"></h3>
-        <p id="roomPrefsNote" class="settings-note"></p>
-        <button id="roomPrefsReset" class="settings-ghost hidden" type="button"></button>
-      </div>
       <div id="roomActions">
         <h3 id="roomManageH"></h3>
-        <button id="compactBtn" class="settings-ghost" type="button"></button>
-        <p id="roomCompactNote" class="settings-note"></p>
         <button id="continueBtn" class="settings-ghost" type="button"></button>
         <p id="roomContinueNote" class="settings-note"></p>
         <button id="exportBtn" class="settings-ghost" type="button"></button>
