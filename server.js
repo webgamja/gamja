@@ -3303,6 +3303,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
               ws.destroy();
               try { fs.rmSync(file, { force: true }); } catch { /* 시작할 때 정리한다 */ }
               const f = timedOut ? { status: 503, ...EXPORT_TIMEOUT_BODY } : exportFailure(e);
+              crashLog(`내보내기 중단(${timedOut ? 'timeout' : e.code || 'error'}${e.entry ? ': ' + e.entry : ''}): ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`);
               console.error(`내보내기 중단(${timedOut ? 'timeout' : e.code || 'error'}${e.entry ? ': ' + e.entry : ''}): ${e.message}`);
               return send(res, f.status, { error: f.error, code: f.code, file: f.file, max: f.max });
             } finally { cancelBuild = null; exportTmpBuilding.delete(`${token}.zip`); }
@@ -3813,7 +3814,12 @@ server.listen(PORT, HOST, () => {
   loadTunnelState(); // 재시작 전에 켜 둔 터널이 아직 살아 있으면 그 주소를 그대로 쓴다
 });
 
-function shutdown() {
+// 감자알이 왜 꺼졌는지 남긴다 (이사오기 올리기 중 끊김 원인을 찾기 위한 기록). 꺼지는 동작은 그대로다
+function crashLog(msg) { try { fs.appendFileSync(path.join(DATA_DIR, 'import-debug.log'), `${new Date().toISOString()} pid=${process.pid} ${msg}\n`); } catch {} }
+process.on('uncaughtException', (e, origin) => { crashLog(`오류로 꺼짐(${origin}): ${e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e}`); console.error(e); process.exit(1); });
+process.on('exit', (code) => crashLog(`꺼짐 code=${code}`));
+function shutdown(sig) {
+  crashLog(`신호 받음 ${typeof sig === 'string' ? sig : ''}`);
   for (const c of running.values()) c.kill('SIGINT');
   process.exit(0);
 }

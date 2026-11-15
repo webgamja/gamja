@@ -2506,7 +2506,10 @@
     const exportErr = (err) => {
       const key = err.code && `export.err.${err.code}`;
       const d = err.data || {};
-      alert(key && T(key) !== key ? T(key, { max: fmtSize(d.max || 0), size: fmtSize(d.size || 0), file: d.file || '' }) : (err.message || T('export.err.export-failed')));
+      const msg = key && T(key) !== key ? T(key, { max: fmtSize(d.max || 0), size: fmtSize(d.size || 0), file: d.file || '' }) : (err.message || T('export.err.export-failed'));
+      // 이유를 알 수 없는 실패(export-failed)는 감자알이 남긴 최근 기록을 함께 보여 준다 (화면을 캡처해서 알려 주세요)
+      if (err.code !== 'export-failed') return alert(msg);
+      fetch('/api/rooms/import/debug', { credentials: 'same-origin' }).then((g) => g.json()).then((j) => alert(`${msg}\n\nNode ${j.node}\n${(j.lines || []).join('\n')}`)).catch(() => alert(msg));
     };
     try { info = await api(`/api/rooms/export?${q}&check=1`); } catch (err) { return exportErr(err); }
     if (!(await gSheet({ title: T('room.export'), message: T('room.exportConfirm', { files: info.files, size: fmtSize(info.bytes) }), ok: T('room.exportOk') }))) return;
@@ -2731,10 +2734,12 @@
         await new Promise((ok) => setTimeout(ok, 1500));
         try { const m = await fetch('/api/me', { credentials: 'same-origin' }); if (m.ok) { alive = true; const j = await m.json(); reboot = !!(boot0 && j.boot && j.boot !== boot0); } } catch { /* 아직 안 됨 */ }
       }
+      let dbg = '';
+      if (alive) { try { const g = await fetch('/api/rooms/import/debug', { credentials: 'same-origin' }); if (g.ok) { const j = await g.json(); dbg = `\n\nNode ${j.node}\n` + (j.lines || []).join('\n'); } } catch { /* 없으면 생략 */ } }
       idle();
       const yn = (b) => T(b ? 'import.diag.yes' : 'import.diag.no');
       const diag = T('import.diag', { err: `${(err && err.name) || 'Error'}: ${(err && err.message) || ''}`, size: fmtSize(f.size), alive: yn(alive), reboot: yn(reboot) });
-      return alert((err && err.name === 'TypeError' ? T('import.err.network') : (err && err.message) || T('import.err.network')) + '\n\n' + diag);
+      return alert((err && err.name === 'TypeError' ? T('import.err.network') : (err && err.message) || T('import.err.network')) + '\n\n' + diag + dbg);
     }
     data = null;
     if (ins.status === 401) return idle();

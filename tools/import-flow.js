@@ -416,6 +416,12 @@ function createImportFlow(d) {
     if (p.endsWith('/commit') && isPost) { await commit(req, res); return true; }
     if (p.endsWith('/cancel') && isPost) { await cancel(req, res); return true; }
     if (p.endsWith('/status') && req.method === 'GET') { status(req, res, url); return true; }
+    if (p.endsWith('/debug') && req.method === 'GET') { // 올리기가 실패했을 때 화면의 진단 줄에 붙일 최근 기록
+      let lines = [];
+      try { lines = fs.readFileSync(path.join(d.DATA_DIR, 'import-debug.log'), 'utf8').trim().split('\n').slice(-12); } catch (_) { /* 기록이 아직 없음 */ }
+      d.send(res, 200, { node: process.version, pid: process.pid, lines });
+      return true;
+    }
     return false;
   }
 
