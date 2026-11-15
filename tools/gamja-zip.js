@@ -4,6 +4,14 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+// zlib.crc32는 Node 20.15·22.2 이상에만 있다 (업무폰의 Node 18에서는 없어서 이사가기·이사오기가 실패했다). 없으면 직접 계산한다
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32Fallback(buf, prev = 0) {
+  let c = ~prev >>> 0;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return ~c >>> 0;
+}
+const crc32 = typeof zlib.crc32 === 'function' ? zlib.crc32 : crc32Fallback;
 const { pipeline, Transform } = require('stream');
 const { pipeline: pipelineP } = require('stream/promises');
 
@@ -88,7 +96,7 @@ async function writeZip(out, entries, opts = {}) {
       if (!st || st.size !== e.size || (e.mtimeMs !== undefined && st.mtimeMs !== e.mtimeMs)) throw chk('source-changed', '검사한 뒤에 파일이 바뀌었어요.');
     }
     if (e.data) {
-      crc = zlib.crc32(e.data);
+      crc = crc32(e.data);
       usize = e.data.length;
       const z = zlib.deflateRawSync(e.data);
       csize = z.length;
@@ -96,7 +104,7 @@ async function writeZip(out, entries, opts = {}) {
     } else {
       const counter = new Transform({
         transform(chunk, _enc, cb) {
-          crc = zlib.crc32(chunk, crc); usize += chunk.length;
+          crc = crc32(chunk, crc); usize += chunk.length;
           if (V && e.size !== undefined && usize > e.size) return cb(chk('source-changed', '만드는 도중 파일이 커졌어요.'));
           cb(null, chunk);
         },
@@ -299,7 +307,7 @@ function verifier(e, opts) {
   return new Transform({
     transform(chunk, _enc, cb) {
       actual += chunk.length;
-      crc = zlib.crc32(chunk, crc);
+      crc = crc32(chunk, crc);
       if (actual > maxFile) return cb(new Error('파일 하나의 크기가 한도를 넘어요.'));
       if (opts.budget) { opts.budget.left -= chunk.length; if (opts.budget.left < 0) return cb(new Error('압축을 푼 전체 크기가 한도를 넘어요.')); }
       if (e.method === 8 && actual > 1048576 && actual > ratio * Math.max(e.csize, 1)) return cb(new Error('압축률이 비정상적으로 높아요.'));
