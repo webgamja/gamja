@@ -109,6 +109,26 @@ function redirectsOutside(text) {
   return false;
 }
 
+// 크루에게 안내한 도구 명령 "node <감자알 폴더>/tools/gamja-make.js …"인지.
+// 도구는 감자알 폴더 안에 있어서 감자알 폴더 차단에 걸리므로, 정확히 이 모양일 때만 앞부분을 예외로 둔다.
+// 뒷부분은 다른 명령을 붙이는 기호, 감자알 폴더, 작업 폴더 밖 경로가 없어야 한다 (serve의 --path 주소는 경로가 아니라 웹 주소라 허용)
+function isMakeCmd(text, guardDirs) {
+  const appDir = guardDirs[0];
+  if (!appDir) return false;
+  const prefix = `node ${appDir}/tools/gamja-make.js`;
+  if (!text.startsWith(prefix)) return false;
+  const rest = text.slice(prefix.length);
+  if (rest && !/^\s/.test(rest)) return false;
+  if (/[;&|`<>\n\r$\\(){}*?!]/.test(rest)) return false;
+  if (guardDirs.some((d) => d && rest.includes(d))) return false;
+  const toks = rest.trim().split(/\s+/).filter(Boolean).map(unquote);
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i - 1] === '--path' && /^\/[\w\-./%=&]*$/.test(toks[i]) && !/(^|\/)\.\.(\/|$)/.test(toks[i])) continue;
+    if (outsideArg(toks[i])) return false;
+  }
+  return true;
+}
+
 // guardDirs: 작업 폴더가 아닌 곳에서 일하는 크루가 건드리면 안 되는 폴더들(감자알 폴더, data)
 function tier(cmd, guardDirs = [], depth = 0) {
   const text = String(cmd || '').trim();
@@ -116,6 +136,7 @@ function tier(cmd, guardDirs = [], depth = 0) {
   if (text.length > 4000) return { tier: 'caution', why: '명령이 너무 길어요' };
   if (PUBLIC_PUSH.test(text)) return { tier: 'safe', why: '' };
   if (PERM_SECRET.test(text)) return { tier: 'danger', why: '비밀번호·시스템 파일을 건드려요' };
+  if (isMakeCmd(text, guardDirs)) return { tier: 'safe', why: '' };
   for (const d of guardDirs) if (d && text.includes(d)) return { tier: 'danger', why: '감자알이 쓰는 폴더를 건드려요' };
   if (hasCriticalProg(text)) return { tier: 'danger', why: '시스템에 영향을 주는 명령이에요' };
   if (/[`]|\$\(/.test(text) && /\$\([^)]*\b(rm|mv)\b/.test(text)) return { tier: 'caution', why: '안쪽 명령이 파일을 지워요' };
