@@ -186,4 +186,27 @@ function tier(cmd, guardDirs = [], depth = 0) {
   return { tier: 'safe', why: '' };
 }
 
-module.exports = { redirectsOutside, PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, hasCriticalProg, tier };
+// 웹 도구도 같은 3단계로 본다: 검색과 인터넷 페이지 읽기는 curl로 읽기와 같아서 안전.
+// 폰 안(localhost)이나 집 와이파이 안의 주소는 감자알·집 안 기기를 건드릴 수 있어 위험
+function isPrivateHost(host) {
+  const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.lan') || h.endsWith('.home.arpa')) return true;
+  if (!h.includes('.') && !h.includes(':')) return true; // 점 없는 이름 (공유기·기기 이름)
+  if (h.includes(':')) return h === '::' || h === '::1' || /^(fc|fd|fe8|fe9|fea|feb)/.test(h) || h.startsWith('::ffff:');
+  if (/^\d+$/.test(h) || /^0x/i.test(h)) return true; // 숫자 하나로 쓴 IP (2130706433 같은)
+  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+}
+function webTier(toolName, input = {}) {
+  if (toolName === 'WebSearch') return { tier: 'safe', why: '' };
+  if (toolName !== 'WebFetch') return { tier: 'caution', why: '' };
+  let u;
+  try { u = new URL(String(input.url || '')); } catch { return { tier: 'danger', why: '주소를 알아볼 수 없어요' }; }
+  if (!/^https?:$/.test(u.protocol)) return { tier: 'danger', why: '웹 주소(http·https)만 열 수 있어요' };
+  if (isPrivateHost(u.hostname)) return { tier: 'danger', why: '이 폰이나 집 와이파이 안의 주소예요' };
+  return { tier: 'safe', why: '' };
+}
+
+module.exports = { redirectsOutside, PERM_CRITICAL, PERM_SECRET, PERM_NET, screenComplex, hasCriticalProg, tier, webTier, isPrivateHost };

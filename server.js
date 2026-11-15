@@ -2225,7 +2225,7 @@ function writeActivityState() {
   } catch (e) { console.error('작업 현황 기록 실패:', e.message); }
 }
 const PERM_HOOK_CMD = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'tools', 'perm-hook.js'))} ${JSON.stringify(__dirname)} ${JSON.stringify(DATA_DIR)}`;
-const PERM_HOOK_SETTINGS = (allowAll) => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: allowAll ? PERM_HOOK_CMD + " --allow-all" : PERM_HOOK_CMD, timeout: 10 }] }] } });
+const PERM_HOOK_SETTINGS = (allowAll) => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|WebSearch|WebFetch', hooks: [{ type: 'command', command: allowAll ? PERM_HOOK_CMD + " --allow-all" : PERM_HOOK_CMD, timeout: 10 }] }] } });
 // 아무 코드나 돌릴 수 있는 프로그램: "항상 허용"도 그 명령 그대로만 (인자가 달라지면 다시 묻는다)
 const PERM_EXACT = new Set(['node', 'nodejs', 'python', 'python3', 'bash', 'sh', 'zsh', 'perl', 'ruby', 'php', 'deno', 'bun', 'awk', 'gawk', 'find', 'xargs', 'env', 'time', 'timeout', 'watch', 'script', 'docker', 'make', 'sed', 'tar', 'unzip']);
 const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
