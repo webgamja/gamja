@@ -448,7 +448,7 @@
   function crewLabel(room) {
     const p = crewOf(room);
     const meta = store.get(`cc:crew:${p}`, null) || window.GAMJA_TEMPLATES.AGENTS.find((a) => a.id === store.get(`cc:tpl:${p}`, ''));
-    return meta ? `${meta.icon} ${stripCrew(meta.name)}` : `📁 ${p}`;
+    return meta ? `${meta.icon || '📁'} ${stripCrew(meta.name || p)}` : `📁 ${p}`;
   }
   let projectList = []; // 크루(프로젝트 폴더) 이름들
   // 왼쪽 위 버튼: 지금 있는 곳을 보여 준다
@@ -1963,7 +1963,7 @@
     $('roomCompactNote').textContent = T('room.compactNote');
     $('continueBtn').textContent = T('room.continue');
     $('roomContinueNote').textContent = T('room.continueNote');
-    $('exportBtn').textContent = T('room.export');
+    if (!exportTimer) $('exportBtn').textContent = T('room.export'); // 짐 싸는 중에는 돌아가는 글을 그대로 둔다
     $('roomExportNote').textContent = T('room.exportNote');
     $('roomForm').innerHTML =
       `<h3>${escapeHtml(T('room.name'))}</h3><input id="roomName" maxlength="40" placeholder="${escapeHtml(p.text)}" value="${escapeHtml(getRoomTitles()[project] || '')}" autocomplete="off">` +
@@ -2472,6 +2472,27 @@
 
   // 채팅 내보내기: 대화·결과물·크루 지침을 zip으로 내려받는다
   const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(n >= 1.07e8 ? 0 : 1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+  // 이사가기 짐을 싸는 동안: 돌아가는 동그라미 + 재밌는 글이 2.5초마다 바뀐다. 방을 나갔다 들어와도 이어서 보인다
+  let exportTimer = 0;
+  function exportBusyStart() {
+    const T = window.GAMJA_I18N.t;
+    const btn = $('exportBtn');
+    let i = Math.floor(Math.random() * 8);
+    const show = () => { btn.textContent = T('room.exportFun' + (i++ % 8 + 1)); };
+    btn.disabled = true;
+    btn.classList.add('busy');
+    clearInterval(exportTimer);
+    show();
+    exportTimer = setInterval(show, 2500);
+  }
+  function exportBusyStop() {
+    clearInterval(exportTimer);
+    exportTimer = 0;
+    const btn = $('exportBtn');
+    btn.disabled = false;
+    btn.classList.remove('busy');
+    btn.textContent = window.GAMJA_I18N.t('room.export');
+  }
   $('exportBtn').onclick = async () => {
     const T = window.GAMJA_I18N.t;
     els.menu.classList.add('hidden');
@@ -2486,12 +2507,18 @@
     };
     try { info = await api(`/api/rooms/export?${q}&check=1`); } catch (err) { return exportErr(err); }
     if (!(await gSheet({ title: T('room.export'), message: T('room.exportConfirm', { files: info.files, size: fmtSize(info.bytes) }), ok: T('room.exportOk') }))) return;
-    const meta = store.get(`cc:crew:${crewOf(project)}`, null);
+    // 이름·아이콘은 직접 만든 크루(cc:crew)에도, 템플릿으로 만든 크루(cc:tpl)에도 있다: 둘 다 찾아서 담는다
+    const cm = crewMeta(project);
+    const meta = cm ? { name: stripCrew(cm.name || ''), icon: cm.icon || '', blurb: cm.blurb || cm.desc || '', examples: cm.examples || [] } : null;
     const title = getRoomTitles()[project] || '';
     // 먼저 감자알이 zip을 끝까지 만들고 확인한 뒤에 내려받는다: 도중에 문제가 생기면 이유를 알려 줄 수 있다
+    // 짐을 싸는 동안(10~30초) 버튼에 돌아가는 동그라미와 안내 글을 보여 주고, 다시 누르지 못하게 한다
+    exportBusyStart();
     toast(T('room.exportPreparing'));
     let made;
-    try { made = await api(`/api/rooms/export?${q}&prepare=1&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`); } catch (err) { return exportErr(err); }
+    try { made = await api(`/api/rooms/export?${q}&prepare=1&title=${encodeURIComponent(title)}&meta=${encodeURIComponent(JSON.stringify(meta || null))}`); }
+    catch (err) { return exportErr(err); }
+    finally { exportBusyStop(); }
     const a = document.createElement('a');
     a.href = `/api/rooms/export/file?token=${encodeURIComponent(made.token)}`;
     a.download = '';
@@ -2525,10 +2552,17 @@
     const T = window.GAMJA_I18N.t;
     sessionStorage.removeItem(IMPORT_PENDING);
     window.gaTrack('chat_import');
-    store.set(`cc:crew:${r.crewFolder}`, { ...(r.meta || {}), name: r.displayName });
+    // 추천 크루와 구분되게 크루·방 이름 앞에 [이사]를 붙이고, 방 이름 뒤에는 이사 온 시각(년월일시분)을 붙인다
+    const MOVE = T('import.tag');
+    const tagged = (n) => (String(n).startsWith(MOVE) ? String(n) : `${MOVE} ${n}`);
+    const d = new Date();
+    const pad2 = (x) => String(x).padStart(2, '0');
+    const stamp = `${pad2(d.getFullYear() % 100)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+    store.set(`cc:crew:${r.crewFolder}`, { ...(r.meta || {}), icon: (r.meta && r.meta.icon) || '📁', name: tagged(r.displayName) });
     rememberRoomCrew(r.roomId, r.crewFolder);
     const titles = getRoomTitles();
-    titles[r.roomId] = (r.title || T('import.title.room')).slice(0, 40);
+    const base = String(r.title || T('import.title.room')).replace(/^\[이사\]\s*|^\[Moved\]\s*/, '').replace(/\(\d{10}\)$/, '').trim();
+    titles[r.roomId] = `${MOVE} ${base.slice(0, 40 - MOVE.length - 13)}(${stamp})`;
     store.set('cc:roomTitle', titles);
     newChatEl.classList.add('hidden');
     roomEl.classList.add('hidden');
@@ -2578,12 +2612,23 @@
     } finally { importBg = false; }
   }
   // 미리보기 시트: 확인 체크를 해야 설치 버튼이 켜진다. 결과는 true(설치)/false(취소)
+  let importPvClose = () => {};
   function importPreview(info) {
     const T = window.GAMJA_I18N.t;
     return new Promise((resolve) => {
-      const dim = mk('div', 'sheet-dim ui');
+      const dim = mk('div', 'sheet-dim ui import-dim');
       const card = mk('div', 'sheet-card import-pv');
-      const done = (v) => { dim.remove(); resolve(v); };
+      const done = (v) => {
+        if (!v) { dim.remove(); return resolve(false); }
+        // 이사 시작: 창을 닫지 않고 진행 안내로 바꿔 둔다 (끝나면 importPvClose가 닫는다)
+        card.innerHTML = '';
+        card.classList.add('moving');
+        card.appendChild(mk('div', 'import-spin'));
+        card.appendChild(mk('h4', '', T('import.moving')));
+        card.appendChild(mk('p', '', T('import.installing')));
+        importPvClose = () => { dim.remove(); importPvClose = () => {}; };
+        resolve(true);
+      };
       card.appendChild(mk('div', 'sheet-grab'));
       card.appendChild(mk('h4', '', T('import.pv.title')));
       const body = mk('div', 'import-pv-body');
@@ -2598,6 +2643,10 @@
       if (w.keyLike && w.keyLike.length) line('import-pv-warn', T('import.pv.warnKeys', { list: w.keyLike.join(', ') }));
       if (w.urls && w.urls.length) line('import-pv-warn', T('import.pv.warnUrls', { list: w.urls.join(', ') }));
       if (info.hiddenRemoved) line('import-pv-warn', T('import.pv.warnHidden', { n: info.hiddenRemoved }));
+      if (info.handoff) { // 보낸 감자가 담은 인계 노트: 설치하면 새 방의 첫 대화에 맥락으로 들어간다
+        body.appendChild(mk('h5', '', T('import.pv.handoff')));
+        body.appendChild(mk('pre', 'import-pv-pre', info.handoff));
+      }
       body.appendChild(mk('h5', '', T('import.pv.instr')));
       body.appendChild(mk('pre', 'import-pv-pre', info.crewMd === null ? T('import.pv.noInstr') : info.crewMd));
       body.appendChild(mk('h5', '', T('import.pv.files')));
@@ -2674,7 +2723,7 @@
     let res;
     try {
       const c = await importPost('commit', id);
-      if (c.status === 401) return idle();
+      if (c.status === 401) { importPvClose(); return idle(); }
       res = c.status === 200 && c.r.status === 'done' ? c.r
         : c.status === 200 && c.r.status === 'unclear' ? { unclear: true, final: true }
         : c.r && c.r.code === 'committing' ? { unclear: true, final: false } // 이미 설치 중: 실패가 아니다
@@ -2684,6 +2733,7 @@
       res = await importWaitResult(id); // 연결이 끊겼으면 다시 설치하지 않고 결과부터 확인
     }
     idle();
+    importPvClose();
     if (res.unclear) return importUnclear(id, res.final);
     if (res.failed) { sessionStorage.removeItem(IMPORT_PENDING); return alert(impErr(res, T('import.err.install-failed'))); }
     await finishImport(res);

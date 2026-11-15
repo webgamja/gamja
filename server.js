@@ -3192,7 +3192,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           if (tooBig) return tooLarge('export-too-big', { size: bytes });
           if (bigFile) return tooLarge('export-file-too-big', { file: bigFile, max: EXPORT_LIMITS.file });
           // 가져오기가 거절할 이름·개수가 있으면 처음부터 만들지 않는다 (만들어도 다시 가져올 수 없다)
-          if (files.length + 3 > EXPORT_LIMITS.entries) return send(res, 413, { error: '파일이 너무 많아요.', code: 'export-too-many', max: EXPORT_LIMITS.entries });
+          if (files.length + 4 > EXPORT_LIMITS.entries) return send(res, 413, { error: '파일이 너무 많아요.', code: 'export-too-many', max: EXPORT_LIMITS.entries });
           const seenNames = new Set();
           for (const f of files) {
             const rel = `folder/${f.rel}`;
@@ -3212,15 +3212,36 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
               for (const [k, v] of Object.entries(raw).slice(0, 10)) if (typeof v === 'string') meta[String(k).slice(0, 30)] = v.slice(0, 500);
             }
           } catch { /* 이름·아이콘 정보는 없어도 된다 */ }
+          // 인계 노트: 내려받을 파일을 만들 때(prepare)만 쓴다. 이 방의 대화를 Claude가 한 장으로 정리해 zip에 담으면, 가져오는 감자가 그대로 읽는다
+          let handoffBuf = null;
+          if (isPrepare) {
+            const talk = messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text);
+            const lines = talk.map((m) => `${m.role === 'user' ? '사용자' : '크루'}: ${m.text.replace(/\s+/g, ' ').slice(0, 800)}`);
+            let transcript = lines.join('\n');
+            if (transcript.length > 40000) transcript = '(앞부분 생략)\n' + transcript.slice(-40000);
+            const hid = `handoff-export-${Date.now()}`;
+            const sumDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gamja-hnote-'));
+            try {
+              const sum = await Promise.race([askOnce({
+                cwd: sumDir, noTools: true,
+                prompt: `아래는 사용자와 크루의 지난 대화예요. 다른 폰의 감자에서 새 채팅방을 열어 바로 이어서 일할 수 있도록 인계 노트를 써 주세요.\n"목표", "정해진 것(규칙·합의·결정)", "진행 상황", "다음 할 일" 네 부분으로 쓰고, 사용자가 정한 규칙과 호칭은 빠뜨리지 마세요. 6000자 안으로 쓰세요.\n\n===== 대화 기록 =====\n${transcript}\n===== 대화 기록 끝 =====`,
+                system: '당신은 대화를 인계 노트로 정리하는 도우미예요. 인사말 없이 노트 본문만 써요. 파일을 만들거나 명령을 실행하지 않아요.',
+                model: settings.model, effort: settings.effort, runId: hid,
+              }), aborted]);
+              if (sum && sum.text && !sum.error && !sum.stopped) handoffBuf = Buffer.from(sum.text.trim().slice(0, 6000));
+            } catch (e) { if (timedOut) return send(res, 503, EXPORT_TIMEOUT_BODY); /* 노트를 못 만들어도 내보내기는 계속 (받는 감자가 가져올 때 요약한다) */ }
+            finally { running.delete(hid); try { fs.rmSync(sumDir, { recursive: true, force: true }); } catch { /* 임시 폴더라 남아도 된다 */ } }
+          }
           const manifest = {
             format: 'gamja-room', version: 1, exportedAt: new Date().toISOString(), crew: members[0] || crewOf(room),
-            title: String(url.searchParams.get('title') || '').slice(0, 80), meta, legacy, files: files.length,
+            title: String(url.searchParams.get('title') || '').slice(0, 80), meta, legacy, files: files.length, handoff: !!handoffBuf,
           };
           const convBuf = Buffer.from(JSON.stringify({ messages, prefs: conv.prefs && typeof conv.prefs === 'object' ? conv.prefs : null }));
           if (convBuf.length > EXPORT_LIMITS.conv) return tooLarge('export-conv-too-big', { size: convBuf.length, max: EXPORT_LIMITS.conv });
           const entries = [
             { name: 'gamja-room.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) },
             { name: 'conversation.json', data: convBuf },
+            ...(handoffBuf ? [{ name: 'handoff.md', data: handoffBuf }] : []),
             ...(crewMd ? [{ name: 'crew/CLAUDE.md', data: Buffer.from(crewMd) }] : []),
             ...files.map((f) => ({ name: `folder/${f.rel}`, file: f.abs, size: f.size, mtimeMs: f.mtimeMs })),
           ];
