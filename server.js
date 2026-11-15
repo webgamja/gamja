@@ -970,6 +970,76 @@ function startAutoUpdate() {
   setTimeout(tick, 2 * 60 * 1000).unref(); // 켜진 지 2분 뒤 첫 확인 (그 전에는 30초 안정 버전 저장 등이 먼저)
 }
 
+// ---------- ⬆️ Node 24로 올리기 ----------
+// 감자 앱 설치본은 처음에 우분투 apt의 Node 18(지원 종료)로 깔린다. 감자알 업데이트로 새 코드가 들어오면
+// 켜질 때 nodejs.org의 Node 24 LTS 공식 파일을 받아 /usr/local/bin/node에 놓고 재시작한다.
+// start.sh는 PATH에서 node를 찾고 /usr/local/bin이 /usr/bin보다 앞이라 start.sh를 바꾸지 않아도 다음 시작부터 24로 뜬다.
+// 실패하면 지금 Node로 계속 돌고 하루 뒤 다시 시도한다. 되돌리려면 /usr/local/bin/node 파일 하나만 지운다.
+const NODE_WANT = 24;
+const NODE_DIST = process.env.GAMJA_NODE_DIST_URL || `https://nodejs.org/dist/latest-v${NODE_WANT}.x`;
+const NODE_TARGET = process.env.GAMJA_NODE_TARGET || '/usr/local/bin/node';
+const NODE_TRY_FILE = path.join(DATA_DIR, 'node-upgrade-try');
+async function upgradeNodeOnce() {
+  const cp = require('child_process');
+  const plat = process.platform === 'linux' && { arm64: 'linux-arm64', x64: 'linux-x64' }[process.arch];
+  if (!plat) return 'skip';
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gamja-node-'));
+  try {
+    const sums = path.join(tmp, 'SHASUMS256.txt');
+    await download(`${NODE_DIST}/SHASUMS256.txt`, sums);
+    const line = fs.readFileSync(sums, 'utf8').split('\n').map((l) => l.trim().split(/\s+/)).find((x) => x[1] && x[1].endsWith(`-${plat}.tar.gz`));
+    if (!line) throw new Error(`${plat} 파일을 찾지 못했어요`);
+    const [sha, name] = line;
+    if (!/^node-v\d+\.\d+\.\d+-linux-[a-z0-9]+\.tar\.gz$/.test(name)) throw new Error('파일 이름이 이상해요');
+    const tgz = path.join(tmp, name);
+    await download(`${NODE_DIST}/${name}`, tgz);
+    const got = await new Promise((resolve, reject) => {
+      const h = crypto.createHash('sha256');
+      fs.createReadStream(tgz).on('data', (d) => h.update(d)).on('end', () => resolve(h.digest('hex'))).on('error', reject);
+    });
+    if (got !== sha) throw new Error('내려받은 Node 파일이 손상됐어요 (체크섬이 달라요)');
+    const dir = name.replace(/\.tar\.gz$/, '');
+    cp.execFileSync('tar', ['-xzf', tgz, '-C', tmp, `${dir}/bin/node`], { stdio: 'pipe' });
+    const bin = path.join(tmp, dir, 'bin', 'node');
+    const ver = cp.execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 20000 }).trim();
+    if (parseInt(ver.slice(1), 10) < NODE_WANT) throw new Error(`받은 Node가 ${ver}라서 쓰지 않아요`);
+    // 임시 파일에 복사한 뒤 이름을 바꿔서, 중간에 끊겨도 반쯤 쓰인 node가 남지 않게 한다
+    fs.mkdirSync(path.dirname(NODE_TARGET), { recursive: true });
+    const part = `${NODE_TARGET}.part`;
+    fs.copyFileSync(bin, part);
+    fs.chmodSync(part, 0o755);
+    fs.renameSync(part, NODE_TARGET);
+    console.log(`Node ${process.version} → ${ver} 설치 (${NODE_TARGET})`);
+    return 'installed';
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+function startNodeUpgrade() {
+  if (!SUPERVISED || !fs.existsSync(BUILD_FILE)) return; // 감자 앱 안에서만 (개발폰은 이미 최신 Node)
+  if (parseInt(process.versions.node, 10) >= NODE_WANT) return;
+  let ready = false; // 설치는 끝났고 답변이 끝나기를 기다리는 중
+  const tick = async () => {
+    let wait = 24 * 3600 * 1000;
+    try {
+      if (ready) {
+        if (projectRuns.size || restarting) return setTimeout(tick, 10 * 60 * 1000).unref();
+        exitForRestart('', '', { extra: { update: `Node ${NODE_WANT}` } }); return;
+      }
+      const last = parseInt(fs.readFileSync(NODE_TRY_FILE, 'utf8'), 10) || 0;
+      if (Date.now() - last < 20 * 3600 * 1000) return setTimeout(tick, 3600 * 1000).unref();
+      if (projectRuns.size || restarting) return setTimeout(tick, 10 * 60 * 1000).unref();
+      fs.writeFileSync(NODE_TRY_FILE, String(Date.now()));
+      if ((await upgradeNodeOnce()) === 'installed') {
+        if (projectRuns.size) { ready = true; wait = 10 * 60 * 1000; } // 답변이 끝나면 재시작
+        else { exitForRestart('', '', { extra: { update: `Node ${NODE_WANT}` } }); return; }
+      }
+    } catch (e) { console.error('Node 24 올리기 실패:', e.message); crashLog(`node-upgrade-failed ${e.message}`); }
+    setTimeout(tick, wait).unref();
+  };
+  setTimeout(tick, 5 * 60 * 1000).unref(); // 켜진 지 5분 뒤 (자동 업데이트 첫 확인 뒤)
+}
+
 // ---------- 🌐 외부 접속 주소 (Cloudflare 무료 빠른 터널) ----------
 // https://무작위.trycloudflare.com 주소를 만들어 아이폰 Safari 등에서도 https로 접속(마이크 사용 가능)하게 한다.
 // 터널 프로그램은 서버와 따로 떠 있게 해서(detached) 서버가 재시작해도 주소가 바뀌지 않는다.
@@ -1933,6 +2003,7 @@ function toolsPrompt() {
   kit('image', '- 그림: image 그림.svg 결과.png [가로픽셀]');
   kit('media', '- 영상: video 결과.mp4 한장당초 소리파일또는- 사진1 사진2 … / 소리: audio 악보.json 결과.wav');
   lines.push('- 사주 계산(도구 설치 없이 항상 가능): saju 1990-05-15 14:30 남  (시각을 모르면 14:30 대신 모름, 여자는 여. 음력이면 날짜 뒤에 --lunar, 윤달이면 --lunar --leap. 옵션 --zasi jo|yaja --no-correction)');
+  lines.push('- 서버 시험(항상 가능): serve --path / --path /api/주소 -- node server.js  (만든 웹 서버를 잠깐 켜서 응답을 확인하고 자동으로 꺼요. 시작명령은 node 파일 / npm start / npm run 이름 / python3 파일만 돼요. 앱이 PORT 환경변수를 안 쓰면 --port 번호를 붙여요. nohup·setsid·&로 서버를 뒤에 띄우지 마세요)');
   lines.push('만든 파일은 이 크루의 "결과물"에 자동으로 보여요.');
   if (missing.length) {
     lines.push(`아직 설치되지 않은 도구: ${missing.map((id) => `${TOOLKITS[id].name}(${id})`).join(', ')}. 이 중 하나가 꼭 필요한 일이면 쓰려고 하지 말고, 답변 맨 끝에 정확히 [[gamja-install:도구id]] 한 줄만 쓰세요. 예: [[gamja-install:image]]. 그러면 화면에 "설치하고 이어서 하기" 버튼이 나와요. 사용자에게는 "이 일에는 OO 도구가 필요해요. 아래 버튼을 누르면 설치하고 이어서 할게요"라고 쉬운 말로 한 문장만 설명하세요.`);
@@ -3806,6 +3877,7 @@ server.listen(PORT, HOST, () => {
   }
   setTimeout(saveStableVersion, 30000).unref();
   startAutoUpdate();
+  startNodeUpgrade();
   setTimeout(prepareDefaultKits, 90 * 1000).unref(); // 시작하고 1분 반쯤 뒤, 그리고 답변이 없을 때마다 조용히 확인
   setInterval(prepareDefaultKits, 15 * 60 * 1000).unref();
   readClaudeInfo();
