@@ -90,6 +90,9 @@ const HELP = `gamja-make 사용법 (이 크루 폴더 안의 파일만 다룰 �
   serve [옵션] -- <시작명령>               만든 웹 서버를 잠깐 켜서 확인하고 자동으로 끈다. 예) serve --path / --path /api/hello -- node server.js
                                            옵션: --path <주소> (여러 번 가능, 기본 /) --port <번호> (앱이 포트를 직접 정해 둘 때) --wait <초> (켜지길 기다리는 시간, 기본 20) --time <초> (전체 제한, 기본 60)
                                            시작명령은 node <파일> / npm start / npm run <이름> / python3 <파일> 만 돼요. 서버는 끝나면 반드시 꺼져요
+  app start [--port 번호] -- <시작명령>    웹 서버를 계속 켜 두기 (감자알이 맡아서 대화와 상관없이 켜져 있어요. 포트를 안 쓰면 8080부터 빈 번호)
+  app stop | status | log [줄수] | restart 끄기 / 상태 보기 / 서버 기록 마지막 부분 / 코드를 고친 뒤 다시 켜기
+                                           한 방에 하나, 폰 전체에 3개까지. 앱이 스스로 꺼지면 다시 켜지 않아요 (status·log로 원인 확인)
   help                                     이 설명
 
 재료 파일(.md .csv .svg .json)은 먼저 Write로 만든 뒤 위 명령을 실행하세요.`;
@@ -127,15 +130,8 @@ async function serveTest(args) {
   if (!paths.length) paths.push('/');
   // 시작명령: 정해 둔 프로그램만, 쉘 없이, 이 폴더 안의 파일만
   const [prog, ...rest] = cmdv;
-  if (cmdv.some((t) => /[;&|`$<>()\n]/.test(t))) die('시작명령에는 ; & | ` $ < > ( ) 같은 문자를 쓸 수 없어요.');
-  if (prog === 'node' || prog === 'python3') {
-    const file = rest.find((t) => !t.startsWith('-'));
-    if (prog === 'python3' && rest[0] === '-m' && rest[1] === 'http.server') { /* 간단한 정적 서버는 허용 */ }
-    else { if (!file) die(`${prog} 다음에 실행할 파일 이름이 와야 해요.`); inside(file, { mustExist: true }); }
-    if (rest.some((t) => t === '-e' || t === '-p' || t === '--eval' || t === '--print' || t === '-c')) die('코드를 바로 적어 실행하는 옵션은 쓸 수 없어요. 파일로 만들어 주세요.');
-  } else if (prog === 'npm') {
-    if (!((rest[0] === 'start' && rest.length === 1) || (rest[0] === 'run' && /^[\w:-]+$/.test(rest[1] || '') && rest.length === 2))) die('npm은 "npm start" 또는 "npm run <이름>"만 쓸 수 있어요.');
-  } else die('시작명령은 node <파일> / npm start / npm run <이름> / python3 <파일> 만 쓸 수 있어요.');
+  const cmdErr = require('./app-runner.js').checkStartCmd(cmdv, CWD); // 계속 켜 두기(app)와 같은 검사
+  if (cmdErr) die(cmdErr);
   need(prog, '개발 도구');
   const port = fixedPort || await freePort();
   if (fixedPort && await httpGet(port, '/').then((r) => !r.error)) die(`${port}번 포트는 이미 쓰고 있어요. 다른 번호를 쓰거나 --port 없이 실행해 주세요.`);
@@ -181,8 +177,56 @@ async function serveTest(args) {
   process.exit(bad);
 }
 
+// 계속 켜 두기: 감자알에게 부탁해서 켜고 끈다 (이 명령은 바로 끝나고, 앱은 감자알이 맡는다)
+function appCtl(args) {
+  const [action, ...rest] = args;
+  if (!['start', 'stop', 'status', 'log', 'restart'].includes(action)) die('app 다음에는 start / stop / status / log / restart 중 하나를 써 주세요.');
+  const url = process.env.GAMJA_APP_URL, room = process.env.GAMJA_APP_ROOM, key = process.env.GAMJA_APP_KEY;
+  if (!url || !room || !key) die('이 방에서는 앱을 켜 둘 수 없어요. (감자 채팅방에서만 쓸 수 있어요. 감자를 업데이트했다면 새 대화에서 다시 해 주세요)');
+  const body = { action, room, key, cwd: CWD };
+  if (action === 'start') {
+    const sep = rest.indexOf('--');
+    if (sep < 0 || sep === rest.length - 1) die('시작명령이 빠졌어요. 예) app start --port 8080 -- node server.js');
+    const opts = rest.slice(0, sep);
+    for (let i = 0; i < opts.length; i++) {
+      if (opts[i] === '--port') { body.port = Number(opts[++i]); if (!Number.isInteger(body.port)) die('--port 다음에는 숫자가 와야 해요.'); }
+      else die(`알 수 없는 옵션이에요: ${opts[i]}`);
+    }
+    body.cmd = rest.slice(sep + 1);
+    const bad = require('./app-runner.js').checkStartCmd(body.cmd, CWD);
+    if (bad) die(bad);
+  }
+  if (action === 'log') body.lines = Number(rest[0]) || 60;
+  const data = JSON.stringify(body);
+  const u = new URL('/api/apps/ctl', url);
+  const req = require('http').request({ host: u.hostname, port: u.port, path: u.pathname, method: 'POST', timeout: 40000, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+    let txt = '';
+    res.on('data', (c) => { txt += c; });
+    res.on('end', () => {
+      let r; try { r = JSON.parse(txt); } catch { die(`감자알의 답을 읽지 못했어요 (${res.statusCode}).`); }
+      const st = { running: '🟢 켜져 있어요', starting: '⏳ 켜는 중', stopping: '⏳ 끄는 중', stopped: '⚪ 꺼져 있어요', crashed: '🔴 꺼졌어요 (오류)' };
+      const when = (ms) => (ms ? new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) : '-');
+      if (r.app) {
+        const ap = r.app;
+        console.log(`${st[ap.state] || ap.state}  포트 ${ap.port}  (http://localhost:${ap.port})`);
+        console.log(`시작명령: ${ap.cmd}${ap.dir ? `  (폴더 ${ap.dir})` : ''}`);
+        console.log(`켠 시각: ${when(ap.startedAt)}${ap.state === 'running' ? '' : `  · 꺼진 시각: ${when(ap.endedAt)}${ap.exitCode !== null ? ` · 종료 코드 ${ap.exitCode}` : ''}`}`);
+        if (ap.note) console.log(`메모: ${ap.note}`);
+      } else if (action === 'status') console.log('이 방에서 켠 앱이 없어요.');
+      if (r.log !== undefined) console.log(r.log ? `--- 서버 기록 (마지막 부분) ---\n${r.log}\n---` : '(남은 기록이 없어요)');
+      if (r.error) die(r.error);
+      if (action === 'start' || action === 'restart') console.log('사용자는 폰 크롬에서 위 주소를 열면 돼요. 끄기 전까지 계속 켜져 있어요.');
+      if (action === 'stop') console.log('앱을 껐어요.');
+    });
+  });
+  req.on('timeout', () => { req.destroy(); die('감자알의 답이 늦어요. 잠시 뒤 app status로 확인해 주세요.'); });
+  req.on('error', (e) => die(`감자알에 연결하지 못했어요: ${e.message}`));
+  req.end(data);
+}
+
 const [cmd, ...a] = process.argv.slice(2);
 if (cmd === 'serve') { serveTest(a).catch((e) => die(e.message)); } else
+if (cmd === 'app') { appCtl(a); } else
 switch (cmd) {
   case 'saju': { // 사주 계산은 외부 프로그램이 필요 없어서 도구 상자 설치 없이 쓸 수 있다
     try { console.log(require('./saju.js').run(a)); } catch (e) { die(e.message); }

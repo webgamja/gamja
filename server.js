@@ -1396,7 +1396,7 @@ function handleChat(req, res, body, opts = {}) {
 
   let child;
   try {
-    child = spawn(CLAUDE_BIN, args, { cwd, env: childEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
+    child = spawn(CLAUDE_BIN, args, { cwd, env: { ...childEnv(), ...appEnv(cwd) }, stdio: ['pipe', 'pipe', 'pipe'] });
   } catch (e) {
     emit('error', { message: 'claude 실행 실패: ' + e.message });
     conv.messages.push({ role: 'error', text: errorText, ts: Date.now() });
@@ -1939,6 +1939,14 @@ function lanOrigins() {
 // 쓰게 허용한다. 이 명령은 이 크루 폴더 안의 파일만 다루고, 정해 둔 프로그램을 정해 둔 방법으로만 부른다 (아무 명령이나 실행하게 열어 두지 않는다).
 const TOOLS_DIR = path.join(__dirname, 'tools');
 const MAKE_CMD = `node ${path.join(TOOLS_DIR, 'gamja-make.js')}`;
+// 🟢 켜 둔 앱 (tools/app-runner.js): 크루가 만든 웹 서버를 감자알이 맡아서 계속 켜 둔다.
+// 크루의 gamja-make는 방마다 다른 열쇠(GAMJA_APP_KEY)로 자기 방의 앱만 다룰 수 있다
+const appRunner = require('./tools/app-runner').createRunner({ dataDir: DATA_DIR, reservedPorts: [PORT, 26514, 3000] });
+const appKey = (room) => crypto.createHmac('sha256', SIGN_KEY).update(`gamja-app:${room}`).digest('base64url');
+function appEnv(cwd) {
+  if (!cwd || path.resolve(cwd) === __dirname) return {}; // 감자 자체를 고치는 방은 제외
+  return { GAMJA_APP_URL: `http://127.0.0.1:${PORT}`, GAMJA_APP_ROOM: cwd, GAMJA_APP_KEY: appKey(cwd) };
+}
 const TOOLKITS = {
   docs: { name: '문서 도구', desc: 'PDF · 워드 · 파워포인트 · 엑셀 문서 만들기', size: '약 250MB', apt: ['pandoc', 'weasyprint', 'python3', 'python3-openpyxl', 'fonts-noto-cjk'], need: ['pandoc', 'python3'] },
   image: { name: '그림 도구', desc: '로고 · 도표 · 카드뉴스 같은 그림 파일(PNG) 만들기', size: '약 150MB', apt: ['librsvg2-bin', 'fonts-noto-cjk'], need: ['rsvg-convert'] },
@@ -2004,6 +2012,7 @@ function toolsPrompt() {
   kit('media', '- 영상: video 결과.mp4 한장당초 소리파일또는- 사진1 사진2 … / 소리: audio 악보.json 결과.wav');
   lines.push('- 사주 계산(도구 설치 없이 항상 가능): saju 1990-05-15 14:30 남  (시각을 모르면 14:30 대신 모름, 여자는 여. 음력이면 날짜 뒤에 --lunar, 윤달이면 --lunar --leap. 옵션 --zasi jo|yaja --no-correction)');
   lines.push('- 서버 시험(항상 가능): serve --path / --path /api/주소 -- node server.js  (만든 웹 서버를 잠깐 켜서 응답을 확인하고 자동으로 꺼요. 시작명령은 node 파일 / npm start / npm run 이름 / python3 파일만 돼요. 앱이 PORT 환경변수를 안 쓰면 --port 번호를 붙여요. nohup·setsid·&로 서버를 뒤에 띄우지 마세요)');
+  lines.push('- 계속 켜 두기(항상 가능): app start [--port 8080] -- node server.js / app stop / app status / app log / app restart  (사용자가 폰 브라우저에서 계속 쓰고 싶어 할 때. 감자알이 맡아서 대화와 상관없이 켜 두고, 이 명령은 바로 끝나요. 코드를 고친 뒤에는 app restart. 한 방에 하나, 폰 전체에 3개까지)');
   lines.push('만든 파일은 이 크루의 "결과물"에 자동으로 보여요.');
   if (missing.length) {
     lines.push(`아직 설치되지 않은 도구: ${missing.map((id) => `${TOOLKITS[id].name}(${id})`).join(', ')}. 이 중 하나가 꼭 필요한 일이면 쓰려고 하지 말고, 답변 맨 끝에 정확히 [[gamja-install:도구id]] 한 줄만 쓰세요. 예: [[gamja-install:image]]. 그러면 화면에 "설치하고 이어서 하기" 버튼이 나와요. 사용자에게는 "이 일에는 OO 도구가 필요해요. 아래 버튼을 누르면 설치하고 이어서 할게요"라고 쉬운 말로 한 문장만 설명하세요.`);
@@ -2528,6 +2537,25 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
 
     if (p.startsWith('/preview/') && req.method === 'GET') return servePreview(req, res, p);
 
+    // 🟢 크루의 gamja-make app 명령: 이 폰 안에서, 그 방의 열쇠를 가진 요청만 받는다 (로그인 쿠키 대신 방 열쇠)
+    if (p === '/api/apps/ctl' && req.method === 'POST') {
+      if (!isLocalReq(req)) return send(res, 403, { error: '이 폰 안에서만 쓸 수 있어요' });
+      const body = await readBody(req, 64 * 1024);
+      const room = typeof body.room === 'string' ? body.room : '';
+      if (!room || !path.isAbsolute(room) || !safeEqual(String(body.key || ''), appKey(room)) || path.resolve(room) === __dirname) return send(res, 403, { error: '이 방의 열쇠가 맞지 않아요' });
+      let realRoom, cwd;
+      try { realRoom = fs.realpathSync(room); cwd = fs.realpathSync(String(body.cwd || room)); } catch { return send(res, 400, { error: '방 폴더를 찾을 수 없어요' }); }
+      if (cwd !== realRoom && !cwd.startsWith(realRoom + path.sep)) return send(res, 400, { error: '방 폴더 안에서 실행해 주세요' });
+      const a = body.action;
+      let r;
+      if (a === 'start') r = await appRunner.start({ room, cwd, cmd: Array.isArray(body.cmd) ? body.cmd.map(String) : [], port: body.port });
+      else if (a === 'stop') r = await appRunner.stop(room);
+      else if (a === 'restart') r = await appRunner.restart(room);
+      else if (a === 'status') r = { app: appRunner.status(room) };
+      else if (a === 'log') r = { app: appRunner.status(room), log: appRunner.tail(room, body.lines) };
+      else return send(res, 400, { error: '알 수 없는 동작이에요' });
+      return send(res, 200, r);
+    }
     if (p.startsWith('/api/')) {
       if (!isAuthed(req)) return send(res, 401, { error: '로그인이 필요합니다' });
       { // 점검 중이면 새 사용자 작업을 막는다 (로그인 확인 뒤라서 인증 없이는 상태도 알 수 없다). 막지 않은 변경 요청은 끝날 때까지 작업으로 센다
@@ -2564,6 +2592,20 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const dir = talk ? TALK_DIR : resolveProject(crew); // 크루 폴더
         if (!dir || !crew) return send(res, 400, { error: '크루 방에서 열어 주세요' });
         return send(res, 200, { project: crew, files: listResults(dir), token: makePreviewToken(crew), lan: lanOrigins() });
+      }
+      // 🟢 결과물 화면의 켜 둔 앱 줄: 상태 보기 · 끄기 · 다시 켜기 · 기록
+      if (p === '/api/apps' && req.method === 'GET') {
+        const room = resolveProject(url.searchParams.get('project') || '');
+        if (!room) return send(res, 200, { app: null });
+        return send(res, 200, { app: appRunner.status(room), ...(url.searchParams.get('log') ? { log: appRunner.tail(room, 80) } : {}) });
+      }
+      if (p === '/api/apps/action' && req.method === 'POST') {
+        const body = await readBody(req);
+        const room = resolveProject(String(body.project || ''));
+        if (!room) return send(res, 400, { error: '알 수 없는 방이에요' });
+        if (body.action === 'stop') return send(res, 200, await appRunner.stop(room));
+        if (body.action === 'restart') return send(res, 200, await appRunner.restart(room));
+        return send(res, 400, { error: '알 수 없는 동작이에요' });
       }
       if (p === '/api/install-link' && req.method === 'POST') {
         const host = String(req.headers.host || '');
@@ -3884,12 +3926,13 @@ server.listen(PORT, HOST, () => {
   loadProjectConf();
   migrateRoomDirs();
   loadTunnelState(); // 재시작 전에 켜 둔 터널이 아직 살아 있으면 그 주소를 그대로 쓴다
+  appRunner.restore().catch((e) => console.error('켜 둔 앱을 다시 켜지 못했어요:', e.message)); // 재시작 전에 켜 두었던 앱
 });
 
 // 감자알이 왜 꺼졌는지 남긴다 (이사오기 올리기 중 끊김 원인을 찾기 위한 기록). 꺼지는 동작은 그대로다
 function crashLog(msg) { try { fs.appendFileSync(path.join(DATA_DIR, 'import-debug.log'), `${new Date().toISOString()} pid=${process.pid} ${msg}\n`); } catch {} }
 process.on('uncaughtException', (e, origin) => { crashLog(`오류로 꺼짐(${origin}): ${e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e}`); console.error(e); process.exit(1); });
-process.on('exit', (code) => crashLog(`꺼짐 code=${code}`));
+process.on('exit', (code) => { try { appRunner.killAll(); } catch {} crashLog(`꺼짐 code=${code}`); });
 function shutdown(sig) {
   crashLog(`신호 받음 ${typeof sig === 'string' ? sig : ''}`);
   for (const c of running.values()) c.kill('SIGINT');

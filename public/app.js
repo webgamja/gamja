@@ -893,7 +893,8 @@
     try { d = await api('/api/preview-files' + q()); } catch (err) { return alert(err.message); }
     // 다른 기기에서 열 주소: 이 폰 안(127.0.0.1)에서 보고 있으면 같은 와이파이 주소를 알려 준다
     const local = ['127.0.0.1', 'localhost'].includes(location.hostname);
-    madeData = { files: d.files, base: `/preview/${d.token}/${encodeURIComponent(d.project)}/`, origin: local ? (d.lan[0] || '') : location.origin };
+    madeData = { files: d.files, base: `/preview/${d.token}/${encodeURIComponent(d.project)}/`, origin: local ? (d.lan[0] || '') : location.origin, app: null, appLog: null };
+    try { madeData.app = (await api('/api/apps' + q())).app; } catch { /* 켜 둔 앱 정보를 못 받으면 줄을 안 보여 준다 */ }
     if (madeKind !== 'all' && !d.files.some((f) => f.kind === madeKind)) madeKind = 'all';
     $('madeTitle').textContent = `👀 ${crewParts(project).text}의 결과물`;
     renderMade();
@@ -917,7 +918,7 @@
       body = shown.map(({ f, i }) =>
         `<button class="pick-card" data-i="${i}"><span class="pick-icon">${KIND_ICON[f.kind]}</span><span><b>${escapeHtml(f.path)}</b><small>${KIND_NAME[f.kind]} · ${ago(f.mtime)} · ${kb(f.size)}</small></span></button>`).join('');
     }
-    madeBody.innerHTML = (files.length ? `<div class="made-tabs">${tabs}</div>` : '') + body +
+    madeBody.innerHTML = appBlock() + (files.length ? `<div class="made-tabs">${tabs}</div>` : '') + body +
       (origin && files.some((f) => f.kind === 'web')
         ? `<h3>다른 기기에서 웹페이지를 보려면</h3><p class="settings-row"><b>${escapeHtml(origin + base)}</b></p>` +
           '<button id="madeCopy" class="settings-save" type="button">📋 주소 복사</button>' +
@@ -927,6 +928,8 @@
         ? '<p class="settings-note">ⓘ 만든 웹페이지는 안전을 위해 <b>격리된 상태</b>로 열려요. 그래서 글을 저장해 두는 기능(브라우저 저장소)은 미리보기에서 동작하지 않을 수 있어요. 모두에게 공개하는 건 GAMJA Pro에서 해요.</p>'
         : '');
     madeBody.onclick = (e) => {
+      const ab = e.target.closest('[data-app]');
+      if (ab) return appAction(ab.dataset.app);
       const tab = e.target.closest('[data-kind]');
       if (tab) { madeKind = tab.dataset.kind; return renderMade(); }
       const item = e.target.closest('[data-i]');
@@ -936,6 +939,48 @@
         navigator.clipboard.writeText(text).then(() => toast('📋 주소를 복사했어요'), () => gCopy('이 주소를 복사하세요', text));
       }
     };
+  }
+  // 🟢 켜 둔 앱 줄 (크루가 gamja-make app start로 켠 웹 서버): 상태 · 열기 · 다시 켜기 · 끄기 · 기록
+  function appBlock() {
+    const a = madeData.app;
+    if (!a) return '';
+    const T = window.GAMJA_I18N.t;
+    const on = a.state === 'running' || a.state === 'starting';
+    const time = a.startedAt ? new Date(a.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const line = T(`app.${['running', 'starting', 'crashed'].includes(a.state) ? a.state : 'stopped'}`, { port: a.port, time });
+    const btn = (k, label) => `<button type="button" class="settings-ghost" data-app="${k}">${escapeHtml(label)}</button>`;
+    return `<div class="made-app"><h3>${escapeHtml(T('app.title'))}</h3>` +
+      `<p class="settings-row"><b>${escapeHtml(line)}</b><br><small>${escapeHtml(a.cmd)}${a.dir ? ` · ${escapeHtml(a.dir)}` : ''}</small></p>` +
+      (a.note && !on ? `<p class="settings-note">${escapeHtml(a.note)}</p>` : '') +
+      `<div class="made-app-btns">${on ? btn('open', T('app.open')) : ''}${btn('restart', T('app.restart'))}${on ? btn('stop', T('app.stop')) : ''}${btn('log', T('app.log'))}</div>` +
+      (on ? `<p class="settings-note">${escapeHtml(T('app.openHint', { url: `http://localhost:${a.port}` }))}</p>` : '') +
+      (madeData.appLog !== null ? `<pre class="made-app-log">${escapeHtml(madeData.appLog || T('app.logEmpty'))}</pre>` : '') + '</div>';
+  }
+  async function appAction(k) {
+    const T = window.GAMJA_I18N.t;
+    const a = madeData.app;
+    if (!a) return;
+    if (k === 'open') {
+      const url = `http://localhost:${a.port}`;
+      const app = window.GamjaApp;
+      if (app && typeof app.openExternal !== 'undefined') return app.openExternal(url);
+      return window.open(url, '_blank');
+    }
+    if (k === 'log') {
+      if (madeData.appLog !== null) madeData.appLog = null;
+      else { try { madeData.appLog = (await api('/api/apps' + q() + '&log=1')).log || ''; } catch (err) { return alert(err.message); } }
+      return renderMade();
+    }
+    if (k === 'stop' && !(await gSheet({ title: T('app.stop'), message: T('app.stopConfirm'), ok: T('app.stop'), danger: true }))) return;
+    toast(T('app.busy'));
+    try {
+      const r = await api('/api/apps/action', { project, action: k });
+      if (r.app) madeData.app = r.app;
+      if (r.error) alert(r.error);
+      else toast(T(k === 'stop' ? 'app.stoppedToast' : 'app.restartedToast'));
+      if (madeData.appLog !== null) madeData.appLog = (await api('/api/apps' + q() + '&log=1')).log || '';
+    } catch (err) { alert(err.message); }
+    renderMade();
   }
   // 이미지 보기 안에서 도는 확대·이동 기능: 두 손가락으로 확대·축소(손가락 사이 지점 기준), 확대하면 한 손가락으로 이동, 두 번 두드리면 확대/원래대로.
   // 감자 화면 전체가 아니라 사진만 커져서 위쪽 줄은 그대로 있다

@@ -748,6 +748,12 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 결과물: 종류별 탭과 이미지 바둑판 */
 .made-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .made-tabs::-webkit-scrollbar { display: none; }
+.made-app { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(46, 160, 67, .08); border: 1px solid rgba(46, 160, 67, .35); }
+.made-app h3 { margin: 0 0 4px; }
+.made-app .settings-row { margin: 4px 0; }
+.made-app-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.made-app-btns .settings-ghost { width: auto; flex: 1 1 auto; margin: 0; }
+.made-app-log { max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 8px; border-radius: 8px; background: #111; color: #ddd; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
 .made-tabs button { flex: none; padding: 8px 14px; border: 0; border-radius: 16px; background: var(--ui-card); color: var(--ui-sub); font-size: 14px; font-weight: 700; }
 .made-tabs button.on { background: var(--me); color: var(--me-fg); }
 .made-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
