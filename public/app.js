@@ -941,8 +941,8 @@
       }
     };
   }
-  // 🟢 켜 둔 앱 버튼 (크루가 gamja-make app start로 켠 웹 서버): 상단바 아래 오른쪽에 떠 있다. 앱이 있는 방에서만 보인다.
-  // 누르면 작은 메뉴(열기 · 기록 보기 · 다시 켜기 · 끄기). 상태는 10초마다 새로 받아 온다
+  // 🟢 켜 둔 앱 버튼 (크루가 gamja-make app start로 켠 웹 서버): 상단바 아래 오른쪽에 점으로 떠 있다. 앱이 있는 방에서만 보인다.
+  // 누르면 상태 글자가 펼쳐지고 작은 메뉴(열기 · 기록 보기 · 다시 켜기 · 끄기)가 열린다. 상태는 10초마다 새로 받아 온다
   const fabEl = $('appFab');
   const fabMenu = $('appFabMenu');
   const fabOn = (a) => a && (a.state === 'running' || a.state === 'starting');
@@ -980,8 +980,6 @@
   $('appFabBtn').onclick = (e) => { e.stopPropagation(); fabMenu.classList.toggle('hidden'); };
   document.addEventListener('click', (e) => { if (!fabEl.contains(e.target)) fabMenu.classList.add('hidden'); });
   fabMenu.onclick = (e) => { const b = e.target.closest('[data-app]'); if (b) appAction(b.dataset.app); };
-  // 대화를 위로 올려 읽는 동안은 글자를 숨기고 점만 남긴다
-  els.messages.addEventListener('scroll', () => fabEl.classList.toggle('mini', !nearBottom()), { passive: true });
   async function appAction(k) {
     const T = window.GAMJA_I18N.t;
     const a = fabApp;

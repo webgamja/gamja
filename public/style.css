@@ -748,7 +748,7 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 결과물: 종류별 탭과 이미지 바둑판 */
 .made-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .made-tabs::-webkit-scrollbar { display: none; }
-/* 켜 둔 앱 버튼: 상단바 아래 오른쪽에 떠 있는 알약. 대화를 올려 읽을 때는 점만 남는다 */
+/* 켜 둔 앱 버튼: 평소에는 상단바 아래 오른쪽에 점만 있는 동그라미. 누르면 상태 글자가 펼쳐지고 메뉴가 열린다 */
 .app-fab { position: absolute; right: var(--side); top: calc(100% + 8px); z-index: 9; display: flex; flex-direction: column; align-items: flex-end; }
 .app-fab-btn {
   display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px 0 12px; border-radius: 17px;
@@ -766,8 +766,8 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 .app-fab[data-state="crashed"] .app-fab-dot { background: var(--danger); }
 .app-fab[data-state="stopped"] .app-fab-dot { background: var(--muted); }
 .app-fab[data-state="stopped"] .app-fab-btn { border-color: var(--border); color: var(--muted); }
-.app-fab.mini .app-fab-btn { padding: 0 11px; gap: 0; }
-.app-fab.mini #appFabLabel { display: none; }
+.app-fab:has(.app-fab-menu.hidden) .app-fab-btn { padding: 0 11px; gap: 0; }
+.app-fab:has(.app-fab-menu.hidden) #appFabLabel { display: none; }
 .app-fab-menu { margin-top: 8px; min-width: 240px; max-width: calc(100vw - 2 * var(--side)); background: var(--bot); color: var(--bot-fg); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 6px 0; }
 .app-fab-head { display: flex; flex-direction: column; gap: 3px; padding: 10px 16px 10px; border-bottom: 1px solid var(--border); }
 .app-fab-head small { color: var(--muted); font-size: 12px; }
