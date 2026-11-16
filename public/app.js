@@ -928,28 +928,27 @@
       }
     };
   }
-  // 🟢 켜 둔 앱 버튼 (크루가 gamja-make app start로 켠 웹 서버): 상단바 아래 오른쪽에 점으로 떠 있다. 앱이 있는 방에서만 보인다.
-  // 누르면 상태 글자가 펼쳐지고 작은 메뉴(열기 · 기록 보기 · 다시 켜기 · 끄기)가 열린다. 상태는 10초마다 새로 받아 온다
+  // 🟢 켜 둔 앱 손잡이 (크루가 gamja-make app start로 켠 웹 서버): 상단바 아래 화면 오른쪽 끝에 반원으로 걸려 있다. 앱이 있는 방에서만 보인다.
+  // 누르면 왼쪽으로 띠가 펼쳐져 상태와 버튼(열기 · 기록 · 다시 켜기 · 끄기)이 나오고, › 나 바깥을 누르면 다시 반원으로 들어간다. 상태는 10초마다 새로 받아 온다
   const fabEl = $('appFab');
   const fabMenu = $('appFabMenu');
   const fabOn = (a) => a && (a.state === 'running' || a.state === 'starting');
+  const fabClose = () => $('appFab').classList.remove('open');
   function renderFab() {
     const T = window.GAMJA_I18N.t;
     const fabEl = $('appFab'), fabMenu = $('appFabMenu');
-    const a = fabApp && fabApp.state !== 'stopped' ? fabApp : null; // 끈 앱은 버튼을 감춘다 (화면을 가리지 않게)
+    const a = fabApp && fabApp.state !== 'stopped' ? fabApp : null; // 끈 앱은 손잡이를 감춘다 (화면을 가리지 않게)
     fabEl.classList.toggle('hidden', !a);
-    if (!a) { fabMenu.classList.add('hidden'); return; }
+    if (!a) { fabClose(); return; }
     const st = ['running', 'starting', 'crashed'].includes(a.state) ? a.state : 'stopped';
     fabEl.dataset.state = st;
-    $('appFabLabel').textContent = T(`app.fab.${st}`);
-    const time = a.startedAt ? new Date(a.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    $('appFabBtn').setAttribute('aria-label', T(`app.fab.${st}`));
     const on = fabOn(a);
-    const item = (k, icon, label, cls = '') => `<button type="button" class="app-fab-item${cls}" data-app="${k}"><span class="app-fab-ic">${icon}</span>${escapeHtml(label)}</button>`;
-    fabMenu.innerHTML = `<div class="app-fab-head"><b>${escapeHtml(T('app.title'))}</b><small>${escapeHtml(T(`app.${st}`, { port: a.port, time }))}</small>` +
-      `<small class="app-fab-cmd">${escapeHtml(a.cmd)}</small></div>` +
-      (a.note && !on ? `<p class="app-fab-note">${escapeHtml(a.note)}</p>` : '') +
-      (on ? item('open', '↗', T('app.open')) : '') + item('log', '≡', T('app.log')) + item('restart', '↻', T('app.restart')) +
-      (on ? '<hr>' + item('stop', '■', T('app.stop'), ' danger') : '');
+    const sub = !on && a.note ? a.note : `:${a.port} · ${a.cmd}`;
+    const act = (k, icon, cls = '') => `<button type="button" class="app-fab-act${cls}" data-app="${k}" title="${escapeHtml(T('app.' + k))}" aria-label="${escapeHtml(T('app.' + k))}">${icon}</button>`;
+    fabMenu.innerHTML = `<div class="app-fab-info"><b>${escapeHtml(T(`app.fab.${st}`))}</b><small>${escapeHtml(sub)}</small></div>` +
+      (on ? act('open', '↗') : '') + act('log', '≡') + act('restart', '↻') + (on ? act('stop', '■', ' danger') : '') +
+      `<button type="button" class="app-fab-close" data-app="close" aria-label="close">›</button>`;
   }
   async function refreshFab() {
     const room = project;
@@ -957,21 +956,21 @@
     let a = null;
     try { a = (await api('/api/apps?project=' + encodeURIComponent(room))).app || null; } catch { return; }
     if (room !== project) return;
-    if (fabRoom !== room) $('appFabMenu').classList.add('hidden');
+    if (fabRoom !== room) fabClose();
     fabRoom = room;
     fabApp = a;
     renderFab();
   }
   setInterval(() => { if (document.visibilityState === 'visible') refreshFab(); }, 10000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshFab(); });
-  $('appFabBtn').onclick = (e) => { e.stopPropagation(); fabMenu.classList.toggle('hidden'); };
-  document.addEventListener('click', (e) => { if (!fabEl.contains(e.target)) fabMenu.classList.add('hidden'); });
-  fabMenu.onclick = (e) => { const b = e.target.closest('[data-app]'); if (b) appAction(b.dataset.app); };
+  $('appFabBtn').onclick = (e) => { e.stopPropagation(); fabEl.classList.toggle('open'); };
+  document.addEventListener('click', (e) => { if (!fabEl.contains(e.target)) fabClose(); });
+  fabMenu.onclick = (e) => { const b = e.target.closest('[data-app]'); if (!b) return; if (b.dataset.app === 'close') fabClose(); else appAction(b.dataset.app); };
   async function appAction(k) {
     const T = window.GAMJA_I18N.t;
     const a = fabApp;
     if (!a) return;
-    fabMenu.classList.add('hidden');
+    fabClose();
     if (k === 'open') {
       const url = `http://localhost:${a.port}`;
       const app = window.GamjaApp;

@@ -748,36 +748,36 @@ html.viewing, html.viewing body { touch-action: auto; } /* 결과물을 보는 �
 /* 결과물: 종류별 탭과 이미지 바둑판 */
 .made-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .made-tabs::-webkit-scrollbar { display: none; }
-/* 켜 둔 앱 버튼: 평소에는 상단바 아래 오른쪽에 점만 있는 동그라미. 누르면 상태 글자가 펼쳐지고 메뉴가 열린다 */
-.app-fab { position: absolute; right: var(--side); top: calc(100% + 8px); z-index: 9; display: flex; flex-direction: column; align-items: flex-end; }
-.app-fab-btn {
-  display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px 0 12px; border-radius: 17px;
-  background: var(--bot); color: var(--bot-fg); border: 1px solid rgba(34,165,90,.3); font: 600 14px/1 inherit; font-family: inherit;
-  box-shadow: 0 3px 10px rgba(0,0,0,.14); transition: padding .15s, gap .15s;
+/* 켜 둔 앱 손잡이: 평소에는 상단바 아래 화면 오른쪽 끝에 걸린 반원(점 하나). 누르면 왼쪽으로 띠가 펼쳐진다 */
+.app-fab {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 9; display: flex; align-items: center; height: 40px;
+  background: var(--bot); color: var(--bot-fg); border: 1px solid rgba(34,165,90,.3); border-right: 0; border-radius: 20px 0 0 20px;
+  box-shadow: -1px 3px 10px rgba(0,0,0,.14); transition: height .25s ease, border-radius .25s ease;
 }
-.app-fab-btn:active { filter: brightness(.95); }
+.app-fab-btn { display: flex; align-items: center; justify-content: center; width: 22px; height: 100%; padding: 0 0 0 4px; background: none; border: 0; flex: none; transition: width .25s ease, padding .25s ease; }
 .app-fab-dot { width: 10px; height: 10px; border-radius: 50%; background: #22a55a; flex: none; animation: fabBlink 2.4s ease-in-out infinite; }
 @keyframes fabBlink { 50% { opacity: .35; } }
-.app-fab[data-state="starting"] .app-fab-btn { border-color: rgba(224,169,21,.45); }
-.app-fab[data-state="starting"] .app-fab-dot { background: none; border: 2.5px solid #e0a915; border-right-color: transparent; width: 12px; height: 12px; box-sizing: border-box; animation: fabSpin .8s linear infinite; }
 @keyframes fabSpin { to { transform: rotate(360deg); } }
-.app-fab[data-state="crashed"] .app-fab-btn { background: #fff4f4; color: #b4282d; border-color: rgba(229,72,77,.4); }
-.app-fab[data-state="crashed"] .app-fab-dot, .app-fab[data-state="stopped"] .app-fab-dot { animation: none; }
-.app-fab[data-state="crashed"] .app-fab-dot { background: var(--danger); }
-.app-fab[data-state="stopped"] .app-fab-dot { background: var(--muted); }
-.app-fab[data-state="stopped"] .app-fab-btn { border-color: var(--border); color: var(--muted); }
-.app-fab:has(.app-fab-menu.hidden) .app-fab-btn { padding: 0 11px; gap: 0; }
-.app-fab:has(.app-fab-menu.hidden) #appFabLabel { display: none; }
-.app-fab-menu { margin-top: 8px; min-width: 240px; max-width: calc(100vw - 2 * var(--side)); background: var(--bot); color: var(--bot-fg); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 6px 0; }
-.app-fab-head { display: flex; flex-direction: column; gap: 3px; padding: 10px 16px 10px; border-bottom: 1px solid var(--border); }
-.app-fab-head small { color: var(--muted); font-size: 12px; }
-.app-fab-cmd { font-family: ui-monospace, monospace; word-break: break-all; }
-.app-fab-note { margin: 0; padding: 8px 16px; font-size: 12px; color: var(--danger); border-bottom: 1px solid var(--border); }
-.app-fab-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: 0; color: inherit; font: 15px inherit; font-family: inherit; text-align: left; }
-.app-fab-item:active { background: rgba(0,0,0,.06); }
-.app-fab-item.danger { color: var(--danger); }
-.app-fab-ic { width: 18px; text-align: center; }
-.app-fab-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.app-fab-menu { display: flex; align-items: center; gap: 6px; max-width: 0; opacity: 0; overflow: hidden; visibility: hidden; transition: max-width .25s ease, opacity .2s ease, visibility .25s; }
+.app-fab.open { height: 48px; border-radius: 24px 0 0 24px; }
+.app-fab.open .app-fab-btn { width: 30px; padding: 0 0 0 10px; }
+.app-fab.open .app-fab-menu { max-width: min(340px, calc(100vw - 40px)); opacity: 1; visibility: visible; }
+.app-fab-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; width: 150px; flex: 1 1 auto; padding-left: 4px; }
+.app-fab-info b { font-size: 14px; white-space: nowrap; }
+.app-fab-info small { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-fab-act { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(0,0,0,.06); color: inherit; font: 16px/1 inherit; font-family: inherit; display: flex; align-items: center; justify-content: center; padding: 0; }
+.app-fab-act:active { filter: brightness(.9); }
+.app-fab-act.danger { background: rgba(229,72,77,.14); color: var(--danger); font-size: 12px; }
+.app-fab-close { flex: none; width: 34px; height: 32px; border: 0; border-left: 1px solid var(--border); background: none; color: var(--muted); font: 20px/1 inherit; font-family: inherit; padding: 0 2px 2px 0; margin-left: 2px; }
+.app-fab[data-state="starting"] { border-color: rgba(224,169,21,.45); }
+.app-fab[data-state="starting"] .app-fab-dot { background: none; border: 2.5px solid #e0a915; border-right-color: transparent; width: 12px; height: 12px; box-sizing: border-box; animation: fabSpin .8s linear infinite; }
+.app-fab[data-state="crashed"] { background: #fff4f4; border-color: rgba(229,72,77,.4); }
+.app-fab[data-state="crashed"]:not(.open) { height: 48px; border-radius: 24px 0 0 24px; }
+.app-fab[data-state="crashed"]:not(.open) .app-fab-btn { width: 26px; }
+.app-fab[data-state="crashed"] .app-fab-dot { background: var(--danger); animation: none; }
+.app-fab[data-state="crashed"]:not(.open) .app-fab-dot { background: none; width: auto; height: auto; border-radius: 0; color: var(--danger); font: 800 15px/1 inherit; font-family: inherit; }
+.app-fab[data-state="crashed"]:not(.open) .app-fab-dot::before { content: '!'; }
+.app-fab[data-state="crashed"] .app-fab-info b { color: #b4282d; }
 .gs-pre { max-height: 50vh; overflow: auto; margin: 0 0 12px; padding: 10px; border-radius: 10px; background: #111; color: #ddd; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; text-align: left; }
 .made-tabs button { flex: none; padding: 8px 14px; border: 0; border-radius: 16px; background: var(--ui-card); color: var(--ui-sub); font-size: 14px; font-weight: 700; }
 .made-tabs button.on { background: var(--me); color: var(--me-fg); }
