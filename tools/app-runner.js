@@ -63,7 +63,8 @@ function portFree(port) {
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-function createRunner({ dataDir, reservedPorts = [] }) {
+// extraEnv(room): 켤 때마다 더해 줄 환경변수 (예: 연결된 GitHub 열쇠를 받는 git 설정). 켤 때 새로 읽으므로 설정을 바꾸면 restart로 반영된다
+function createRunner({ dataDir, reservedPorts = [], extraEnv = () => ({}) }) {
   const stateFile = path.join(dataDir, 'apps.json');
   const logDir = path.join(dataDir, 'apps');
   const apps = new Map(); // room → 기록
@@ -130,7 +131,9 @@ function createRunner({ dataDir, reservedPorts = [] }) {
     try { if (fs.statSync(lf).size > LOG_MAX) fs.renameSync(lf, lf + '.old'); } catch { /* 기록 파일이 아직 없음 */ }
     fs.appendFileSync(lf, `\n=== ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 켬: ${cmd.join(' ')} (포트 ${port}) ===\n`);
     const fd = fs.openSync(lf, 'a');
-    const env = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG || 'C.UTF-8', TMPDIR: process.env.TMPDIR || '/tmp', NODE_ENV: 'development', PORT: String(port), HOST: '127.0.0.1' };
+    let more = {};
+    try { more = extraEnv(room) || {}; } catch { /* 더할 환경변수를 못 구해도 앱은 켠다 */ }
+    const env = { ...more, PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG || 'C.UTF-8', TMPDIR: process.env.TMPDIR || '/tmp', NODE_ENV: 'development', PORT: String(port), HOST: '127.0.0.1' };
     let child;
     try { child = spawn(cmd[0], cmd.slice(1), { cwd, env, stdio: ['ignore', fd, fd], detached: true }); } catch (e) { fs.closeSync(fd); return { error: `시작하지 못했어요: ${e.message}` }; }
     fs.closeSync(fd);

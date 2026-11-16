@@ -2028,7 +2028,17 @@ const TOOLS_DIR = path.join(__dirname, 'tools');
 const MAKE_CMD = `node ${path.join(TOOLS_DIR, 'gamja-make.js')}`;
 // 🟢 켜 둔 앱 (tools/app-runner.js): 크루가 만든 웹 서버를 감자알이 맡아서 계속 켜 둔다.
 // 크루의 gamja-make는 방마다 다른 열쇠(GAMJA_APP_KEY)로 자기 방의 앱만 다룰 수 있다
-const appRunner = require('./tools/app-runner').createRunner({ dataDir: DATA_DIR, reservedPorts: [PORT, 26514, 3000] });
+// 계속 켜 둔 앱도 크루처럼 연결된 GitHub 열쇠로 git을 쓸 수 있게 한다 (앱 안에서 git fetch 등).
+// 방 폴더 → 방 번호를 찾아 크루와 같은 gitEnv를 준다. 감자 크루의 방이나 알 수 없는 폴더는 주지 않는다
+function appGitEnv(room) {
+  const r = path.resolve(String(room || ''));
+  const name = path.basename(r);
+  let rid = '';
+  if (path.dirname(r) === path.resolve(ROOMS_DIR) && ROOM_DIR_RE.test(name)) rid = '@' + name.slice(5);
+  else if (path.dirname(r) === path.resolve(CREWS_DIR) && listProjects().includes(name)) rid = name;
+  return rid ? gitEnv(rid) : {};
+}
+const appRunner = require('./tools/app-runner').createRunner({ dataDir: DATA_DIR, reservedPorts: [PORT, 26514, 3000], extraEnv: appGitEnv });
 const appKey = (room) => crypto.createHmac('sha256', SIGN_KEY).update(`gamja-app:${room}`).digest('base64url');
 function appEnv(cwd) {
   if (!cwd || path.resolve(cwd) === __dirname) return {}; // 감자 자체를 고치는 방은 제외
