@@ -203,6 +203,12 @@ class GamjaService : Service() {
 
     private fun loop() {
         val p = Paths(this)
+        // 감자알을 켜기 전에 Node 24를 넣는다 (앱 업데이트 직후·폰을 켰을 때·앱을 열었을 때 모두 여기를 지난다)
+        if (!NodeInstaller.installed(p)) {
+            setNotice("Node 24로 올리는 중이에요 (약 30MB, 잠깐만요)")
+            NodeInstaller.ensure(this) { msg -> runCatching { p.serverLog.appendText("$msg\n") } }
+            setNotice(null)
+        }
         while (!stopping) {
             try {
                 if (p.serverLog.length() > 1_000_000) p.serverLog.delete()
@@ -228,7 +234,12 @@ class GamjaService : Service() {
         super.onDestroy()
     }
 
-    private fun notification(): Notification {
+    /** 상시 알림의 문구를 잠깐 바꾼다 (null이면 원래 문구) */
+    private fun setNotice(text: String?) {
+        runCatching { getSystemService(NotificationManager::class.java).notify(1, notification(text)) }
+    }
+
+    private fun notification(text: String? = null): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         // 상시 알림이 아이콘 배지(숫자 1)로 세어지지 않게 배지를 끈 새 채널을 쓴다 (채널 설정은 만든 뒤에 못 바꾸므로 번호를 새로 쓴다)
         nm.deleteNotificationChannel("gamja")
@@ -237,7 +248,7 @@ class GamjaService : Service() {
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("감자 실행 중")
-            .setContentText("감자알이 정상적으로 동작되고 있어요.")
+            .setContentText(text ?: "감자알이 정상적으로 동작되고 있어요.")
             .setContentIntent(open)
             .setOngoing(true)
             .build()
