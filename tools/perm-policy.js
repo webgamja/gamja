@@ -130,7 +130,28 @@ function isMakeCmd(text, guardDirs) {
 }
 
 // guardDirs: 작업 폴더가 아닌 곳에서 일하는 크루가 건드리면 안 되는 폴더들(감자알 폴더, data)
-function tier(cmd, guardDirs = [], depth = 0) {
+// 더보기 › GitHub에서 고른 저장소: https://github.com/소유자/저장소 주소면 묻지 않는다 (열쇠도 감자알이 같은 목록으로만 준다)
+// git = { login, all, repos: ['owner/repo', …] } (data/git-allow.json)
+const GH_URL = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/;
+function gitAllowed(url, git) {
+  const m = unquote(url).match(GH_URL);
+  if (!m || !git) return false;
+  const full = `${m[1]}/${m[2]}`.toLowerCase();
+  // 모든 저장소: 조직 저장소도 들어간다. 열쇠로는 내가 권한이 있는 저장소에만 올릴 수 있고, 남의 공개 저장소는 받기만 된다
+  if (git.all) return true;
+  return (git.repos || []).some((r) => String(r).toLowerCase() === full);
+}
+// 고른 저장소로 가는 git 전송·연결·받기인지: 주소가 모두 고른 저장소이고, 설정을 끼우거나 폴더 밖으로 받지 않을 때
+function gitSafeAllowed(gsub, rest, seg, git) {
+  if (!git || rest.includes('-c')) return false;
+  const urls = rest.filter((a) => /:\/\/|@/.test(a));
+  if (!urls.length || !urls.every((a) => gitAllowed(a, git))) return false;
+  if (GIT_ODD.test(urls.reduce((t, u) => t.split(u).join(' '), seg))) return false; // 주소 말고 다른 낯선 설정이 있으면 주의
+  if (gsub === 'remote') { const i = rest.indexOf('remote'); return ['add', 'set-url'].includes(rest[i + 1]); }
+  if (gsub === 'clone') return !rest.filter((a) => !a.startsWith('-')).some((a) => /^(\/|~|\$)/.test(a) || /(^|\/)\.\.(\/|$)/.test(a));
+  return GIT_SYNC_SUB.has(gsub);
+}
+function tier(cmd, guardDirs = [], depth = 0, opts = {}) {
   const text = String(cmd || '').trim();
   if (!text) return { tier: 'caution', why: '' };
   if (text.length > 4000) return { tier: 'caution', why: '명령이 너무 길어요' };
@@ -148,7 +169,7 @@ function tier(cmd, guardDirs = [], depth = 0) {
   }
   // bash -c "문장" 한 줄 전체이면 안쪽 문장을 같은 규칙으로 다시 본다
   const bc = text.match(/^(?:[A-Za-z_]\w*=\S*\s+)*(?:\S*\/)?(?:ba|z|da)?sh\s+(?:-[a-zA-Z]+\s+)*?-[a-zA-Z]*c\s+(['"])([\s\S]*)\1\s*$/);
-  if (bc && depth < 3) return tier(bc[2], guardDirs, depth + 1);
+  if (bc && depth < 3) return tier(bc[2], guardDirs, depth + 1, opts);
   const segs = text.split(/&&|\|\||[;|&\n`]|\$\(|\)/).map((s) => s.trim()).filter(Boolean);
   for (const seg of segs) {
     const tok = seg.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, '').split(/\s+/);
@@ -171,6 +192,7 @@ function tier(cmd, guardDirs = [], depth = 0) {
     }
     if (prog === 'git') {
       const gsub = gitSub(rest);
+      if (gitSafeAllowed(gsub, rest, seg, opts.git)) continue;
       if (GIT_NET_SUB.has(gsub)) return { tier: 'caution', why: '인터넷의 저장소와 주고받아요' };
       // push·pull·fetch는 이미 연결된 저장소로만 가면 안전. 주소를 직접 쓰거나 설정으로 명령을 끼우면 주의
       if ((GIT_SYNC_SUB.has(gsub) || rest.some((a) => GIT_SYNC_SUB.has(a))) && (rest.includes('-c') || GIT_ODD.test(seg))) return { tier: 'caution', why: '낯선 주소나 설정을 쓰는 git 전송이에요' };

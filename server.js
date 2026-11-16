@@ -1607,9 +1607,20 @@ let gh = null; // { token, login, repo, branch, connectedAt, lastSync, lastCount
 try { gh = JSON.parse(fs.readFileSync(GH_FILE, 'utf8')); } catch {}
 if (gh && !gh.authBad && /\(401\)/.test(gh.lastError || '')) gh.authBad = true; // 예전 버전에서 이미 거절된 열쇠
 function saveGh() {
-  if (!gh) { fs.rmSync(GH_FILE, { force: true }); return; }
-  fs.writeFileSync(GH_FILE, JSON.stringify(gh), { mode: 0o600 });
+  if (!gh) fs.rmSync(GH_FILE, { force: true });
+  else fs.writeFileSync(GH_FILE, JSON.stringify(gh), { mode: 0o600 });
+  writeGitAllow();
 }
+// 권한 훅(tools/perm-hook.js)이 읽는 "묻지 않고 올리고 받아도 되는 저장소" 목록. 열쇠는 넣지 않는다
+const GIT_ALLOW_FILE = path.join(DATA_DIR, 'git-allow.json');
+function writeGitAllow() {
+  try {
+    const g = gh && gh.git;
+    if (!g || !g.on) { fs.rmSync(GIT_ALLOW_FILE, { force: true }); return; }
+    fs.writeFileSync(GIT_ALLOW_FILE, JSON.stringify({ login: gh.login, all: g.mode === 'all', repos: (g.repos || []).map((r) => r.full) }));
+  } catch (e) { console.error('git 허용 목록 저장 실패:', e.message); }
+}
+writeGitAllow();
 const ghSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function ghApi(method, p, body, token = gh && gh.token) {
   const r = await fetch(`https://api.github.com${p}`, {
@@ -1850,6 +1861,7 @@ function githubPrompt(project) {
   const g = ghGit();
   const lines = [`[GitHub] 사용자의 GitHub 계정(${gh.login})이 연결돼 있어서, git으로 GitHub 저장소에 올리고(push) 받을(pull) 수 있어요.`,
     '- 원격 주소는 https://github.com/소유자/저장소.git 모양만 쓰세요. 열쇠(토큰)는 감자알이 자동으로 건네니, 토큰을 묻거나 주소·파일에 적지 마세요.',
+    '- 폴더마다 처음 한 번만 `git remote add origin https://github.com/소유자/저장소.git`(이미 있으면 `git remote set-url origin …`)로 연결하고, 그다음부터는 주소 없이 `git push` / `git pull`만 쓰세요. `-c` 같은 설정을 명령에 끼우지 마세요. 쓸 수 있는 저장소에 이렇게 하면 허용을 묻지 않고 바로 돼요.',
     '- 새 저장소는 크루가 만들 수 없어요. 필요하면 사용자에게 "더보기 › 연결 › GitHub › 쓸 수 있는 저장소 › 새 저장소 만들기"로 만들어 달라고 안내하세요.',
     '- .env, 비밀번호·열쇠 파일, node_modules는 올리지 마세요 (.gitignore에 넣기).'];
   const pub = (g.mode === 'pick' ? g.repos : ghRepoCache.list).filter((r) => !r.private).map((r) => r.full);

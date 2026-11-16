@@ -29,7 +29,9 @@ process.stdin.on('end', () => {
     const inApp = appDir && (cwd === appDir || cwd.startsWith(appDir + path.sep));
     // 감자알을 고치는 개발 크루(감자알 폴더에서 일하는 크루)는 감자알 폴더 경로를 쓸 수 있다. 그 밖의 크루는 감자알 폴더와 data를 건드릴 수 없다
     const guard = inApp ? [] : [appDir, dataDir];
-    const r = tier(input.tool_input.command, guard);
+    let git = null; // 더보기 › GitHub에서 고른 저장소 (감자알이 써 둔다)
+    try { git = JSON.parse(require('fs').readFileSync(path.join(dataDir, 'git-allow.json'), 'utf8')); } catch {}
+    const r = tier(input.tool_input.command, guard, 0, { git });
     if (r.tier === 'safe') {
       out('allow', '');
     } else if (r.tier === 'danger') {
