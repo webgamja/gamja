@@ -31,7 +31,7 @@ process.stdin.on('end', () => {
     const guard = inApp ? [] : [appDir, dataDir];
     let git = null; // 더보기 › GitHub에서 고른 저장소 (감자알이 써 둔다)
     try { git = JSON.parse(require('fs').readFileSync(path.join(dataDir, 'git-allow.json'), 'utf8')); } catch {}
-    const r = tier(input.tool_input.command, guard, 0, { git });
+    const r = tier(input.tool_input.command, guard, 0, { git, cwd });
     if (r.tier === 'safe') {
       out('allow', '');
     } else if (r.tier === 'danger') {

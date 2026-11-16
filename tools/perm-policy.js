@@ -141,15 +141,24 @@ function gitAllowed(url, git) {
   if (git.all) return true;
   return (git.repos || []).some((r) => String(r).toLowerCase() === full);
 }
-// 고른 저장소로 가는 git 전송·연결·받기인지: 주소가 모두 고른 저장소이고, 설정을 끼우거나 폴더 밖으로 받지 않을 때
-function gitSafeAllowed(gsub, rest, seg, git) {
-  if (!git || rest.includes('-c')) return false;
+// 묻지 않아도 되는 git 명령인지:
+// - 받기(clone·pull·fetch): https://github.com/소유자/저장소 주소면 어느 저장소든 (공개 저장소 받기는 내려받기와 같고, 비공개는 감자알이 고른 저장소에만 열쇠를 준다)
+// - 올리기(push)와 연결(remote add/set-url): 더보기 › GitHub에서 고른 저장소만
+// 설정(-c)을 끼우거나, 주소 말고 낯선 설정이 있거나, 작업 폴더 밖으로 받으면 묻는다
+function gitSafeAllowed(gsub, rest, seg, git, cwd) {
+  if (rest.includes('-c')) return false;
   const urls = rest.filter((a) => /:\/\/|@/.test(a));
-  if (!urls.length || !urls.every((a) => gitAllowed(a, git))) return false;
-  if (GIT_ODD.test(urls.reduce((t, u) => t.split(u).join(' '), seg))) return false; // 주소 말고 다른 낯선 설정이 있으면 주의
+  if (!urls.length || !urls.every((a) => GH_URL.test(unquote(a)))) return false;
+  if (GIT_ODD.test(urls.reduce((t, u) => t.split(u).join(' '), seg))) return false;
+  const read = gsub === 'clone' || gsub === 'pull' || gsub === 'fetch';
+  if (!read && !urls.every((a) => gitAllowed(a, git))) return false;
   if (gsub === 'remote') { const i = rest.indexOf('remote'); return ['add', 'set-url'].includes(rest[i + 1]); }
-  if (gsub === 'clone') return !rest.filter((a) => !a.startsWith('-')).some((a) => /^(\/|~|\$)/.test(a) || /(^|\/)\.\.(\/|$)/.test(a));
-  return GIT_SYNC_SUB.has(gsub);
+  if (gsub === 'clone') {
+    // 받을 폴더: 작업 폴더 안(상대 경로)이거나, 절대 경로라도 지금 작업 폴더 안이면 된다
+    const inCwd = (a) => cwd && cwd.length > 1 && (a === cwd || a.startsWith(cwd.replace(/\/+$/, '') + '/')) && !/(^|\/)\.\.(\/|$)/.test(a);
+    return !rest.filter((a) => !a.startsWith('-')).map(unquote).some((a) => (/^(\/|~|\$)/.test(a) && !inCwd(a)) || /(^|\/)\.\.(\/|$)/.test(a));
+  }
+  return read || gsub === 'push';
 }
 function tier(cmd, guardDirs = [], depth = 0, opts = {}) {
   const text = String(cmd || '').trim();
@@ -192,7 +201,7 @@ function tier(cmd, guardDirs = [], depth = 0, opts = {}) {
     }
     if (prog === 'git') {
       const gsub = gitSub(rest);
-      if (gitSafeAllowed(gsub, rest, seg, opts.git)) continue;
+      if (gitSafeAllowed(gsub, rest, seg, opts.git, opts.cwd)) continue;
       if (GIT_NET_SUB.has(gsub)) return { tier: 'caution', why: '인터넷의 저장소와 주고받아요' };
       // push·pull·fetch는 이미 연결된 저장소로만 가면 안전. 주소를 직접 쓰거나 설정으로 명령을 끼우면 주의
       if ((GIT_SYNC_SUB.has(gsub) || rest.some((a) => GIT_SYNC_SUB.has(a))) && (rest.includes('-c') || GIT_ODD.test(seg))) return { tier: 'caution', why: '낯선 주소나 설정을 쓰는 git 전송이에요' };
