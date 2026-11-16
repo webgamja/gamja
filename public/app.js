@@ -325,31 +325,8 @@
     $('loginHint').textContent = window.GAMJA_I18N.t('login.hint'); // 비밀번호를 모르면 앱의 "감자콘솔 접속하기"로 열라고 알려 준다
     setTimeout(() => els.pw.focus(), 50);
   }
-  // 홈 화면에 추가 (PWA): 크롬이 설치 창을 지원하면 바로 띄우고, 아니면 방법을 알려 준다. 이미 홈 화면에서 연 경우에는 보이지 않는다
-  // 서비스 워커(sw.js)가 있어야 크롬이 설치 창(beforeinstallprompt)을 보내 준다. 저장은 하지 않는다
-  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
-  let installPrompt = null;
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
-  window.addEventListener('appinstalled', () => { installPrompt = null; const r = $('pwaRow'); if (r) r.classList.add('hidden'); });
-  (function initPwaRow() {
-    const row = $('pwaRow');
-    const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-    if (!row || standalone || window.GamjaApp) return;
-    const T = window.GAMJA_I18N.t;
-    row.innerHTML = `<span class="pick-icon">📲</span><span><b>${escapeHtml(T('pwa.title'))}</b><small>${escapeHtml(T('pwa.go'))}</small></span><i>›</i>`;
-    row.classList.remove('hidden');
-    row.onclick = async () => {
-      // 크롬이 설치 창을 아직 안 보냈으면 잠깐(최대 2.5초) 기다렸다가 바로 띄운다. 끝내 안 오면(설치됨·다른 브라우저 등) 방법을 알려 준다
-      for (let i = 0; !installPrompt && i < 10; i++) await new Promise((r) => setTimeout(r, 250));
-      if (installPrompt) {
-        const p = installPrompt; installPrompt = null;
-        p.prompt();
-        try { if ((await p.userChoice).outcome === 'accepted') row.classList.add('hidden'); } catch { /* 결과를 몰라도 괜찮다 */ }
-        return;
-      }
-      await gAlert(T('pwa.body'), T('pwa.title'));
-    };
-  })();
+  // 앱 설치(PWA) 기능은 뺐다. 잠깐 배포됐던 서비스 워커(sw.js)가 남아 있으면 지운다
+  if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
   let firstOpen = true;
   let deepLink = linked !== null; // 알림을 눌러 특정 크루로 열렸는지 (한 번만)
   async function showApp() {

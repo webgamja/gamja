@@ -414,9 +414,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 감자콘솔을 연다. 앱이 한 번만 쓰는 로그인 표를 받아 함께 넘기므로 비밀번호를 다시 치지 않아도 된다.
-     * 여는 순서: ① 홈 화면에 설치한 감자콘솔 앱(PWA)이 있으면 그 앱으로
-     *           ② 없으면 기본 브라우저로 열되, 전에 감자가 열어 둔 탭이 있으면 새 탭을 만들지 않고 그 탭에서 연다
+     * 감자콘솔을 기본 브라우저로 연다. 앱이 한 번만 쓰는 로그인 표를 받아 함께 넘기므로 비밀번호를 다시 치지 않아도 된다.
+     * 같은 앱 표시(EXTRA_APPLICATION_ID)를 붙여서, 전에 감자가 열어 둔 탭이 있으면 새 탭을 만들지 않고 그 탭에서 연다
      */
     private fun openInBrowser(project: String?) {
         thread {
@@ -424,24 +423,11 @@ class MainActivity : Activity() {
             ui.post {
                 val to = if (project != null) "/?project=" + Uri.encode(project) else "/"
                 val url = if (ticket != null) "$BASE/api/app-login?t=${Uri.encode(ticket)}&to=${Uri.encode(to)}" else "$BASE$to"
-                val pwa = installedPwa()
-                val opened = (pwa != null && runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pwa).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess) || runCatching {
-                    // 같은 앱 표시(EXTRA_APPLICATION_ID)를 붙이면 크롬 등은 이 앱이 전에 연 탭을 다시 쓴다
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).putExtra(Browser.EXTRA_APPLICATION_ID, packageName))
-                }.isSuccess
-                if (!opened) Toast.makeText(this, "브라우저를 찾지 못했어요. 폰에 크롬 같은 브라우저를 설치해 주세요.", Toast.LENGTH_LONG).show()
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).putExtra(Browser.EXTRA_APPLICATION_ID, packageName)) }
+                    .onFailure { Toast.makeText(this, "브라우저를 찾지 못했어요. 폰에 크롬 같은 브라우저를 설치해 주세요.", Toast.LENGTH_LONG).show() }
             }
         }
     }
-
-    /** 홈 화면에 설치된 감자콘솔 앱(크롬·삼성 인터넷이 만드는 WebAPK)의 패키지 이름. 없으면 null */
-    private fun installedPwa(): String? = runCatching {
-        packageManager.queryIntentActivities(Intent(Intent.ACTION_VIEW, Uri.parse("$BASE/")), PackageManager.MATCH_ALL)
-            .map { it.activityInfo.packageName }
-            .firstOrNull { it.contains(".webapk") }
-    }.getOrNull()
 
     /** 🔔 완료 알림을 눌러 열렸으면 그 크루 방을 브라우저로 연다 */
     private fun handleProjectIntent(i: Intent?) {
