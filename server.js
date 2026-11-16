@@ -1861,6 +1861,7 @@ function githubPrompt(project) {
   const g = ghGit();
   const lines = [`[GitHub] 사용자의 GitHub 계정(${gh.login})이 연결돼 있어서, git으로 GitHub 저장소에 올리고(push) 받을(pull) 수 있어요.`,
     '- 원격 주소는 https://github.com/소유자/저장소.git 모양만 쓰세요. 열쇠(토큰)는 감자알이 자동으로 건네니, 토큰을 묻거나 주소·파일에 적지 마세요.',
+    '- 그래서 올리기 전에 열쇠가 있는지 확인할 필요가 없어요. `gh auth status`, GH_TOKEN·GITHUB_TOKEN 같은 환경변수, `git config credential` 설정은 확인하지 말고 바로 git 명령을 쓰세요 (gh는 이 폰에 없고, 확인하면 허용을 물어 사용자를 번거롭게 해요).',
     '- 폴더마다 처음 한 번만 `git remote add origin https://github.com/소유자/저장소.git`(이미 있으면 `git remote set-url origin …`)로 연결하고, 그다음부터는 주소 없이 `git push` / `git pull`만 쓰세요. `-c` 같은 설정을 명령에 끼우지 마세요. 쓸 수 있는 저장소에 이렇게 하면 허용을 묻지 않고 바로 돼요.',
     '- 새 저장소는 크루가 만들 수 없어요. 필요하면 사용자에게 "더보기 › 연결 › GitHub › 쓸 수 있는 저장소 › 새 저장소 만들기"로 만들어 달라고 안내하세요.',
     '- .env, 비밀번호·열쇠 파일, node_modules는 올리지 마세요 (.gitignore에 넣기).'];
