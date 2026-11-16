@@ -2878,28 +2878,58 @@
   const ghEl = $('ghPanel');
   const ghBody = $('ghBody');
   let ghUiTimer = 0;
+  const ghCodeHtml = (s) => '<p class="settings-note">GitHub에서 아래 코드를 입력해 승인해 주세요. 승인되면 이 화면이 자동으로 바뀌어요.</p>' +
+    `<div class="gh-code">${escapeHtml(s.pending.user_code)}</div>` +
+    `<a class="settings-save ghlink" href="${escapeHtml(s.pending.verification_uri)}" target="_blank" rel="noopener">GitHub 열어서 코드 입력하기</a>` +
+    '<button id="ghCopy" class="settings-ghost" type="button">📋 코드 복사</button>' +
+    '<p class="settings-note">GitHub 화면에서 <b>Authorize</b>를 누르면 끝나요. 승인 화면에 "private 저장소" 권한이 보이는 건, 비공개 저장소(gamja-workspace)를 만들고 쓰기 위해서예요.</p>';
   async function renderGh() {
     let s;
     try { s = await api('/api/github/status'); } catch { return; }
     if (ghEl.classList.contains('hidden')) return;
     let html;
+    if (s.connected && ghView === 'repos') return renderGhRepos(s);
     if (s.connected) {
-      html = `<div class="share-card"><div class="share-icon">🐙</div><b>@${escapeHtml(s.login)}</b><small>${escapeHtml(s.repo)} · 비공개 저장소</small></div>` +
-        `<p class="settings-row"><span>마지막 기록</span><b>${s.syncing ? '기록하는 중…' : s.lastSync ? ago(s.lastSync) : '아직 없어요'}</b></p>` +
-        (s.lastCount ? `<p class="settings-row"><span>그때 바뀐 파일</span><b>${s.lastCount}개</b></p>` : '') +
-        (s.lastError ? `<p class="settings-note err">⚠️ ${escapeHtml(s.lastError)}</p>` : '') +
-        (s.skipped.length ? `<p class="settings-note">ⓘ 자기 git 기록이 이미 있는 폴더는 건너뛰어요: ${s.skipped.map(escapeHtml).join(', ')}</p>` : '') +
-        `<a class="settings-save ghlink" href="https://github.com/${encodeURIComponent(s.login)}/${encodeURIComponent(s.repo)}" target="_blank" rel="noopener">GitHub에서 보기</a>` +
-        '<button id="ghSync" class="settings-ghost" type="button">지금 기록하기</button>' +
-        '<p class="settings-note">• 크루가 답을 끝낼 때마다 그 크루 폴더의 바뀐 파일이 자동으로 기록돼요.<br>• <b>대화 내용은 올리지 않아요.</b> 점(.)으로 시작하는 파일, 비밀번호·열쇠처럼 보이는 파일, 1MB 넘는 파일도 올리지 않아요.<br>• 저장소가 공개로 바뀌면 기록을 멈춰요.</p>' +
+      const T = window.GAMJA_I18N.t;
+      const g = s.git;
+      const on = (id, v) => `<input id="${id}" type="checkbox"${v ? ' checked' : ''}>`;
+      const gitTool = g.installed ? `<b class="gh-ok">${escapeHtml(T('tools.installed'))}</b>`
+        : g.installing ? `<b>${escapeHtml(T('tools.installing'))}</b>`
+        : `<button id="ghGitInstall" class="tool-btn" type="button">${escapeHtml(T('tools.install'))}</button>`;
+      const reauth = !s.authBad ? ''
+        : s.pending && !s.pending.error ? ghCodeHtml(s)
+        : (s.pending && s.pending.error ? `<p class="settings-note err">⚠️ ${escapeHtml(s.pending.error)}</p>` : '') +
+          `<div class="gh-reauth"><b>⚠️ ${escapeHtml(T('gh.authBad'))}</b><span>${escapeHtml(T('gh.authBadSub'))}</span>` +
+          `<button id="ghConnect" class="settings-save" type="button">${escapeHtml(T('gh.reconnect'))}</button></div>`;
+      html = reauth + `<div class="share-card"><div class="share-icon">🐙</div><b>@${escapeHtml(s.login)}</b>` +
+        (s.authBad ? `<small class="gh-bad">● ${escapeHtml(T('gh.authBadShort'))}</small></div>` : `<small class="gh-ok">● ${escapeHtml(T('gh.connected'))}</small></div>`) +
+        `<h3>${escapeHtml(T('gh.gitHead'))}</h3>` +
+        `<label class="share-check"><span>${escapeHtml(T('gh.gitOn'))}<small class="gh-sub">${escapeHtml(T('gh.gitOnSub'))}</small></span>${on('ghGitOn', g.on)}</label>` +
+        (g.on
+          ? `<button id="ghReposBtn" class="settings-row gh-row" type="button"><span>${escapeHtml(T('gh.repos'))}</span><b>${escapeHtml(g.mode === 'all' ? T('gh.reposAll') : T('gh.reposN', { n: g.repos.length }))} ›</b></button>` +
+            `<p class="settings-row"><span>${escapeHtml(T('gh.name'))}</span><b>${escapeHtml(g.name)}</b></p>` +
+            `<p class="settings-row"><span>${escapeHtml(T('gh.email'))}</span><b class="gh-small">${escapeHtml(g.email)}</b></p>` +
+            `<label class="share-check"><span>${escapeHtml(T('gh.askPublic'))}<small class="gh-sub">${escapeHtml(T('gh.askPublicSub'))}</small></span>${on('ghAskPublic', g.askPublic)}</label>` +
+            `<div class="settings-row gh-row"><span>${escapeHtml(T('gh.tool'))}</span>${gitTool}</div>` +
+            (!g.installed && g.installError ? `<p class="settings-note err">⚠️ ${escapeHtml(g.installError)}</p>` : '') +
+            (g.mode === 'pick' && !g.repos.length ? `<p class="settings-note">ⓘ ${escapeHtml(T('gh.noRepos'))}</p>` : '')
+          : '') +
+        `<h3>${escapeHtml(T('gh.backupHead'))}</h3>` +
+        `<label class="share-check"><span>${escapeHtml(T('gh.backup', { repo: s.repo }))}<small class="gh-sub">${escapeHtml(T('gh.backupSub'))}</small></span>${on('ghBackup', s.backup)}</label>` +
+        (s.backup
+          ? `<p class="settings-row"><span>마지막 기록</span><b>${s.syncing ? '기록하는 중…' : s.lastSync ? ago(s.lastSync) : '아직 없어요'}</b></p>` +
+            (s.lastCount ? `<p class="settings-row"><span>그때 바뀐 파일</span><b>${s.lastCount}개</b></p>` : '') +
+            (s.lastError ? `<p class="settings-note err">⚠️ ${escapeHtml(s.lastError)}</p>` : '') +
+            (s.skipped.length ? `<p class="settings-note">ⓘ 자기 git 기록이 이미 있는 폴더는 건너뛰어요: ${s.skipped.map(escapeHtml).join(', ')}</p>` : '') +
+            `<a class="settings-save ghlink" href="https://github.com/${encodeURIComponent(s.login)}/${encodeURIComponent(s.repo)}" target="_blank" rel="noopener">GitHub에서 보기</a>` +
+            '<button id="ghSync" class="settings-ghost" type="button">지금 기록하기</button>' +
+            '<p class="settings-note">• 크루가 답을 끝낼 때마다 그 크루 폴더의 바뀐 파일이 자동으로 기록돼요.<br>• <b>대화 내용은 올리지 않아요.</b> 점(.)으로 시작하는 파일, 비밀번호·열쇠처럼 보이는 파일, 1MB 넘는 파일도 올리지 않아요.<br>• 저장소가 공개로 바뀌면 기록을 멈춰요.</p>'
+          : '') +
+        `<p class="settings-note">${escapeHtml(T('gh.keyNote'))}</p>` +
         '<button id="ghOff" class="settings-danger" type="button">연결 끊기</button>' +
         '<p class="settings-note">연결을 끊으면 이 폰에 저장한 열쇠를 지워요. GitHub 쪽 승인까지 완전히 취소하려면 github.com/settings/applications 에서 GAMJA를 지워 주세요. 이미 올라간 기록은 그대로 남아요.</p>';
     } else if (s.pending && !s.pending.error) {
-      html = '<p class="settings-note">GitHub에서 아래 코드를 입력해 승인해 주세요. 승인되면 이 화면이 자동으로 바뀌어요.</p>' +
-        `<div class="gh-code">${escapeHtml(s.pending.user_code)}</div>` +
-        `<a class="settings-save ghlink" href="${escapeHtml(s.pending.verification_uri)}" target="_blank" rel="noopener">GitHub 열어서 코드 입력하기</a>` +
-        '<button id="ghCopy" class="settings-ghost" type="button">📋 코드 복사</button>' +
-        '<p class="settings-note">GitHub 화면에서 <b>Authorize</b>를 누르면 끝나요. 승인 화면에 "private 저장소" 권한이 보이는 건, 비공개 저장소(gamja-workspace)를 만들고 쓰기 위해서예요.</p>';
+      html = ghCodeHtml(s);
     } else {
       html = (s.pending && s.pending.error ? `<p class="settings-note err">⚠️ ${escapeHtml(s.pending.error)}</p>` : '') +
         '<p class="settings-note">크루가 일한 결과(파일)를 <b>내 GitHub 계정의 비공개 저장소</b>에 자동으로 기록해 둬요. 언제든 이전 상태를 볼 수 있고, 폰을 바꿔도 되살릴 수 있어요.</p>' +
@@ -2910,17 +2940,88 @@
     }
     ghBody.innerHTML = html;
   }
+  // 쓸 수 있는 저장소 고르기 (GitHub 화면 안의 두 번째 화면). 고르는 즉시 저장한다
+  let ghView = 'main';
+  let ghRepoList = null; // [{ full, private }]
+  let ghRepoErr = '';
+  let ghRepoQuery = '';
+  async function loadGhRepos(fresh) {
+    ghRepoErr = '';
+    try { ghRepoList = (await api('/api/github/repos' + (fresh ? '?fresh=1' : ''))).repos; } catch (err) { ghRepoErr = err.message; }
+  }
+  function renderGhRepos(s) {
+    const T = window.GAMJA_I18N.t;
+    const g = s.git;
+    const picked = new Set(g.repos.map((r) => r.full));
+    const q = ghRepoQuery.trim().toLowerCase();
+    const list = (ghRepoList || []).filter((r) => !q || r.full.toLowerCase().includes(q));
+    const vis = (r) => `<small class="${r.private ? '' : 'gh-pub'}">${escapeHtml(r.private ? T('gh.private') : T('gh.public'))}</small>`;
+    ghBody.innerHTML = `<button id="ghReposBack" class="settings-ghost gh-back" type="button">‹ ${escapeHtml(T('gh.back'))}</button>` +
+      `<h3>${escapeHtml(T('gh.repos'))}</h3>` +
+      '<div class="radio-list">' +
+      `<label><input type="radio" name="ghMode" value="all"${g.mode === 'all' ? ' checked' : ''}> ${escapeHtml(T('gh.reposAll'))} <span>${escapeHtml(T('gh.modeAllSub'))}</span></label>` +
+      `<label><input type="radio" name="ghMode" value="pick"${g.mode !== 'all' ? ' checked' : ''}> ${escapeHtml(T('gh.modePick'))} <span>${escapeHtml(T('gh.modePickSub'))}</span></label>` +
+      '</div>' +
+      (g.mode === 'all' ? '' :
+        `<h3>${escapeHtml(ghRepoList ? T('gh.myRepos', { n: ghRepoList.length }) : T('gh.loading'))}</h3>` +
+        (ghRepoErr ? `<p class="settings-note err">⚠️ ${escapeHtml(ghRepoErr)}</p>` : '') +
+        `<input id="ghRepoFind" type="search" placeholder="${escapeHtml(T('gh.find'))}" value="${escapeHtml(ghRepoQuery)}" autocomplete="off" autocapitalize="off" spellcheck="false">` +
+        list.map((r) => `<label class="share-check gh-repo"><span>${escapeHtml(r.full)}${vis(r)}</span><input type="checkbox" data-repo="${escapeHtml(r.full)}"${picked.has(r.full) ? ' checked' : ''}></label>`).join('') +
+        (ghRepoList && !list.length ? `<p class="settings-note">${escapeHtml(T('gh.noMatch'))}</p>` : '') +
+        `<button id="ghNewRepo" class="settings-ghost" type="button">＋ ${escapeHtml(T('gh.newRepo'))}</button>` +
+        `<p class="settings-note">${escapeHtml(T('gh.pickNote'))}</p>`);
+    const find = $('ghRepoFind');
+    if (find) find.addEventListener('input', () => { ghRepoQuery = find.value; const pos = find.selectionStart; renderGh().then(() => { const f = $('ghRepoFind'); if (f) { f.focus(); f.setSelectionRange(pos, pos); } }); });
+  }
+  const ghSave = (body) => api('/api/github/settings', body);
   $('ghBtn').onclick = () => {
     ghEl.classList.remove('hidden');
+    ghView = 'main';
     renderGh();
     clearInterval(ghUiTimer);
-    ghUiTimer = setInterval(renderGh, 3000); // 승인 여부와 기록 상태를 따라간다
+    ghUiTimer = setInterval(() => { if (ghView === 'main') renderGh(); }, 3000); // 승인 여부와 기록 상태를 따라간다 (저장소 고르는 중에는 다시 그리지 않는다)
   };
-  $('ghBack').onclick = () => { clearInterval(ghUiTimer); ghEl.classList.add('hidden'); };
+  $('ghBack').onclick = () => {
+    if (ghView === 'repos') { ghView = 'main'; renderGh(); return; }
+    clearInterval(ghUiTimer); ghEl.classList.add('hidden');
+  };
+  ghBody.addEventListener('change', async (e) => {
+    const el = e.target;
+    try {
+      if (el.id === 'ghGitOn') { await ghSave({ gitOn: el.checked }); if (el.checked) toast(window.GAMJA_I18N.t('gh.onToast')); }
+      else if (el.id === 'ghAskPublic') await ghSave({ askPublic: el.checked });
+      else if (el.id === 'ghBackup') await ghSave({ backup: el.checked });
+      else if (el.name === 'ghMode') { await ghSave({ mode: el.value }); if (el.value === 'pick' && !ghRepoList) await loadGhRepos(); }
+      else if (el.dataset.repo) {
+        const repos = [...ghBody.querySelectorAll('[data-repo]')].filter((c) => c.checked).map((c) => c.dataset.repo);
+        // 검색으로 가려진 저장소의 선택도 지키려고, 지금 저장된 목록에서 화면에 없는 것을 더한다
+        const s = await api('/api/github/status');
+        const shown = new Set([...ghBody.querySelectorAll('[data-repo]')].map((c) => c.dataset.repo));
+        await ghSave({ repos: [...repos, ...s.git.repos.map((r) => r.full).filter((f) => !shown.has(f))] });
+        return;
+      }
+      else return;
+    } catch (err) { toast(err.message); }
+    renderGh();
+  });
   ghBody.addEventListener('click', async (e) => {
-    const id = e.target.id;
+    const id = (e.target.closest('button') || e.target).id; // 줄 버튼 안의 글자를 눌러도 버튼으로 본다
     try {
       if (id === 'ghConnect') { await api('/api/github/start', {}); renderGh(); }
+      else if (id === 'ghReposBtn') { ghView = 'repos'; ghRepoQuery = ''; await renderGh(); await loadGhRepos(true); renderGh(); }
+      else if (id === 'ghReposBack') { ghView = 'main'; renderGh(); }
+      else if (id === 'ghGitInstall') { await api('/api/tools/install', { kit: 'git' }); toast(window.GAMJA_I18N.t('tools.started')); renderGh(); }
+      else if (id === 'ghNewRepo') {
+        const T = window.GAMJA_I18N.t;
+        const name = await gSheet({ title: T('gh.newRepo'), message: T('gh.newRepoMsg'), field: { placeholder: 'my-project' }, ok: T('gh.create') });
+        if (!name || !name.trim()) return;
+        // 바깥을 눌러 닫으면 비공개로 만든다 (실수로 공개되지 않게)
+        const pub = await gSheet({ title: T('gh.visTitle'), message: T('gh.visMsg'), ok: T('gh.makePublic'), cancel: T('gh.makePrivate') });
+        const r = await api('/api/github/repos', { name: name.trim(), private: pub !== true });
+        if (ghRepoList) ghRepoList.unshift(r.repo);
+        toast(T('gh.created', { name: r.repo.full }));
+        renderGh();
+      }
       else if (id === 'ghCopy') {
         const code = ghBody.querySelector('.gh-code').textContent;
         try { await navigator.clipboard.writeText(code); toast('📋 코드를 복사했어요'); } catch { gCopy('이 코드를 복사하세요', code); }

@@ -1353,7 +1353,7 @@ function handleChat(req, res, body, opts = {}) {
   // 생각 깊이: 음성 대화는 빨리 답해야 하므로 항상 low. 그 외에는 프로젝트 설정 → 전체 설정 순
   const effort = body.voice === true && !opts.label ? 'low' : (projectConf[crewOf(project)]?.effort || settings.effort);
   if (effort) args.push('--effort', effort);
-  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : ''].filter(Boolean).join('\n');
+  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), githubPrompt(project), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : ''].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
@@ -1396,7 +1396,7 @@ function handleChat(req, res, body, opts = {}) {
 
   let child;
   try {
-    child = spawn(CLAUDE_BIN, args, { cwd, env: { ...childEnv(), ...appEnv(cwd) }, stdio: ['pipe', 'pipe', 'pipe'] });
+    child = spawn(CLAUDE_BIN, args, { cwd, env: { ...childEnv(), ...appEnv(cwd), ...gitEnv(project) }, stdio: ['pipe', 'pipe', 'pipe'] });
   } catch (e) {
     emit('error', { message: 'claude 실행 실패: ' + e.message });
     conv.messages.push({ role: 'error', text: errorText, ts: Date.now() });
@@ -1605,6 +1605,7 @@ const GH_REPO = 'gamja-workspace';
 const GH_FILE = path.join(DATA_DIR, 'github.json');
 let gh = null; // { token, login, repo, branch, connectedAt, lastSync, lastCount, lastError }
 try { gh = JSON.parse(fs.readFileSync(GH_FILE, 'utf8')); } catch {}
+if (gh && !gh.authBad && /\(401\)/.test(gh.lastError || '')) gh.authBad = true; // 예전 버전에서 이미 거절된 열쇠
 function saveGh() {
   if (!gh) { fs.rmSync(GH_FILE, { force: true }); return; }
   fs.writeFileSync(GH_FILE, JSON.stringify(gh), { mode: 0o600 });
@@ -1622,8 +1623,15 @@ async function ghApi(method, p, body, token = gh && gh.token) {
   });
   let data = null;
   try { data = await r.json(); } catch {}
+  if (gh && token === gh.token) {
+    // 401 = GitHub이 열쇠를 모른다 (승인 취소·만료). 화면에서 "다시 연결"을 안내한다
+    if (r.status === 401 && !gh.authBad) { gh.authBad = true; saveGh(); }
+    else if (r.ok && gh.authBad) { delete gh.authBad; saveGh(); }
+  }
   return { status: r.status, data };
 }
+const GH_AUTH_MSG = 'GitHub 열쇠가 만료됐거나 취소됐어요. 더보기 › 연결 › GitHub에서 다시 연결해 주세요';
+const ghErr = (what, status) => (status === 401 ? GH_AUTH_MSG : `${what} (${status})`);
 async function ghForm(url, body) {
   const r = await fetch(url, {
     method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'gamja-egg' },
@@ -1682,7 +1690,15 @@ async function ghFinishConnect(token) {
   } else if (repo.data.private !== true) {
     throw new Error(`이미 있는 ${GH_REPO}가 공개 저장소예요. 공개 저장소에는 올리지 않아요. 비공개로 바꾸거나 이름을 바꾼 뒤 다시 연결해 주세요.`);
   }
-  gh = { token, login, repo: GH_REPO, branch: repo.data.default_branch || 'main', connectedAt: Date.now(), lastSync: 0, lastCount: 0, lastError: '' };
+  // 다시 연결(열쇠 만료 등)이면 백업 켜기·끄기와 크루 git 설정을 그대로 둔다. 다른 계정이면 고른 저장소만 비운다
+  const prev = gh;
+  gh = { token, login, id: u.data.id, repo: GH_REPO, branch: repo.data.default_branch || 'main', connectedAt: Date.now(), lastSync: 0, lastCount: 0, lastError: '' };
+  if (prev) {
+    if (prev.backup === false) gh.backup = false;
+    if (prev.git) gh.git = prev.login === login ? prev.git : { ...prev.git, repos: [] };
+    if (prev.login === login) Object.assign(gh, { lastSync: prev.lastSync || 0, lastCount: prev.lastCount || 0, skipped: prev.skipped });
+  }
+  ghRepoCache = { at: 0, list: [] };
   saveGh();
   githubSync(null, '감자 연결: 처음 기록');
 }
@@ -1715,13 +1731,13 @@ function githubSync(projects, message) {
   return ghQueue;
 }
 async function ghSyncOnce(projects, message) {
-  if (!gh) return;
+  if (!gh || gh.backup === false) return; // 자동 백업을 끈 경우
   ghSyncing = true;
   try {
     const { login, repo, branch } = gh;
     const base = `/repos/${login}/${repo}`;
     const info = await ghApi('GET', base);
-    if (info.status !== 200) throw new Error(`저장소를 열 수 없어요 (${info.status})`);
+    if (info.status !== 200) throw new Error(ghErr('저장소를 열 수 없어요', info.status));
     if (info.data.private !== true) throw new Error('저장소가 공개로 바뀌어 있어서 기록을 멈췄어요. 비공개로 되돌린 뒤 다시 시도해 주세요');
     const ref = await ghApi('GET', `${base}/git/ref/heads/${branch}`);
     if (ref.status !== 200) throw new Error(`저장소의 ${branch} 가지를 찾지 못했어요`);
@@ -1760,11 +1776,11 @@ async function ghSyncOnce(projects, message) {
     if (entries.length > 500) throw new Error('한 번에 바뀐 파일이 너무 많아요 (500개 넘음)');
 
     const nt = await ghApi('POST', `${base}/git/trees`, { base_tree: baseTree, tree: entries });
-    if (nt.status !== 201) throw new Error(`기록을 만들지 못했어요 (${nt.status})`);
+    if (nt.status !== 201) throw new Error(ghErr('기록을 만들지 못했어요', nt.status));
     const cm = await ghApi('POST', `${base}/git/commits`, { message: String(message || '크루 작업 기록').slice(0, 200), tree: nt.data.sha, parents: [headSha] });
-    if (cm.status !== 201) throw new Error(`기록을 저장하지 못했어요 (${cm.status})`);
+    if (cm.status !== 201) throw new Error(ghErr('기록을 저장하지 못했어요', cm.status));
     const up = await ghApi('PATCH', `${base}/git/refs/heads/${branch}`, { sha: cm.data.sha });
-    if (up.status !== 200) throw new Error(`기록을 올리지 못했어요 (${up.status})`);
+    if (up.status !== 200) throw new Error(ghErr('기록을 올리지 못했어요', up.status));
     gh.lastSync = Date.now(); gh.lastCount = entries.length; gh.lastError = '';
     gh.skipped = skipped;
     saveGh();
@@ -1778,7 +1794,7 @@ async function ghSyncOnce(projects, message) {
 const ghWaiting = new Map();
 let ghTimer = null;
 function githubSyncSoon(project, hint) {
-  if (!gh || !project) return; // 연결 전이거나 홈 대화면 하지 않는다
+  if (!gh || gh.backup === false || !project) return; // 연결 전이거나 홈 대화면 하지 않는다
   ghWaiting.set(project, String(hint || '').replace(/\s+/g, ' ').trim().slice(0, 50));
   clearTimeout(ghTimer);
   ghTimer = setTimeout(() => {
@@ -1787,6 +1803,64 @@ function githubSyncSoon(project, hint) {
     const msg = items.length === 1 ? `[${items[0][0]}] ${items[0][1] || '작업 기록'}` : `크루 ${items.length}곳 작업 기록`;
     githubSync(items.map(([p]) => p), msg);
   }, 4000);
+}
+
+// ---------- 🐙 크루가 git 쓰기: 더보기 GitHub에서 켜면 크루가 git으로 GitHub에 올리고(push) 받는다(pull) ----------
+// - 열쇠는 크루에게 글로 주지 않는다. git이 열쇠가 필요할 때 tools/git-cred.js(크레덴셜 도우미)가 감자알에게 받아 건넨다
+// - "고른 저장소만"이면 고르지 않은 저장소에는 열쇠를 주지 않는다 (git이 저장소 경로를 함께 보내게 credential.useHttpPath를 켠다)
+// - 감자를 고치는 gamja 방은 제외한다 (그 방의 git 설정·작성자를 바꾸지 않으려고)
+const GIT_KEY = crypto.createHmac('sha256', SIGN_KEY).update('gamja-git').digest('base64url');
+const ghGit = () => ({ on: false, mode: 'pick', repos: [], askPublic: true, ...((gh && gh.git) || {}) });
+const ghGitOn = () => !!(gh && ghGit().on);
+const ghName = () => (gh ? gh.login : '');
+const ghEmail = () => (gh ? `${gh.id ? gh.id + '+' : ''}${gh.login}@users.noreply.github.com` : ''); // GitHub이 주는 비공개용 이메일
+let ghRepoCache = { at: 0, list: [] }; // 내 저장소 목록 [{ full, private }]
+async function ghListRepos(force) {
+  if (!force && Date.now() - ghRepoCache.at < 5 * 60e3) return ghRepoCache.list;
+  const list = [];
+  for (let page = 1; page <= 3; page++) {
+    const r = await ghApi('GET', `/user/repos?per_page=100&sort=updated&page=${page}`);
+    if (r.status !== 200) throw new Error(ghErr('저장소 목록을 읽지 못했어요', r.status));
+    list.push(...r.data.map((x) => ({ full: x.full_name, private: !!x.private })));
+    if (r.data.length < 100) break;
+  }
+  ghRepoCache = { at: Date.now(), list };
+  return list;
+}
+async function ghEnsureId() { // 예전에 연결한 경우 계정 번호(비공개 이메일에 씀)가 없다
+  if (!gh || gh.id) return;
+  const u = await ghApi('GET', '/user');
+  if (u.status === 200 && gh) { gh.id = u.data.id; saveGh(); }
+}
+function gitEnv(project) {
+  if (!ghGitOn() || crewOf(project) === 'gamja') return {};
+  const cfg = [
+    ['credential.helper', ''], // 다른 곳에 저장된 열쇠 도우미는 쓰지 않는다
+    ['credential.helper', `!${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(TOOLS_DIR, 'git-cred.js'))}`],
+    ['credential.https://github.com.useHttpPath', 'true'],
+    ['user.name', ghName()], ['user.email', ghEmail()],
+  ];
+  const env = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: String(cfg.length), GAMJA_GIT_URL: `http://127.0.0.1:${PORT}/api/github/cred`, GAMJA_GIT_KEY: GIT_KEY };
+  cfg.forEach(([k, v], i) => { env[`GIT_CONFIG_KEY_${i}`] = k; env[`GIT_CONFIG_VALUE_${i}`] = v; });
+  return env;
+}
+// 크루에게 알려 줄 GitHub 사용법 (켰을 때만)
+function githubPrompt(project) {
+  if (!ghGitOn() || crewOf(project) === 'gamja') return '';
+  const g = ghGit();
+  const lines = [`[GitHub] 사용자의 GitHub 계정(${gh.login})이 연결돼 있어서, git으로 GitHub 저장소에 올리고(push) 받을(pull) 수 있어요.`,
+    '- 원격 주소는 https://github.com/소유자/저장소.git 모양만 쓰세요. 열쇠(토큰)는 감자알이 자동으로 건네니, 토큰을 묻거나 주소·파일에 적지 마세요.',
+    '- 새 저장소는 크루가 만들 수 없어요. 필요하면 사용자에게 "더보기 › 연결 › GitHub › 쓸 수 있는 저장소 › 새 저장소 만들기"로 만들어 달라고 안내하세요.',
+    '- .env, 비밀번호·열쇠 파일, node_modules는 올리지 마세요 (.gitignore에 넣기).'];
+  const pub = (g.mode === 'pick' ? g.repos : ghRepoCache.list).filter((r) => !r.private).map((r) => r.full);
+  if (g.mode === 'pick') {
+    lines.push(`- 쓸 수 있는 저장소: ${g.repos.length ? g.repos.map((r) => `${r.full}(${r.private ? '비공개' : '공개'})`).join(', ') : '아직 없음'}. 이 밖의 저장소는 열쇠가 없어서 안 돼요. 다른 저장소가 필요하면 사용자에게 더보기 › 연결 › GitHub › 쓸 수 있는 저장소에서 골라 달라고 안내하세요.`);
+  } else {
+    lines.push(`- 사용자의 모든 저장소를 쓸 수 있어요.${pub.length ? ` 공개 저장소: ${pub.slice(0, 40).join(', ')}.` : ''}`);
+  }
+  if (g.askPublic) lines.push('- 공개 저장소(또는 공개인지 모르는 저장소)에 push하기 전에는 반드시 올릴 파일 목록을 보여 주고 "올릴까요?"라고 물어본 뒤, 사용자가 허락하면 올리세요. 비공개 저장소는 묻지 않고 올려도 돼요.');
+  if (!kitInstalled('git')) lines.push('- git(저장 도구)이 아직 설치되지 않았어요. git이 필요한 일이면 답변 맨 끝에 정확히 [[gamja-install:git]] 한 줄만 쓰세요. 그러면 "설치하고 이어서 하기" 버튼이 나와요.');
+  return lines.join('\n');
 }
 
 // ---------- 👀 결과물: 크루가 만든 웹페이지 미리보기 ----------
@@ -1951,6 +2025,7 @@ const TOOLKITS = {
   docs: { name: '문서 도구', desc: 'PDF · 워드 · 파워포인트 · 엑셀 문서 만들기', size: '약 250MB', apt: ['pandoc', 'weasyprint', 'python3', 'python3-openpyxl', 'fonts-noto-cjk'], need: ['pandoc', 'python3'] },
   image: { name: '그림 도구', desc: '로고 · 도표 · 카드뉴스 같은 그림 파일(PNG) 만들기', size: '약 150MB', apt: ['librsvg2-bin', 'fonts-noto-cjk'], need: ['rsvg-convert'] },
   media: { name: '영상·소리 도구', desc: '사진으로 슬라이드 영상, 간단한 소리 만들기', size: '약 300MB', apt: ['ffmpeg', 'python3'], need: ['ffmpeg', 'python3'] },
+  git: { name: '저장 도구', desc: '작업 기록을 남기고 GitHub에 올리고 받기 (git)', size: '약 30MB', apt: ['git'], need: ['git'] },
 };
 function hasCmd(cmd) {
   for (const dir of String(process.env.PATH || '').split(':')) {
@@ -2019,7 +2094,7 @@ function toolsPrompt() {
   }
   return lines.join('\n');
 }
-const INSTALL_MARK = /\s*\[\[gamja-install:(docs|image|media)\]\]\s*/g;
+const INSTALL_MARK = /\s*\[\[gamja-install:(docs|image|media|git)\]\]\s*/g;
 
 // ---------- 🔐 막힌 명령 허용 ----------
 // 크루가 허용 목록에 없는 Bash 명령을 쓰려다 막히면 화면에 카드를 보여 주고, 사용자가 이번만/항상/허용 안 함을 고른다.
@@ -2555,6 +2630,23 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       else if (a === 'log') r = { app: appRunner.status(room), log: appRunner.tail(room, body.lines) };
       else return send(res, 400, { error: '알 수 없는 동작이에요' });
       return send(res, 200, r);
+    }
+    // 🐙 크루의 git이 GitHub 열쇠를 받는 곳 (tools/git-cred.js). 이 폰 안에서, git 열쇠를 가진 요청만 받는다
+    if (p === '/api/github/cred' && req.method === 'POST') {
+      if (!isLocalReq(req)) return send(res, 403, { error: '이 폰 안에서만 쓸 수 있어요' });
+      const body = await readBody(req, 8 * 1024);
+      if (!safeEqual(String(req.headers['x-gamja-git-key'] || ''), GIT_KEY)) return send(res, 403, { error: '열쇠가 맞지 않아요' });
+      if (!ghGitOn()) return send(res, 403, { error: '더보기 › 연결 › GitHub에서 "크루가 GitHub에 올리고 받기"가 꺼져 있어요' });
+      if (gh.authBad) return send(res, 403, { error: GH_AUTH_MSG });
+      const m = String(body.path || '').replace(/^\/+/, '').replace(/\.git\/?$/, '').match(/^([\w.-]+)\/([\w.-]+)$/);
+      const g = ghGit();
+      if (g.mode !== 'all') {
+        const full = m ? `${m[1]}/${m[2]}`.toLowerCase() : '';
+        if (!full || !g.repos.some((r) => r.full.toLowerCase() === full)) {
+          return send(res, 403, { error: `${m ? m[1] + '/' + m[2] : '이 저장소'}는 쓸 수 있는 저장소가 아니에요. 더보기 › 연결 › GitHub › 쓸 수 있는 저장소에서 골라 주세요` });
+        }
+      }
+      return send(res, 200, { username: 'x-access-token', password: gh.token });
     }
     if (p.startsWith('/api/')) {
       if (!isAuthed(req)) return send(res, 401, { error: '로그인이 필요합니다' });
@@ -3588,10 +3680,53 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           connected: !!gh, login: gh ? gh.login : '', repo: gh ? gh.repo : GH_REPO, lastSync: gh ? gh.lastSync : 0,
           lastCount: gh ? gh.lastCount : 0, lastError: gh ? gh.lastError : '', skipped: gh ? gh.skipped || [] : [], syncing: ghSyncing,
           pending: ghDevice ? { user_code: ghDevice.user_code, verification_uri: ghDevice.verification_uri, expiresAt: ghDevice.expiresAt, error: ghDevice.error } : null,
+          backup: !!gh && gh.backup !== false, authBad: !!gh && !!gh.authBad,
+          git: { ...ghGit(), name: ghName(), email: ghEmail(), installed: kitInstalled('git'), installing: toolInstall.kit === 'git', installError: toolInstall.error },
         });
       }
+      if (p === '/api/github/settings' && req.method === 'POST') {
+        if (!gh) return send(res, 400, { error: 'GitHub에 연결돼 있지 않아요' });
+        const b = await readBody(req, 64 * 1024);
+        const g = ghGit();
+        if (typeof b.gitOn === 'boolean') g.on = b.gitOn;
+        if (b.mode === 'all' || b.mode === 'pick') g.mode = b.mode;
+        if (typeof b.askPublic === 'boolean') g.askPublic = b.askPublic;
+        if (Array.isArray(b.repos)) {
+          const known = new Map([...g.repos, ...ghRepoCache.list].map((r) => [r.full.toLowerCase(), r])); // 목록에 있는 저장소만 (공개 여부를 알아야 해서)
+          g.repos = b.repos.map((f) => known.get(String(f).toLowerCase())).filter(Boolean).slice(0, 200);
+        }
+        if (typeof b.backup === 'boolean') gh.backup = b.backup;
+        gh.git = g;
+        saveGh();
+        if (g.on) {
+          ghEnsureId().catch(() => {});
+          if (g.mode === 'all') ghListRepos().catch(() => {}); // 크루에게 공개 저장소를 알려 주려고
+          // 켰는데 git이 없으면 저장 도구를 바로 설치한다 (다른 설치나 답변이 진행 중이면 화면의 설치 버튼으로)
+          if (!kitInstalled('git') && !toolInstall.kit && !projectRuns.size) installKit('git');
+        }
+        return send(res, 200, { ok: true });
+      }
+      if (p === '/api/github/repos' && req.method === 'GET') {
+        if (!gh) return send(res, 400, { error: 'GitHub에 연결돼 있지 않아요' });
+        try { return send(res, 200, { repos: await ghListRepos(url.searchParams.get('fresh') === '1') }); }
+        catch (e) { return send(res, 502, { error: e.name === 'TimeoutError' ? 'GitHub 응답이 늦어요. 잠시 뒤 다시 시도해 주세요' : e.message }); }
+      }
+      if (p === '/api/github/repos' && req.method === 'POST') {
+        if (!gh) return send(res, 400, { error: 'GitHub에 연결돼 있지 않아요' });
+        const b = await readBody(req);
+        const name = String(b.name || '').trim();
+        if (!/^[\w.-]{1,100}$/.test(name) || /^\.+$/.test(name)) return send(res, 400, { error: '저장소 이름은 영문·숫자·- _ . 만 쓸 수 있어요' });
+        const r = await ghApi('POST', '/user/repos', { name, private: b.private !== false, auto_init: true, description: 'GAMJA 크루와 함께 만드는 저장소' });
+        if (r.status !== 201) return send(res, r.status === 422 ? 409 : 502, { error: r.status === 422 ? '같은 이름의 저장소가 이미 있어요' : ghErr('저장소를 만들지 못했어요', r.status) });
+        const item = { full: r.data.full_name, private: !!r.data.private };
+        ghRepoCache.list.unshift(item);
+        const g = ghGit();
+        if (!g.repos.some((x) => x.full === item.full)) g.repos.unshift(item);
+        gh.git = g; saveGh();
+        return send(res, 200, { repo: item });
+      }
       if (p === '/api/github/start' && req.method === 'POST') {
-        if (gh) return send(res, 409, { error: '이미 연결돼 있어요' });
+        if (gh && !gh.authBad) return send(res, 409, { error: '이미 연결돼 있어요' }); // 열쇠가 거절된 경우만 다시 연결
         try { await ghStart(); } catch (e) { return send(res, 502, { error: e.message }); }
         return send(res, 200, { ok: true });
       }
