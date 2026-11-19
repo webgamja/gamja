@@ -3197,6 +3197,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const orig = req.headers['x-gamja-file'];
         const ext = orig ? '' : IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0].trim()];
         if (!orig && !ext) return send(res, 400, { error: '이 형식은 첨부할 수 없어요' });
+        if (orig && /\.(mp4|m4v|mov|avi|mkv|webm|3gp|3g2|wmv|flv|mpe?g|m2ts|hevc)$/i.test(safeFileName(orig))) return send(res, 400, { error: '영상은 아직 보낼 수 없어요' });
         let data;
         try { data = await readRaw(req, orig ? MAX_FILE_BYTES : 10e6); }
         catch { return send(res, 413, { error: `파일이 너무 커요 (${orig ? 50 : 10}MB까지)` }); }

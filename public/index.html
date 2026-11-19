@@ -93,7 +93,16 @@
             <button id="sendBtn" class="send-btn" type="button" title="전송" disabled>➤</button>
           </div>
         </div>
-        <input id="fileInput" type="file" multiple hidden>
+        <!-- ＋를 누르면 사진(갤러리)·파일 중에 고른다. 안드로이드는 accept가 없으면 파일 앱만 열려서 사진 칸을 따로 둔다 -->
+        <div id="attachMenu" class="menu attach-menu hidden">
+          <button id="attachPhotoBtn" class="menu-item" type="button" data-no-i18n></button>
+          <button id="attachFileBtn" class="menu-item" type="button" data-no-i18n></button>
+        </div>
+        <input id="photoInput" type="file" accept="image/*" multiple hidden>
+        <!-- 아이폰: ＋를 누르면 메뉴 없이 바로 이 칸을 연다. 아이폰이 사진 보관함·사진 촬영·파일 선택을 한 메뉴로 보여 준다 (image/*라서 사진 보관함에 영상은 안 보인다) -->
+        <input id="iosInput" type="file" multiple hidden accept="image/*,application/*,text/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.csv,.txt,.md,.json">
+        <!-- 파일 칸은 사진·영상 형식을 빼야 안드로이드에서 카메라·캠코더 없이 파일 앱이 바로 열리고, 아이폰도 사진 보관함 대신 파일 앱이 열린다 -->
+        <input id="fileInput" type="file" multiple hidden accept="application/*,text/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.csv,.txt,.md,.json">
       </div>
     </footer>
   </section>

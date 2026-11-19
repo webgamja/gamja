@@ -3868,32 +3868,37 @@
     pending = [];
     renderAttachments();
   }
-  // 감자 앱에서는 앱이 사진을 직접 골라 줄여서 넘겨 준다 (__gamjaPicked). 일반 브라우저는 기존 파일 선택
-  $('attachBtn').onclick = () => {
-    const app = window.GamjaApp;
-    if (app && typeof app.pickImages !== 'undefined') {
-      const room = MAX_IMAGES - pending.length;
-      if (room <= 0) return toast(overLimitText());
-      app.pickImages(room);
-    } else fileInput.click();
+  // ＋: 사진(갤러리)·파일 고르기 메뉴. 안드로이드는 형식 제한이 없으면 파일 앱만 열리므로 사진 칸을 따로 둔다
+  const attachMenu = $('attachMenu');
+  const photoInput = $('photoInput');
+  const iosInput = $('iosInput');
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const closeAttachMenu = () => attachMenu.classList.add('hidden');
+  $('attachBtn').onclick = (e) => {
+    e.stopPropagation();
+    if (pending.length >= MAX_IMAGES) return toast(overLimitText());
+    if (isIOS) return iosInput.click(); // 아이폰은 자체 메뉴가 사진·파일을 다 보여 주므로 감자 메뉴를 건너뛴다
+    attachMenu.classList.toggle('hidden');
   };
-  window.__gamjaPicked = (name, mime, b64) => {
-    if (!b64) return toast('사진을 읽지 못했어요');
-    try {
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      addAttachments([new File([bytes], name || 'photo.jpg', { type: mime || 'image/jpeg' })])
-        .catch((err) => toast(`사진을 붙이지 못했어요: ${err.message}`));
-    } catch (err) { toast(`사진을 붙이지 못했어요: ${err.message}`); }
-  };
-  fileInput.onchange = () => {
-    const files = [...fileInput.files];
-    if (!files.length) toast(window.GAMJA_I18N.t('attach.noneReceived'));
+  $('attachPhotoBtn').textContent = window.GAMJA_I18N.t('attach.photo');
+  $('attachFileBtn').textContent = window.GAMJA_I18N.t('attach.file');
+  $('attachPhotoBtn').onclick = () => { closeAttachMenu(); photoInput.click(); };
+  $('attachFileBtn').onclick = () => { closeAttachMenu(); fileInput.click(); };
+  document.addEventListener('click', (e) => { if (!attachMenu.contains(e.target)) closeAttachMenu(); });
+  // 영상은 아직 받지 않는다 (사진 칸에서 영상을 고를 수 있는 기종도 있어서 양쪽 다 거른다)
+  const VIDEO_EXT = /\.(mp4|m4v|mov|avi|mkv|webm|3gp|3g2|wmv|flv|mpe?g|m2ts|hevc)$/i;
+  const isVideo = (f) => /^video\//.test(f.type || '') || VIDEO_EXT.test(f.name || '');
+  const onPicked = (input) => () => {
+    const all = [...input.files];
+    input.value = '';
+    if (!all.length) return toast(window.GAMJA_I18N.t('attach.noneReceived'));
+    const files = all.filter((f) => !isVideo(f));
+    if (files.length < all.length) toast(window.GAMJA_I18N.t('attach.noVideo'));
     addAttachments(files).catch((err) => toast(window.GAMJA_I18N.t('attach.addFail', { err: err.message })));
-    fileInput.value = '';
   };
-  // PC: 캡처한 화면을 입력창에 바로 붙여 넣기
+  photoInput.onchange = onPicked(photoInput);
+  fileInput.onchange = onPicked(fileInput);
+  iosInput.onchange = onPicked(iosInput);
   els.input.addEventListener('paste', (e) => {
     const files = [...(e.clipboardData?.items || [])].filter((it) => it.kind === 'file').map((it) => it.getAsFile()).filter(Boolean);
     if (files.length) { e.preventDefault(); addAttachments(files); }
