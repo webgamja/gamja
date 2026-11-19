@@ -3370,6 +3370,7 @@
     paint(view, m);
     return view;
   }
+  const shownFileName = (n) => String(n).replace(/^\d+-[a-f0-9]{8}-/, '');
   function imageUrl(name) {
     return `/api/uploads?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`;
   }
@@ -3386,12 +3387,20 @@
         : btn('once', T('perm.once'), 'main') + btn('no', T('perm.no'), 'ghost')}</div></div>`;
   }
   function paint(view, m, streaming) {
-    if (m.role === 'user' && (m.images || m.localImages)) {
-      // 첨부 이미지 + 글 (보내는 중에는 미리보기 주소, 저장 후에는 서버 주소)
+    if (m.role === 'user' && (m.images || m.localImages || m.files)) {
+      // 첨부 이미지·파일 + 글 (보내는 중에는 미리보기 주소, 저장 후에는 서버 주소)
       view.bubble.textContent = '';
-      const srcs = m.localImages || m.images.map(imageUrl);
+      const srcs = m.localImages || (m.images || []).map(imageUrl);
       const box = document.createElement('div');
       box.className = 'bubble-images';
+      for (const n of m.files || []) {
+        const a = document.createElement('a');
+        a.className = 'file-chip';
+        a.href = imageUrl(n);
+        a.download = shownFileName(n);
+        a.textContent = '📄 ' + shownFileName(n);
+        box.appendChild(a);
+      }
       for (const src of srcs) {
         const img = document.createElement('img');
         img.src = src;
@@ -3574,23 +3583,27 @@
 
     // 첨부 이미지를 먼저 올린다 (실패하면 보내지 않고 그대로 둔다)
     let images = [];
+    const files = [];
     const sending = pending.slice();
     if (sending.length) {
       runId = 'pending';
       setRunning(true);
-      setStatus(`🖼️ 이미지 올리는 중... (${sending.length}장)`);
+      setStatus(window.GAMJA_I18N.t('attach.uploading', { n: sending.length }));
       try {
         for (const a of sending) {
-          const r = await fetch('/api/upload' + q(), { method: 'POST', headers: { 'Content-Type': a.blob.type }, body: a.blob });
+          const headers = a.file
+            ? { 'Content-Type': 'application/octet-stream', 'X-Gamja-File': encodeURIComponent(a.name) }
+            : { 'Content-Type': a.blob.type };
+          const r = await fetch('/api/upload' + q(), { method: 'POST', headers, body: a.blob });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(d.code === 'export-running' ? window.GAMJA_I18N.t('export.writeWait') : (d.error || r.statusText));
-          images.push(d.name);
+          (a.file ? files : images).push(d.name);
         }
       } catch (err) {
         runId = null;
         setRunning(false);
         // 원인을 찾을 수 있게 오류 내용을 그대로 보여 준다 (첨부는 그대로 남겨 둠)
-        alert(`이미지를 올리지 못했어요.\n오류: ${err.message}\n\n이 문구를 Claude에게 알려 주세요.`);
+        alert(window.GAMJA_I18N.t('attach.uploadFail', { err: err.message }));
         return null;
       }
     }
@@ -3598,7 +3611,8 @@
     autoGrow();
 
     const userMsg = { role: 'user', text, ts: Date.now() };
-    if (sending.length) userMsg.localImages = sending.map((a) => a.url);
+    if (sending.some((a) => !a.file)) userMsg.localImages = sending.filter((a) => !a.file).map((a) => a.url);
+    if (files.length) userMsg.files = files;
     clearAttachments(false);
     addMessage(userMsg);
     scrollBottom(true);
@@ -3635,7 +3649,7 @@
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, project, images, voice: !!opts.voice, lang: window.GAMJA_I18N.lang, ...groupInfo(text) }),
+        body: JSON.stringify({ message: text, project, images, files, voice: !!opts.voice, lang: window.GAMJA_I18N.lang, ...groupInfo(text) }),
         signal: abortCtl.signal,
       });
       if (r.status === 401) { rejected = true; showLogin(); throw new Error('로그인이 필요합니다'); }
@@ -3782,14 +3796,19 @@
   }
   // 고르는 즉시 내용을 끝까지 읽어 메모리에 복사한다 (안드로이드는 나중에 읽으려 하면 실패할 수 있음)
   // → 형식 확인 → 큰 이미지는 줄여서 JPEG로
+  // 사진(PNG·JPG·WEBP·GIF)은 미리보기와 함께 이미지로, 그 밖의 파일은 원래 이름 그대로 파일로 보낸다
+  const MAX_FILE_BYTES = 50e6;
   async function prepareImage(file) {
+    const T = window.GAMJA_I18N.t;
+    if (file.size > MAX_FILE_BYTES) throw new Error(T('attach.tooBig'));
     let bytes;
     try { bytes = new Uint8Array(await file.arrayBuffer()); }
-    catch { throw new Error('사진을 읽을 수 없어요. 휴대폰에 저장된 사진인지(클라우드에만 있는 사진이 아닌지) 확인해 주세요.'); }
-    if (!bytes.length) throw new Error('빈 파일이에요. 휴대폰에 저장된 사진인지 확인해 주세요.');
+    catch { throw new Error(T('attach.readFail')); }
+    if (!bytes.length) throw new Error(T('attach.empty'));
     const type = sniffType(bytes);
-    if (type === 'heic') throw new Error('HEIC 형식은 지원하지 않아요. 스크린샷이나 JPG 사진으로 보내 주세요.');
-    if (!type) throw new Error('지원하지 않는 형식이에요. PNG·JPG·WEBP·GIF만 보낼 수 있어요.');
+    if (!type || type === 'heic') {
+      return { file: true, name: file.name || 'file', blob: new Blob([bytes], { type: 'application/octet-stream' }), url: null };
+    }
     const blob = new Blob([bytes], { type });
     const { img, url } = await decode(blob);
     if (type === 'image/gif' || (blob.size < 800e3 && Math.max(img.naturalWidth, img.naturalHeight) <= MAX_SIDE)) {
@@ -3806,7 +3825,7 @@
     return { blob: out, url: URL.createObjectURL(out) };
   }
   // 한도를 넘으면 창을 띄우지 않고 짧은 알림(토스트)으로만 알린다. 감자 앱의 안내와 같은 문장이다
-  const overLimitText = () => `사진은 ${MAX_IMAGES}장까지 첨부할 수 있어요`;
+  const overLimitText = () => window.GAMJA_I18N.t('attach.limit', { n: MAX_IMAGES });
   async function addAttachments(files) {
     files = files.filter(Boolean);
     const room = MAX_IMAGES - pending.length;
@@ -3827,10 +3846,16 @@
     pending.forEach((a, i) => {
       const item = document.createElement('div');
       item.className = 'attach';
-      item.innerHTML = `<img alt="첨부 미리보기"><button type="button" title="빼기">✕</button>`;
-      item.querySelector('img').src = a.url;
+      if (a.file) {
+        item.classList.add('attach-file');
+        item.innerHTML = `<span class="attach-file-name" data-no-i18n></span><button type="button" title="빼기">✕</button>`;
+        item.querySelector('span').textContent = '📄 ' + a.name;
+      } else {
+        item.innerHTML = `<img alt="첨부 미리보기"><button type="button" title="빼기">✕</button>`;
+        item.querySelector('img').src = a.url;
+      }
       item.querySelector('button').onclick = () => {
-        URL.revokeObjectURL(a.url);
+        if (a.url) URL.revokeObjectURL(a.url);
         pending.splice(i, 1);
         renderAttachments();
       };
@@ -3839,7 +3864,7 @@
     autoGrow(); // 미리보기 높이만큼 입력창 상한을 다시 계산한다
   }
   function clearAttachments(revoke = true) {
-    if (revoke) pending.forEach((a) => URL.revokeObjectURL(a.url));
+    if (revoke) pending.forEach((a) => a.url && URL.revokeObjectURL(a.url));
     pending = [];
     renderAttachments();
   }
@@ -3864,8 +3889,8 @@
   };
   fileInput.onchange = () => {
     const files = [...fileInput.files];
-    if (!files.length) toast('선택한 사진을 받지 못했어요');
-    addAttachments(files).catch((err) => toast(`사진을 붙이지 못했어요: ${err.message}`));
+    if (!files.length) toast(window.GAMJA_I18N.t('attach.noneReceived'));
+    addAttachments(files).catch((err) => toast(window.GAMJA_I18N.t('attach.addFail', { err: err.message })));
     fileInput.value = '';
   };
   // PC: 캡처한 화면을 입력창에 바로 붙여 넣기

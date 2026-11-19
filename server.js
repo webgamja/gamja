@@ -236,6 +236,17 @@ function uploadDir(cwd) {
   return dir;
 }
 const isUploadName = (n) => typeof n === 'string' && /^\d+-[a-z0-9]+\.(jpg|png|webp|gif)$/.test(n);
+// 사진이 아닌 일반 파일: "시각-무작위-원래이름" (크루가 이름을 보고 어떤 파일인지 알 수 있게 원래 이름을 남긴다)
+const MAX_FILE_BYTES = 50e6;
+const isFileUploadName = (n) => typeof n === 'string' && n.length <= 100 && n === path.basename(n) &&
+  /^\d+-[a-f0-9]{8}-[^\/\\\0]+$/.test(n);
+function safeFileName(raw) {
+  let n = '';
+  try { n = decodeURIComponent(String(raw || '')); } catch { n = String(raw || ''); }
+  n = path.basename(n.replace(/\\/g, '/')).replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g, '_').replace(/^\.+/, '').trim();
+  if (n.length > 70) { const ext = path.extname(n).slice(0, 12); n = n.slice(0, 70 - ext.length) + ext; }
+  return n || 'file';
+}
 
 // 감자 톡톡(크루가 아닌 기본 대화)이 만든 결과물을 모아 두는 폴더. 크루 목록에는 나오지 않는다
 const TALK_DIR_NAME = 'gamjaTT';
@@ -1296,13 +1307,14 @@ function handleChat(req, res, body, opts = {}) {
   }
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, MAX_IMAGES)
     .filter((n) => isUploadName(n) && fs.existsSync(path.join(cwd, UPLOAD_DIR, n)));
+  const files = (Array.isArray(body.files) ? body.files : []).slice(0, MAX_IMAGES)
+    .filter((n) => isFileUploadName(n) && fs.existsSync(path.join(cwd, UPLOAD_DIR, n)));
   const text = String(body.message || '').trim();
-  if (!text && !images.length) return send(res, 400, { error: '메시지가 비어 있습니다' });
-  // Claude에게는 첨부 이미지 경로를 함께 알려 준다 (Read 도구로 열어 봄)
-  let message = images.length
-    ? `${text || '(이미지를 보냈어요)'}\n\n[첨부 이미지 ${images.length}장 — Read 도구로 열어서 확인해 주세요]\n` +
-      images.map((n) => `- ${UPLOAD_DIR}/${n}`).join('\n')
-    : text;
+  if (!text && !images.length && !files.length) return send(res, 400, { error: '메시지가 비어 있습니다' });
+  // Claude에게는 첨부 이미지·파일 경로를 함께 알려 준다 (Read 도구로 열어 보거나 명령으로 처리)
+  let message = text || (images.length ? '(이미지를 보냈어요)' : files.length ? '(파일을 보냈어요)' : '');
+  if (images.length) message += `\n\n[첨부 이미지 ${images.length}장 — Read 도구로 열어서 확인해 주세요]\n` + images.map((n) => `- ${UPLOAD_DIR}/${n}`).join('\n');
+  if (files.length) message += `\n\n[첨부 파일 ${files.length}개 — 사용자가 올린 파일이에요. 이름 앞의 숫자-기호는 감자가 붙인 것이고 원래 이름은 그 뒤예요. Read 도구로 열거나 명령으로 처리해 주세요]\n` + files.map((n) => `- ${UPLOAD_DIR}/${n}`).join('\n');
   // 🗣 음성 대화 모드: 답을 소리로 읽어 주므로 짧게 말하듯 답해 달라고 덧붙인다 (대화 기록에는 사용자가 한 말만 남음)
   if (body.voice === true && !opts.label) message += `\n\n${VOICE_HINT}`;
   // 같은 세션을 동시에 두 번 돌리면 기록이 갈라지므로 프로젝트당 하나만
@@ -1330,7 +1342,7 @@ function handleChat(req, res, body, opts = {}) {
   }
   conv.messages.push(opts.label
     ? { role: 'notice', text: opts.label, ts: Date.now() }
-    : { role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}) });
+    : { role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}), ...(files.length ? { files } : {}) });
   saveConv(project);
   // 서버가 직접 답변을 모아 저장 → 클라이언트 연결이 끊겨도 기록이 남는다
   const bot = { role: 'bot', text: '', ts: Date.now(), tools: [] };
@@ -3181,19 +3193,35 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const cwd = resolveProject(url.searchParams.get('project') || '');
         if (!cwd) return send(res, 400, { error: '알 수 없는 프로젝트' });
         if (exportFolderLocked(cwd)) return send(res, 409, { error: '이 채팅을 내보내는 중이에요. 잠시 뒤에 올려 주세요.', code: 'export-running' });
-        const ext = IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0].trim()];
-        if (!ext) return send(res, 400, { error: '이미지 파일만 첨부할 수 있어요' });
-        const data = await readRaw(req, 10e6);
+        // 일반 파일은 화면이 원래 이름을 X-Gamja-File 머리글에 담아 보낸다
+        const orig = req.headers['x-gamja-file'];
+        const ext = orig ? '' : IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0].trim()];
+        if (!orig && !ext) return send(res, 400, { error: '이 형식은 첨부할 수 없어요' });
+        let data;
+        try { data = await readRaw(req, orig ? MAX_FILE_BYTES : 10e6); }
+        catch { return send(res, 413, { error: `파일이 너무 커요 (${orig ? 50 : 10}MB까지)` }); }
         if (!data.length) return send(res, 400, { error: '빈 파일이에요' });
-        const name = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+        const stamp = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+        const name = orig ? `${stamp}-${safeFileName(orig)}` : `${stamp}.${ext}`;
         fs.writeFileSync(path.join(uploadDir(cwd), name), data);
         return send(res, 200, { name });
       }
       if (p === '/api/uploads' && req.method === 'GET') {
         const cwd = resolveProject(url.searchParams.get('project') || '');
         const name = url.searchParams.get('name');
-        if (!cwd || !isUploadName(name)) return send(res, 400, { error: '잘못된 요청' });
+        if (!cwd || !(isUploadName(name) || isFileUploadName(name))) return send(res, 400, { error: '잘못된 요청' });
         const file = path.join(cwd, UPLOAD_DIR, name);
+        if (!isUploadName(name)) {
+          // 일반 파일: 원래 이름으로 내려받게 한다
+          return fs.stat(file, (err, st) => {
+            if (err || !st.isFile()) return send(res, 404, { error: '파일이 없어요' });
+            const shown = name.replace(/^\d+-[a-f0-9]{8}-/, '');
+            res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': st.size,
+              'Content-Disposition': `attachment; filename="file"; filename*=UTF-8''${encodeURIComponent(shown)}`,
+              'Cache-Control': 'private, max-age=31536000, immutable' });
+            fs.createReadStream(file).pipe(res);
+          });
+        }
         return fs.readFile(file, (err, data) => {
           if (err) return send(res, 404, { error: '이미지가 없어요' });
           const type = Object.keys(IMAGE_TYPES).find((t) => IMAGE_TYPES[t] === path.extname(name).slice(1));
