@@ -3625,7 +3625,10 @@
     els.status.classList.remove('hidden');
   }
   function setRunning(on) {
-    if (on) {
+    if (on && voice.on) { // 음성 대화 중에는 클로드가 일해도 노란 ⏹(음성 대화 끄기) 그대로
+      els.send.classList.remove('stop');
+      updateSendState();
+    } else if (on) {
       els.send.classList.add('stop');
       els.send.classList.remove('voice-btn');
       els.send.dataset.mode = 'stop';
@@ -3859,7 +3862,17 @@
     try { yes = await p; } finally { clearInterval(watch); stopAsking = false; }
     if (yes && (runId || remoteRunId)) stopRun();
   }
+  let endAsking = false;
+  async function confirmEndVoice() {
+    if (endAsking) return;
+    endAsking = true;
+    const T = window.GAMJA_I18N.t;
+    let yes = false;
+    try { yes = await gSheet({ title: T('voice.endTitle'), message: T('voice.endMsg'), ok: T('voice.end'), cancel: T('voice.keep'), danger: true }); } finally { endAsking = false; }
+    if (yes && voice.on) stopVoice();
+  }
   els.send.onclick = () => {
+    if (voice.on) return confirmEndVoice(); // 음성 대화 끝내기는 클로드의 작업을 멈추지 않는다
     if (runId || remoteRunId) return confirmStop();
     if (els.send.dataset.mode === 'voice') return startVoice();
     sendMessage();
@@ -4044,10 +4057,15 @@
     const max = Math.max(Math.ceil(line * 2 + pad), Math.min(Math.ceil(line * MAX_LINES + pad), room));
     el.style.height = 'auto';
     let h = el.scrollHeight;
-    if (h > line * 1.5 + pad && !composerBox.classList.contains('multiline')) {
+    // 음성 대화 중 비어 있을 때는 안내 글(placeholder)이 줄바꿈돼도 두 줄로 치지 않는다
+    const voiceEmpty = composerBox.classList.contains('voice-live') && !el.value;
+    if (voiceEmpty) h = line + pad;
+    if (!voiceEmpty && h > line * 1.5 + pad && !composerBox.classList.contains('multiline')) {
       composerBox.classList.add('multiline'); // 넓어진 폭으로 다시 잰다
       h = el.scrollHeight;
     }
+    // 한 줄이면 비어 있든 글이 있든 항상 같은 높이로 (scrollHeight는 정수로 반올림돼 36.4가 36이 되어 1px씩 달라진다)
+    if (!composerBox.classList.contains('multiline') && h <= line * 1.5 + pad) h = line + pad;
     el.style.height = Math.min(Math.ceil(h) + 1, max) + 'px';
     el.style.overflowY = h > max ? 'auto' : 'hidden';
     if (m.clientHeight) { m.scrollTop = m.scrollHeight - m.clientHeight - dist; noteBox(); }
@@ -4105,7 +4123,17 @@
   }
   // 오른쪽 버튼 모양: 응답 중 ■(setRunning이 처리) / 입력이 비면 🗣 음성 대화(쓸 수 있는 곳만) / 아니면 ➤
   function updateSendState() {
-    if (runId || remoteRunId) { els.send.disabled = false; return; }
+    if (voice.on) { // 음성 대화 중: 이 버튼은 음성 대화 끄기
+      els.send.dataset.mode = 'voiceon'; els.send.classList.add('voice-btn'); els.send.textContent = '⏹';
+      els.send.title = '음성 대화 끄기'; els.send.disabled = false;
+      els.send.classList.remove('stop');
+      return;
+    }
+    if (runId || remoteRunId) { // 음성 대화를 끈 뒤에도 클로드가 일하는 중이면 빨간 중지 버튼으로 돌아온다
+      els.send.classList.add('stop'); els.send.classList.remove('voice-btn');
+      els.send.dataset.mode = 'stop'; els.send.textContent = '■'; els.send.title = '중지'; els.send.disabled = false;
+      return;
+    }
     const hasContent = !!(els.input.value.trim() || pending.length || attachPrep.jobs.size);
     const voiceOk = !hasContent && micUsable && !!window.speechSynthesis;
     els.send.dataset.mode = voiceOk ? 'voice' : 'send';
@@ -4202,6 +4230,7 @@
     try { rec.start(); } catch { stopListening(); }
   }
   els.mic.onclick = () => {
+    if (voice.on) { if (voiceTap) voiceTap(); return; } // 음성 대화 중: 마이크 버튼이 예전의 원 (바로 보내기·끊기·다시 듣기)
     if (!micUsable) return showMicOff();
     if (wantListen) return stopListening();
     stopSpeaking();
@@ -4489,12 +4518,13 @@
   const VOICE_DENIED = Symbol('denied');
   let voiceRec = null;
   let voiceTap = null; // 원을 눌렀을 때 할 일 (단계마다 다름)
+  let voiceHeard = false; // 지금 듣는 중에 소리·말이 잡혔는지 (대기 카운트를 멈추는 데 쓴다)
   let voiceNote = ''; // 음성 대화에서 직전에 말이 안 들렸을 때 화면에 남겨 두는 설명
   let wakeLock = null;
   const VOICE_LABEL = {
-    listen: '👂 듣고 있어요', more: '👂 계속 듣고 있어요 — 다 말했으면 원을 누르세요',
-    confirm: '⏳ 곧 보낼게요 — 원을 누르면 취소', work: '🤔 작업 중...',
-    speak: '🔊 말하는 중 — 원을 누르면 끊고 말할 수 있어요', paused: '⏸ 쉬는 중 — 원을 누르면 다시 들어요',
+    listen: '👂 듣고 있어요', more: '👂 계속 듣고 있어요 — 다 말했으면 🎤를 누르세요',
+    confirm: '⏳ 곧 보낼게요 — 🎤를 누르면 취소', work: '🤔 작업 중...',
+    speak: '🔊 말하는 중 — 🎤를 누르면 끊고 말할 수 있어요', paused: '⏸ 쉬는 중 — 🎤를 누르면 다시 들어요',
   };
   // 작업 중 알림음: 크루가 생각·작업하는 동안 1초마다 작은 "뚜-둥" (운전 중에도 아직 일하는 중인 걸 알 수 있게)
   let beatCtx = null, beatTimer = 0;
@@ -4562,7 +4592,24 @@
     if (holdPhaseOk()) holdPlay();
     voiceEl.dataset.phase = phase;
     $('voiceState').textContent = VOICE_LABEL[phase] || '';
-    if (text !== undefined) $('voiceText').textContent = text;
+    // 화면은 입력창 그대로: 상태는 안내 글(placeholder)에, 말한 내용은 타자 치듯 입력창에 쓴다
+    const live = phase === 'listen' || phase === 'more';
+    els.mic.classList.toggle('listening', live || phase === 'speak' || phase === 'work'); // 클로드가 말하는 중에는 마이크가 "끊고 말하기" 버튼으로 빨갛게 깜빡인다
+    composerBox.classList.toggle('voice-live', voice.on);
+    composerBox.classList.toggle('voice-paused', voice.on && (phase === 'paused' || phase === 'listen' || phase === 'speak' || phase === 'work')); // 듣기·대기·클로드가 말하는 중에는 입력창 전체를 노랗게
+    let pz = $('voicePause');
+    if (!pz) {
+      pz = document.createElement('button');
+      pz.id = 'voicePause'; pz.type = 'button';
+      pz.onclick = () => { if (voiceTap) voiceTap(); };
+      $('input').parentNode.appendChild(pz);
+    }
+    pz.dataset.phase = phase;
+    pz.textContent = phase === 'work' ? '⏳ ' + window.GAMJA_I18N.t('voice.speaking') : phase === 'speak' ? '🔊 ' + window.GAMJA_I18N.t('voice.speaking') : phase === 'listen' ? window.GAMJA_I18N.t('voice.speakNow') : '⏸ ' + window.GAMJA_I18N.t('voice.pausedBig');
+    if (phase === 'listen' || phase === 'speak' || phase === 'paused') els.input.value = '';
+    else if (text !== undefined) els.input.value = text;
+    els.input.placeholder = (VOICE_LABEL[phase] || '') + (phase === 'listen' && text ? ` ${text}` : '');
+    autoGrow();
   }
   async function keepAwake(on) {
     try {
@@ -4585,17 +4632,21 @@
       let heard = false;
       const giveUp = startTimeout ? setTimeout(() => { if (!heard) { try { r.abort(); } catch {} } }, startTimeout) : 0;
       let lastErr = ''; // 말이 안 들렸을 때 화면에 이유를 보여 주기 위한 기록
-      r.onstart = () => { if (!prefix) $('voiceText').textContent = '(마이크가 켜졌어요. 말씀해 보세요)'; };
-      r.onspeechstart = () => { heard = true; if (!prefix) $('voiceText').textContent = '(소리가 들려요…)'; };
+      r.onstart = () => { if (!prefix && voice.on) els.input.placeholder = '(마이크가 켜졌어요. 말씀해 보세요)'; };
+      r.onspeechstart = () => { heard = true; if (!prefix && voice.on) els.input.placeholder = '(소리가 들려요…)'; };
       r.onresult = (e) => {
-        heard = true;
+        heard = true; voiceHeard = true;
         voiceNote = '';
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           if (e.results[i].isFinal) finalText = e.results[i][0].transcript;
           else interim += e.results[i][0].transcript;
         }
-        $('voiceText').textContent = [prefix, finalText || interim].filter(Boolean).join(' ');
+        if (voice.on) {
+          els.input.value = [prefix, finalText || interim].filter(Boolean).join(' ');
+          if (els.input.value.trim()) composerBox.classList.remove('voice-paused'); // 말이 글자로 나오기 시작하면 노란 안내를 걷고 글을 보여 준다
+          autoGrow();
+        }
       };
       r.onerror = (e) => {
         lastErr = `${errCode(e)}${errDetail(e) ? ` · ${errDetail(e)}` : ''}`;
@@ -4622,10 +4673,23 @@
     return new Promise((resolve) => { voiceTap = () => { voiceTap = null; resolve(); }; });
   }
   async function voiceLoop() {
-    let silent = 0;
+    // 말이 없는 채로 60초가 지나면 대기로 넘어간다. 마지막 10초(50초 뒤부터)는 노란 안내에 남은 초를 보여 준다.
+    const SILENCE_MS = 60000;
+    let silentSince = 0;
+    let forcePause = false;
+    const tick = setInterval(() => {
+      if (!voice.on) return clearInterval(tick);
+      if (voice.phase !== 'listen' || !silentSince) return;
+      if (els.input.value.trim()) { silentSince = Date.now(); return; } // 글자로 말이 들어오는 중이면 세지 않는다
+      const rem = Math.ceil((SILENCE_MS - (Date.now() - silentSince)) / 1000);
+      if (rem <= 0) { forcePause = true; if (voiceRec) { try { voiceRec.abort(); } catch {} } }
+      else if (rem <= 10 && composerBox.classList.contains('voice-paused')) { const pz = $('voicePause'); if (pz) pz.textContent = `${window.GAMJA_I18N.t('voice.speakNow')} · ${window.GAMJA_I18N.t('voice.countdown', { n: rem })}`; }
+    }, 500);
     while (voice.on) {
       setVoice('listen', voiceNote); // 직전에 말이 안 들렸으면 이유를 같이 보여 준다
       voiceTap = null;
+      voiceHeard = false;
+      if (!silentSince) silentSince = Date.now();
       const said = await recognizeOnce();
       if (!voice.on) break;
       if (said === VOICE_DENIED) {
@@ -4634,23 +4698,24 @@
         break;
       }
       if (!said) {
-        // 두 번 연속 말이 없으면 쉬기 (계속 다시 켜면 휴대폰이 매번 알림음을 냄)
-        if (++silent >= 2) {
+        // 15초 동안 말이 없으면 쉬기 (계속 다시 켜면 휴대폰이 매번 알림음을 냄)
+        if (forcePause) {
+          forcePause = false; silentSince = 0;
           await speakAndWait(window.GAMJA_I18N.t('voice.waiting')); // 운전 중에도 쉬는 중으로 바뀐 걸 알 수 있게 말로 알린다
           if (!voice.on) break;
-          setVoice('paused'); await waitForTap(); silent = 0;
+          setVoice('paused'); await waitForTap();
         }
         continue;
       }
-      silent = 0;
-      // 말하다 잠깐 쉬어도 끊지 않는다: 2.5초 안에 다시 말을 시작하면 이어 붙이고, 조용하면 그때 보낸다.
+      silentSince = 0;
+      // 말하다 잠깐 쉬어도 끊지 않는다: 5초 안에 다시 말을 시작하면 이어 붙이고, 조용하면 그때 보낸다.
       // 다 말했으면 원을 눌러 바로 보낼 수 있다.
       let collected = said;
       let sendNow = false;
       while (voice.on && !sendNow) {
         setVoice('more', collected);
         voiceTap = () => { sendNow = true; if (voiceRec) { try { voiceRec.abort(); } catch {} } };
-        const more = await recognizeOnce({ startTimeout: 2500, prefix: collected });
+        const more = await recognizeOnce({ startTimeout: 5000, prefix: collected });
         voiceTap = null;
         if (!more || more === VOICE_DENIED) break;
         collected += ` ${more}`;
@@ -4666,9 +4731,19 @@
       autoGrow();
       // 오래 걸리면 가끔 "아직 작업 중"이라고 알려 준다
       const nag = setInterval(() => { if (voice.phase === 'work' && synth && !synth.speaking) speak('아직 작업 중이에요.', true); }, 45000);
+      let userStopped = false;
+      voiceTap = () => { // 생각·작업 중에 누르면 크루를 멈추고 바로 내 차례 (기다리지 않고 즉시 끊는다)
+        userStopped = true;
+        voiceTap = null;
+        setVoice('listen', '');
+        stopRun();
+        if (abortCtl) abortCtl.abort();
+      };
       const r = await sendMessage({ voice: true });
+      voiceTap = null;
       clearInterval(nag);
       if (!voice.on) break;
+      if (userStopped) continue; // 내가 멈춘 것 → 멈춘 응답은 읽지 않고 바로 듣기
       const reply = r && r.text ? r.text : r && r.error ? '문제가 생겼어요. 화면에서 내용을 확인해 주세요.' : '';
       const before = history.length; // 이 뒤에 생기는 자동 보고(재시작 결과 등)를 찾기 위해 기억해 둔다
       if (reply) {
@@ -4697,16 +4772,20 @@
       }
     }
   }
+  let voiceBasePh = '';
   function startVoice() {
     if (voice.on) return;
+    voiceBasePh = els.input.placeholder;
     if (!micUsable) return showMicOff(); // 쓸 수 없는 곳에서는 음성 화면을 열지 않는다
     stopListening();
     stopSpeaking();
     if (synth) synth.speak(new SpeechSynthesisUtterance('')); // 휴대폰: 사용자 동작으로 읽기 기능 잠금 해제
     beatUnlock(); // 작업 중 알림음도 같은 손동작으로 잠금 해제
     voice.on = true;
+    document.body.classList.add('voice-on'); // 음성 대화 중에는 왼쪽 위 홈·오른쪽 위 ⋯ 를 막는다
     holdPlay(); // 무음 재생도 손동작이 있을 때 시작해 둔다
-    voiceEl.classList.remove('hidden');
+    els.input.readOnly = true; // 음성 대화 중에는 자판이 안 뜨게
+    updateSendState();
     keepAwake(true);
     voiceLoop();
   }
@@ -4718,31 +4797,19 @@
     if (voiceTap) voiceTap();
     stopSpeaking();
     keepAwake(false);
-    dimEl.classList.add('hidden'); // 다음에 켤 때는 밝은 화면으로 시작
-    voiceEl.classList.add('hidden');
+    document.body.classList.remove('voice-on');
+    els.input.readOnly = false;
+    els.input.value = '';
+    els.input.placeholder = voiceBasePh;
+    els.mic.classList.remove('listening');
+    composerBox.classList.remove('voice-live', 'voice-paused');
+    autoGrow();
+    updateSendState();
     // 진행 중이던 작업은 계속되고, 채팅 화면에서 이어서 보인다
   }
   $('voiceOrb').onclick = () => { if (voiceTap) voiceTap(); };
   $('voiceEnd').onclick = stopVoice;
-  // 화면 어둡게: 음성 대화는 그대로 두고 화면만 검게 덮는다 (OLED에서는 거의 꺼진 것과 같음). 톡 치면 다시 보인다
-  const dimEl = document.createElement('div');
-  dimEl.className = 'voice-dim hidden';
-  dimEl.innerHTML = '<span></span>';
-  voiceEl.appendChild(dimEl);
-  const dimBtn = document.createElement('button');
-  dimBtn.type = 'button';
-  dimBtn.className = 'voice-dim-btn';
-  voiceEl.insertBefore(dimBtn, $('voiceEnd'));
-  const setDim = (on) => {
-    const t = window.GAMJA_I18N.t;
-    dimBtn.textContent = t('voice.dim');
-    dimEl.firstChild.textContent = t('voice.dimHint');
-    dimEl.classList.toggle('hidden', !on);
-    if (on) { dimEl.classList.remove('hint-off'); setTimeout(() => dimEl.classList.add('hint-off'), 2500); }
-  };
-  setDim(false);
-  dimBtn.onclick = () => setDim(true);
-  dimEl.onclick = () => setDim(false);
+  const vBtns = document.createElement('div'); vBtns.className = 'voice-btns'; voiceEl.appendChild(vBtns); vBtns.append($('voiceEnd'));
 
   // ---------- 당겨서 새로고침: 채팅방(#app)을 뺀 모든 화면에서, 맨 위에 있을 때 위에서 아래로 끌어내리면 새로고침 ----------
   // 채팅방은 위로 올려 지난 대화를 읽는 곳이라 일부러 뺐다. 입력칸·가로로 밀리는 줄·결과물 창(iframe)에서 시작한 끌기도 무시한다

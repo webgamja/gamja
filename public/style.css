@@ -207,14 +207,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- 입력창 (하단 고정) ---------- */
 .composer {
   flex: none;
-  /* 하단 제스처 바·홈 표시줄과 겹치지 않도록 최소 14px 여백 */
-  padding: 8px var(--side) max(14px, calc(8px + env(safe-area-inset-bottom)));
+  /* 위·아래 여백을 같게(10px). 홈 표시줄이 있는 기기만 그 높이만큼 아래를 더 띄운다 */
+  padding: 10px var(--side) max(10px, env(safe-area-inset-bottom));
   background: var(--composer); border-top: 1px solid var(--border);
 }
 /* 둥근 상자 하나 (ChatGPT식). 한 줄일 때: ＋ [입력] 🎤 ➤ / 여러 줄일 때: [입력] 아래 줄에 ＋ … 🎤 ➤ */
 .composer-box { background: var(--input-bg); border-radius: 22px; padding: 4px; }
 .composer-main {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: end; column-gap: 2px;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 2px;
   grid-template-areas: "attach input actions";
 }
 .attach-btn { grid-area: attach; }
@@ -242,16 +242,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .send-btn.voice-btn { font-size: 18px; }
 
 /* ---------- 🗣 음성 대화 모드 ---------- */
-.voice {
-  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 18px; padding: 24px var(--side) calc(24px + env(safe-area-inset-bottom));
-  height: var(--app-h, 100dvh); background: #111214; color: #f2f2f2; text-align: center;
+.voice { display: none !important; } /* 음성 대화는 입력창에서 한다 */
+.voice-old {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "orb state btns" "orb text btns";
+  align-items: center; column-gap: 12px; row-gap: 2px; padding: 10px var(--side) calc(10px + env(safe-area-inset-bottom));
+  background: #111214; color: #f2f2f2; text-align: left; border-top: 1px solid rgba(255,255,255,.12); box-shadow: 0 -6px 20px rgba(0,0,0,.25);
 }
 .voice-orb {
-  width: 168px; height: 168px; border-radius: 50%; border: 0; padding: 0; position: relative;
+  grid-area: orb; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; position: relative; margin: 6px;
   background: radial-gradient(circle at 35% 30%, #fff6a8, var(--me) 55%, #c9a800); transition: transform .3s;
 }
-.voice-orb span { position: absolute; inset: -14px; border-radius: 50%; border: 3px solid rgba(254,229,0,.35); }
+.voice-orb span { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(254,229,0,.35); }
 .voice[data-phase="listen"] .voice-orb span,
 .voice[data-phase="more"] .voice-orb span { animation: voice-ring 1.4s ease-out infinite; }
 .voice[data-phase="confirm"] .voice-orb { transform: scale(.92); }
@@ -261,22 +262,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes voice-ring { 0% { transform: scale(.9); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
 @keyframes voice-breathe { 50% { transform: scale(.9); } }
 @keyframes voice-talk { to { transform: scale(1.08); } }
-.voice-state { margin: 0; font-size: 16px; font-weight: 600; min-height: 1.4em; }
+.voice-state { grid-area: state; margin: 0; font-size: 14px; font-weight: 600; min-height: 1.4em; }
 .voice-text {
-  margin: 0; max-width: 520px; max-height: 32vh; overflow-y: auto; font-size: 15px; line-height: 1.5;
+  grid-area: text; margin: 0; max-height: 4.5em; overflow-y: auto; font-size: 13px; line-height: 1.5;
   color: #c8c8cc; white-space: pre-wrap;
 }
 .voice-end {
-  margin-top: 12px; padding: 12px 36px; border-radius: 24px; border: 1px solid rgba(255,255,255,.25);
+  padding: 9px 18px; border-radius: 20px; border: 1px solid rgba(255,255,255,.25);
   background: transparent; color: #fff; font-size: 15px;
 }
-.voice-dim-btn {
-  padding: 10px 24px; border-radius: 22px; border: 1px solid rgba(255,255,255,.18);
-  background: transparent; color: #c8c8cc; font-size: 14px;
-}
-.voice-dim { position: fixed; inset: 0; z-index: 5; background: #000; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.voice-dim span { color: #444; font-size: 14px; transition: opacity 1s; }
-.voice-dim.hint-off span { opacity: 0; }
 .send-btn.stop { background: var(--danger); color: #fff; font-size: 13px; }
 
 /* ---------- 설정 화면 ---------- */
@@ -1089,3 +1083,26 @@ button.settings-row.gh-row { display: flex; width: 100%; font: inherit; color: i
 .gh-reauth { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; padding: 14px 16px; border-radius: 14px; background: #fdecea; color: #8a1c13; font-size: 14px; line-height: 1.45; }
 .gh-reauth span { font-size: 13px; }
 .gh-reauth .settings-save { margin-top: 6px; }
+.voice-btns { grid-area: btns; display: flex; gap: 6px; align-items: center; }
+
+.composer-box.voice-live { box-shadow: 0 0 0 2px var(--me); }
+.composer-box.voice-live #input::placeholder { color: var(--bot-fg); opacity: .75; }
+.composer-box.voice-live #input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#voicePause { display: none; grid-area: input; z-index: 2; border: 0; background: transparent; color: var(--bot-fg); font-size: 16px; padding: 0 8px; min-height: 0; align-self: stretch; contain: size; align-items: center; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.composer-box.voice-paused #voicePause { display: flex; } /* contain:size라 안내 글(이모지 등) 높이가 입력창 높이에 영향을 주지 않는다 */
+.composer-box.voice-paused #input { visibility: hidden; } /* 자리는 그대로 두어 입력할 때와 높이가 같다 */
+/* 음성 대화 시안 A: 입력창 모양·버튼은 그대로 두고 노란 테두리와 깜빡이는 점으로만 상태를 알린다 */
+.composer-box.voice-paused { box-shadow: 0 0 0 2px var(--me); }
+.composer-box.voice-paused:has(#voicePause[data-phase="paused"]) { box-shadow: 0 0 0 2px #e0a100; }
+#voicePause[data-phase="listen"]::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #e0a100; margin-right: 8px; animation: vpulse 1.2s infinite; }
+@keyframes vpulse { 50% { opacity: .25; transform: scale(.7); } }
+body.voice-on #homeBtn, body.voice-on #menuBtn { pointer-events: none; opacity: .4; }
+#voicePause[data-phase="speak"], #voicePause[data-phase="paused"] { font-size: 13px; } /* 좁은 폰에서 안내 글이 ...로 잘리지 않게 */
+/* 크루가 생각·말하는 중: "중지 후 말하기"를 눌러야 하는 알약 버튼처럼 보이게 */
+#voicePause[data-phase="work"], #voicePause[data-phase="speak"] {
+  background: var(--me); color: var(--me-fg); font-weight: 700; font-size: 14px; justify-content: center; text-align: center;
+  border-radius: 18px; margin: 1px 4px; padding: 0 12px; box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: pointer;
+}
+#voicePause[data-phase="work"]:active, #voicePause[data-phase="speak"]:active { filter: brightness(.92); transform: scale(.98); }
+/* 중지 후 말하기 알약이 마이크 자리까지 덮는다 (마이크 36px + 간격 4px). 노란 ⏹ 버튼은 그대로 */
+#voicePause[data-phase="work"], #voicePause[data-phase="speak"] { margin-right: -40px; }
