@@ -3707,8 +3707,8 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       }
       if (p === '/api/tunnel/auth' && req.method === 'POST') { // SSL Connect 메뉴 암호 확인 (암호 = 감자 비밀번호 + 11!!)
         const { pin } = await readBody(req);
-        const want = Buffer.from(PASSWORD + '11!!'); // 이 폰의 감자 비밀번호 뒤에 11!! (코드에 비밀이 들어가지 않는다)
-        const got = Buffer.from(String(pin || ''));
+        const want = Buffer.from('eea5246c22d4184ef8b4716c8d5b53067f4e172352e9ae2f27bc0ac583fc93bb', 'hex'); // 고정 암호의 scrypt 해시 (암호 원문은 코드에 넣지 않는다)
+        const got = crypto.scryptSync(String(pin || ''), 'gamja-ssl-connect', 32);
         if (Date.now() < tunnelPinLockUntil) return send(res, 429, { error: '암호를 여러 번 틀렸어요. 잠시 뒤에 다시 해 주세요.' });
         if (!want.length || want.length !== got.length || !crypto.timingSafeEqual(want, got)) {
           if (++tunnelPinFails >= 5) { tunnelPinFails = 0; tunnelPinLockUntil = Date.now() + 60000; }
