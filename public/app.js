@@ -4530,9 +4530,36 @@
       if (!speaking()) beatOnce(); // 안내 음성을 읽는 동안에는 쉰다
     }, 1000);
   }
+  // 소리 채널 붙잡기: 음성 대화 동안 귀에 안 들리는 무음을 반복 재생한다.
+  // 목소리 문장 사이·알림음 사이가 비면 폰이 소리 채널을 놓아서 차가 라디오·음악으로 돌아가는 것을 막는다
+  let holdAudio = null;
+  const holdPhaseOk = () => voice.on && voice.phase !== 'listen' && voice.phase !== 'more'; // 마이크로 듣는 동안에는 다시 틀지 않는다
+  function silentWav() { // 1초짜리 무음 WAV (8kHz, 8비트, 모노)
+    const n = 8000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+    v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true);
+    b.fill(128, 44);
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  }
+  function holdPlay() {
+    try {
+      if (!holdAudio) {
+        holdAudio = new Audio(silentWav());
+        holdAudio.loop = true;
+        holdAudio.addEventListener('pause', () => { // 폰이 멈추게 했으면 듣기 단계가 아닐 때 다시 튼다
+          setTimeout(() => { if (holdAudio.paused && holdPhaseOk()) holdAudio.play().catch(() => {}); }, 800);
+        });
+      }
+      if (holdAudio.paused) holdAudio.play().catch(() => {});
+    } catch { /* 무음 재생이 안 되는 폰은 그냥 넘어간다 */ }
+  }
+  function holdStop() { if (holdAudio && !holdAudio.paused) holdAudio.pause(); }
   function setVoice(phase, text) {
     voice.phase = phase;
     if (phase === 'work') startBeat(); else stopBeat();
+    if (holdPhaseOk()) holdPlay();
     voiceEl.dataset.phase = phase;
     $('voiceState').textContent = VOICE_LABEL[phase] || '';
     if (text !== undefined) $('voiceText').textContent = text;
@@ -4678,6 +4705,7 @@
     if (synth) synth.speak(new SpeechSynthesisUtterance('')); // 휴대폰: 사용자 동작으로 읽기 기능 잠금 해제
     beatUnlock(); // 작업 중 알림음도 같은 손동작으로 잠금 해제
     voice.on = true;
+    holdPlay(); // 무음 재생도 손동작이 있을 때 시작해 둔다
     voiceEl.classList.remove('hidden');
     keepAwake(true);
     voiceLoop();
@@ -4685,15 +4713,36 @@
   function stopVoice() {
     voice.on = false;
     stopBeat();
+    holdStop();
     if (voiceRec) { try { voiceRec.abort(); } catch {} }
     if (voiceTap) voiceTap();
     stopSpeaking();
     keepAwake(false);
+    dimEl.classList.add('hidden'); // 다음에 켤 때는 밝은 화면으로 시작
     voiceEl.classList.add('hidden');
     // 진행 중이던 작업은 계속되고, 채팅 화면에서 이어서 보인다
   }
   $('voiceOrb').onclick = () => { if (voiceTap) voiceTap(); };
   $('voiceEnd').onclick = stopVoice;
+  // 화면 어둡게: 음성 대화는 그대로 두고 화면만 검게 덮는다 (OLED에서는 거의 꺼진 것과 같음). 톡 치면 다시 보인다
+  const dimEl = document.createElement('div');
+  dimEl.className = 'voice-dim hidden';
+  dimEl.innerHTML = '<span></span>';
+  voiceEl.appendChild(dimEl);
+  const dimBtn = document.createElement('button');
+  dimBtn.type = 'button';
+  dimBtn.className = 'voice-dim-btn';
+  voiceEl.insertBefore(dimBtn, $('voiceEnd'));
+  const setDim = (on) => {
+    const t = window.GAMJA_I18N.t;
+    dimBtn.textContent = t('voice.dim');
+    dimEl.firstChild.textContent = t('voice.dimHint');
+    dimEl.classList.toggle('hidden', !on);
+    if (on) { dimEl.classList.remove('hint-off'); setTimeout(() => dimEl.classList.add('hint-off'), 2500); }
+  };
+  setDim(false);
+  dimBtn.onclick = () => setDim(true);
+  dimEl.onclick = () => setDim(false);
 
   // ---------- 당겨서 새로고침: 채팅방(#app)을 뺀 모든 화면에서, 맨 위에 있을 때 위에서 아래로 끌어내리면 새로고침 ----------
   // 채팅방은 위로 올려 지난 대화를 읽는 곳이라 일부러 뺐다. 입력칸·가로로 밀리는 줄·결과물 창(iframe)에서 시작한 끌기도 무시한다
