@@ -145,6 +145,7 @@
   let abortCtl = null;
   let ttsOn = store.get('cc:tts', false);
   let pollTimer = null;
+  let stoppingId = null; // 중지를 누른 응답의 runId (서버가 정리를 끝낼 때까지 화면에서는 끝난 것으로 본다)
   let remoteRunId = null; // 다른 기기(또는 끊긴 연결)에서 진행 중인 응답
   let liveView = null; // 그 응답을 보여주는 말풍선
   let pending = []; // 보낼 첨부 이미지 [{ blob, url }]
@@ -1668,8 +1669,15 @@
     if (data.archived) addGoneNote();
 
     // 진행 중인 응답이 있으면 (다른 기기에서 보냈거나, 화면이 꺼져 연결이 끊긴 경우) 따라가며 보여준다
-    remoteRunId = data.running ? data.runId : null;
-    if (data.running) {
+    // 사용자가 중지를 누른 응답은 서버가 정리하는 동안에도 화면에서 바로 끝난 것으로 보여 준다
+    const stoppedLocal = !!(data.running && stoppingId && (stoppingId === '*' || stoppingId === data.runId));
+    if (!data.running) stoppingId = null;
+    remoteRunId = data.running && !stoppedLocal ? data.runId : null;
+    if (stoppedLocal) {
+      addMessage({ role: 'error', text: '⏹ 중지했습니다.', ts: Date.now() }); // 서버 기록이 오기 전에 먼저 보여 준다 (서버 기록으로 다시 그려지면 바뀐다)
+      setRunning(false);
+      pollTimer = setTimeout(loadConversation, 700);
+    } else if (data.running) {
       const live = { role: 'bot', text: data.live.text, tools: data.live.tools };
       liveView = addMessage(live);
       paint(liveView, live, true);
@@ -3464,6 +3472,7 @@
         : btn('once', T('perm.once'), 'main') + btn('no', T('perm.no'), 'ghost')}</div></div>`;
   }
   function paint(view, m, streaming) {
+    setTimeout(syncStopBtn, 0);
     if (m.role === 'user' && (m.images || m.localImages || m.files)) {
       // 첨부 이미지·파일 + 글 (보내는 중에는 미리보기 주소, 저장 후에는 서버 주소)
       view.bubble.textContent = '';
@@ -3488,6 +3497,10 @@
       }
       view.bubble.appendChild(box);
       if (m.text) view.bubble.appendChild(document.createTextNode(m.text));
+    } else if (m.role === 'error' && /^⏹\s*/.test(m.text)) {
+      view.bubble.textContent = '';
+      const sq = document.createElement('span'); sq.className = 'stop-sq';
+      view.bubble.append(sq, m.text.replace(/^⏹\s*/, ''));
     } else if (m.role === 'user' || m.role === 'error') view.bubble.textContent = m.text;
     else {
       // 크루가 "도구 설치가 필요해요"라고 붙인 표시 줄은 글에서 숨긴다 (쓰는 중인 반쪽짜리 표시도 함께)
@@ -3625,21 +3638,10 @@
     els.status.classList.remove('hidden');
   }
   function setRunning(on) {
-    if (on && voice.on) { // 음성 대화 중에는 클로드가 일해도 노란 ⏹(음성 대화 끄기) 그대로
-      els.send.classList.remove('stop');
-      updateSendState();
-    } else if (on) {
-      els.send.classList.add('stop');
-      els.send.classList.remove('voice-btn');
-      els.send.dataset.mode = 'stop';
-      els.send.textContent = '■';
-      els.send.title = '중지';
-      els.send.disabled = false;
-    } else {
-      els.send.classList.remove('stop');
-      setStatus('');
-      updateSendState();
-    }
+    // 크루가 일하는 중에도 오른쪽 버튼은 그대로(🗣 음성 대화 / ➤). 빨간 ■ 중지는 크루 말풍선 오른쪽으로 옮겼다
+    els.send.classList.remove('stop');
+    if (!on) setStatus('');
+    updateSendState();
   }
 
   // ---------- 전송 & SSE 수신 ----------
@@ -3837,22 +3839,45 @@
   }
 
   async function stopRun() {
-    if (!runId && remoteRunId) {
-      // 다른 기기(또는 끊긴 연결)에서 진행 중인 응답 중지
-      await api('/api/stop', { runId: remoteRunId }).catch(() => {});
+    stoppingId = runId && runId !== 'pending' ? runId : runId ? '*' : remoteRunId;
+    if (!runId && remoteRunId) { // 다른 기기(또는 끊긴 연결)에서 진행 중인 응답 중지
+      const rid = remoteRunId;
+      remoteRunId = null; liveView = null; setRunning(false); loadConversation();
+      await api('/api/stop', { runId: rid }).catch(() => {});
       return;
     }
     const id = runId;
-    if (id && id !== 'pending') await api('/api/stop', { runId: id }).catch(() => {});
-    // 서버가 종료 이벤트를 보내지 않으면 클라이언트 쪽에서도 끊는다
-    setTimeout(() => { if (abortCtl && runId === id) abortCtl.abort(); }, 4000);
+    // 서버에 중지를 알리되 응답을 기다리지 않고, 클라이언트 쪽도 바로 끊는다 (딜레이 없이)
+    const sent = (id && id !== 'pending') ? api('/api/stop', { runId: id }).catch(() => {}) : null;
+    if (abortCtl && runId === id) abortCtl.abort();
+    if (sent) await sent;
   }
 
   // 오른쪽 버튼: 응답 중 ■ 중지 / 입력이 비어 있으면 🗣 음성 대화 모드 / 아니면 ➤ 보내기
   // ■를 눌러도 바로 멈추지 않고, 바텀시트로 한 번 더 묻는다. 묻는 사이에 답변이 끝나면 시트를 닫는다
+  // 크루가 일하는 중이면 마지막 크루 말풍선 오른쪽에 빨간 ■ 중지 버튼을 붙인다 (음성 대화 중에는 숨김)
+  function syncStopBtn() {
+    let b = document.getElementById('bubbleStop');
+    const rows = els.messages.querySelectorAll('.row.bot:not(.error) .line');
+    const line = rows[rows.length - 1];
+    if (!(runId || remoteRunId) || voice.on || !line || (line.querySelector('.bubble')?.textContent || '').trim()) { // 크루가 답을 쓰기 시작하면(생각 중이 끝나면) 숨김
+      if (b) b.remove();
+      els.messages.querySelectorAll('.line.has-stop').forEach((l) => l.classList.remove('has-stop'));
+      return;
+    }
+    if (!b) {
+      b = document.createElement('button');
+      b.id = 'bubbleStop'; b.type = 'button'; b.className = 'bubble-stop'; b.textContent = '■';
+      b.title = window.GAMJA_I18N.t('stop.title');
+      b.onclick = () => confirmStop();
+    }
+    els.messages.querySelectorAll('.line.has-stop').forEach((l) => { if (l !== line) l.classList.remove('has-stop'); });
+    line.classList.add('has-stop'); // 말풍선 바로 오른쪽에 나란히 (CSS)
+    if (b.parentNode !== line) line.appendChild(b);
+  }
   let stopAsking = false;
-  async function confirmStop() {
-    if (stopAsking) return;
+  async function confirmStop(thenStop = true) {
+    if (stopAsking) return false;
     stopAsking = true;
     const T = window.GAMJA_I18N.t;
     const p = gSheet({ title: T('stop.title'), message: T('stop.msg'), ok: T('stop.ok'), cancel: T('stop.cancel'), danger: true });
@@ -3860,7 +3885,8 @@
     const watch = setInterval(() => { if (!runId && !remoteRunId && mine && gsOpen === mine) mine.close(false); }, 500);
     let yes = false;
     try { yes = await p; } finally { clearInterval(watch); stopAsking = false; }
-    if (yes && (runId || remoteRunId)) stopRun();
+    if (yes && thenStop && (runId || remoteRunId)) stopRun();
+    return yes;
   }
   let endAsking = false;
   async function confirmEndVoice() {
@@ -3872,9 +3898,9 @@
     if (yes && voice.on) stopVoice();
   }
   els.send.onclick = () => {
-    if (voice.on) return confirmEndVoice(); // 음성 대화 끝내기는 클로드의 작업을 멈추지 않는다
+    if (voice.on) return stopVoice(); // 확인 없이 바로 종료. 음성 대화 끝내기는 크루의 작업을 멈추지 않는다
+    if (els.send.dataset.mode === 'voice') return startVoice(); // 크루가 생각 중이어도 음성 대화를 시작할 수 있다
     if (runId || remoteRunId) return confirmStop();
-    if (els.send.dataset.mode === 'voice') return startVoice();
     sendMessage();
   };
 
@@ -4101,7 +4127,7 @@
     autoGrow(); // 들어가는 방의 글을 보여 준다 (project는 이미 to로 바뀐 뒤여야 한다)
     renderAttachments();
   }
-  els.input.addEventListener('input', () => { lastTypeAt = Date.now(); autoGrow(); });
+  els.input.addEventListener('input', () => { lastTypeAt = Date.now(); autoGrow(); updateSendState(); });
   (vv || window).addEventListener('resize', autoGrow); // 키보드가 올라오거나 내려가면 상한을 다시 계산한다
   // 스크롤바는 스크롤하는 동안만 얇게 보인다
   let scrollHide = 0;
@@ -4124,23 +4150,23 @@
   // 오른쪽 버튼 모양: 응답 중 ■(setRunning이 처리) / 입력이 비면 🗣 음성 대화(쓸 수 있는 곳만) / 아니면 ➤
   function updateSendState() {
     if (voice.on) { // 음성 대화 중: 이 버튼은 음성 대화 끄기
+      syncStopBtn();
       els.send.dataset.mode = 'voiceon'; els.send.classList.add('voice-btn'); els.send.textContent = '⏹';
       els.send.title = '음성 대화 끄기'; els.send.disabled = false;
       els.send.classList.remove('stop');
       return;
     }
-    if (runId || remoteRunId) { // 음성 대화를 끈 뒤에도 클로드가 일하는 중이면 빨간 중지 버튼으로 돌아온다
-      els.send.classList.add('stop'); els.send.classList.remove('voice-btn');
-      els.send.dataset.mode = 'stop'; els.send.textContent = '■'; els.send.title = '중지'; els.send.disabled = false;
-      return;
-    }
+    syncStopBtn();
+    const running = !!(runId || remoteRunId);
     const hasContent = !!(els.input.value.trim() || pending.length || attachPrep.jobs.size);
+    els.send.classList.remove('stop');
     const voiceOk = !hasContent && micUsable && !!window.speechSynthesis;
     els.send.dataset.mode = voiceOk ? 'voice' : 'send';
     els.send.classList.toggle('voice-btn', voiceOk);
     els.send.textContent = voiceOk ? '🗣' : '➤';
     els.send.title = voiceOk ? '음성 대화' : '전송';
-    els.send.disabled = !hasContent && !voiceOk;
+    els.send.classList.toggle('wait', running && hasContent); // 생각 중에 글을 쓰면 회색(보낼 수 없음)
+    els.send.disabled = (!hasContent && !voiceOk) || (running && !voiceOk); // 일하는 중에는 글을 보낼 수 없다
   }
 
   // ---------- 음성 입력 (Web Speech API, ko-KR) ----------
@@ -4601,7 +4627,12 @@
     if (!pz) {
       pz = document.createElement('button');
       pz.id = 'voicePause'; pz.type = 'button';
-      pz.onclick = () => { if (voiceTap) voiceTap(); };
+      pz.onclick = async () => {
+        if (pz.dataset.phase === 'work') { // 크루를 멈추는 버튼이라 ■ 중지와 똑같이 한 번 묻는다
+          if (!(await confirmStop(false)) || voice.phase !== 'work') return;
+        }
+        if (voiceTap) voiceTap();
+      };
       $('input').parentNode.appendChild(pz);
     }
     pz.dataset.phase = phase;
@@ -4685,6 +4716,27 @@
       if (rem <= 0) { forcePause = true; if (voiceRec) { try { voiceRec.abort(); } catch {} } }
       else if (rem <= 10 && composerBox.classList.contains('voice-paused')) { const pz = $('voicePause'); if (pz) pz.textContent = `${window.GAMJA_I18N.t('voice.speakNow')} · ${window.GAMJA_I18N.t('voice.countdown', { n: rem })}`; }
     }, 500);
+    // 크루가 이미 생각 중일 때 시작했으면: "중지 후 말하기"를 보여 주고, 누르면 멈추고 바로 듣는다. 그냥 끝나면 답을 읽어 준다
+    if (runId || remoteRunId) {
+      const lastBotTs = () => { const b = history.filter((m) => m.role === 'bot' && m.text).pop(); return b ? b.ts : 0; };
+      const ts0 = lastBotTs();
+      let tapped = false;
+      setVoice('work', '');
+      voiceTap = () => { tapped = true; voiceTap = null; setVoice('listen', ''); stopRun(); if (abortCtl) abortCtl.abort(); };
+      while (voice.on && !tapped && (runId || remoteRunId)) await new Promise((ok) => setTimeout(ok, 300));
+      voiceTap = null;
+      if (voice.on && !tapped) {
+        await new Promise((ok) => setTimeout(ok, 900)); // 기록을 다시 받아 오는 시간
+        const b = history.filter((m) => m.role === 'bot' && m.text).pop();
+        if (voice.on && b && b.ts !== ts0) {
+          setVoice('speak', toSpeech(b.text));
+          voiceTap = () => stopSpeaking();
+          await speakAndWait(b.text);
+          voiceTap = null;
+          await new Promise((ok) => setTimeout(ok, 300));
+        }
+      }
+    }
     while (voice.on) {
       setVoice('listen', voiceNote); // 직전에 말이 안 들렸으면 이유를 같이 보여 준다
       voiceTap = null;
@@ -4794,7 +4846,8 @@
     stopBeat();
     holdStop();
     if (voiceRec) { try { voiceRec.abort(); } catch {} }
-    if (voiceTap) voiceTap();
+    // 크루가 생각·작업 중일 때의 탭은 "중지 후 말하기"(크루 멈춤)라서, 음성 대화만 끌 때는 부르지 않는다
+    if (voice.phase === 'work') voiceTap = null; else if (voiceTap) voiceTap();
     stopSpeaking();
     keepAwake(false);
     document.body.classList.remove('voice-on');

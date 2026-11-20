@@ -1105,4 +1105,22 @@ body.voice-on #homeBtn, body.voice-on #menuBtn { pointer-events: none; opacity: 
 }
 #voicePause[data-phase="work"]:active, #voicePause[data-phase="speak"]:active { filter: brightness(.92); transform: scale(.98); }
 /* 중지 후 말하기 알약이 마이크 자리까지 덮는다 (마이크 36px + 간격 4px). 노란 ⏹ 버튼은 그대로 */
-#voicePause[data-phase="work"], #voicePause[data-phase="speak"] { margin-right: -40px; }
+#voicePause[data-phase="work"], #voicePause[data-phase="speak"] { margin-right: -26px; } /* 노란 ⏹ 버튼과 14px 띄움 (왼쪽 ＋ 글자와 알약 사이 눈에 보이는 간격과 비슷하게) */
+
+/* 중지했습니다 앞 ⏹ 이모지가 흰색이라 분홍 배경에서 안 보임 → 빨간 네모로 대신 그린다 */
+.stop-sq { display: inline-block; width: .8em; height: .8em; background: #c81e1e; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+/* 크루가 일하는 중: 말풍선 오른쪽의 빨간 ■ 중지 버튼 */
+.bubble-stop { flex: none; align-self: flex-end; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--danger); color: #fff; font-size: 11px; display: grid; place-items: center; padding: 0; margin-left: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: pointer; }
+.bubble-stop:active { filter: brightness(.9); transform: scale(.95); }
+
+/* 크루가 일하는 중: 말풍선 바로 오른쪽에 ■ 를 나란히 두고, 시간은 아래 줄로 */
+.row.bot .line.has-stop { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 2px 6px; }
+.row.bot .line.has-stop .bubble { max-width: calc(100% - 36px); }
+.row.bot .line.has-stop .time { order: 3; flex-basis: 100%; }
+.row.bot .line.has-stop .bubble-stop { order: 2; margin: 0 0 2px; }
+/* 알약이 덮은 마이크가 빨갛게 깜빡이며 알약 오른쪽으로 삐져나오던 것 → 알약이 덮는 동안 마이크는 숨긴다 */
+.composer-box:has(#voicePause[data-phase="work"]) #micBtn,
+.composer-box:has(#voicePause[data-phase="speak"]) #micBtn { visibility: hidden; animation: none; }
+.send-btn.wait, .send-btn.wait:disabled { background: #8a8a8a; color: #e6e6e6; opacity: .6; }
+body.voice-on .speak-btn:not(.copy-msg-btn) { pointer-events: none; opacity: .3; }
