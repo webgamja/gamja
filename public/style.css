@@ -323,7 +323,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- 이미지 첨부 ---------- */
 .attachments { display: flex; gap: 8px; padding: 8px 8px 4px; overflow-x: auto; }
 .attach { position: relative; flex: none; }
-.attach img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; display: block; border: 1px solid var(--border); }
+.attach img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; display: block; border: 1px solid var(--border); cursor: zoom-in; }
+.photo-view { position: fixed; inset: 0; z-index: 400; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
+.photo-view img { max-width: 100%; max-height: 100%; transform-origin: center; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; will-change: transform; }
+.photo-back { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 10px; z-index: 1; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.18); color: #fff; font-size: 22px; line-height: 44px; padding: 0; cursor: pointer; }
 .attach button {
   position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0;
   background: rgba(0,0,0,.7); color: #fff; font-size: 11px; line-height: 22px; padding: 0;

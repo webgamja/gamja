@@ -148,6 +148,8 @@
   let remoteRunId = null; // 다른 기기(또는 끊긴 연결)에서 진행 중인 응답
   let liveView = null; // 그 응답을 보여주는 말풍선
   let pending = []; // 보낼 첨부 이미지 [{ blob, url }]
+  // 고른 사진을 줄이는 중인 작업들. 다 끝나기 전에 전송을 누르면 sendMessage가 기다렸다가 한꺼번에 보낸다
+  const attachPrep = { jobs: new Set(), count: 0, waiting: false };
   const voice = { on: false, phase: '' }; // 🗣 음성 대화 모드 상태
   // 새 글이 쓰이는 동안 화면이 따라 내려갈지. 읽던 곳을 보려고 위로 올리면 멈추고, 맨 아래로 돌아오면 다시 따라간다
   let follow = true;
@@ -1065,6 +1067,72 @@
     $('viewTitle').textContent = title;
     if (what.doc) { frame.srcdoc = what.doc; } else { frame.removeAttribute('srcdoc'); frame.src = what.src; }
     viewEl.classList.remove('hidden');
+  }
+  // 사진 크게 보기: 채팅 화면을 벗어나지 않고 그 위에 바로 띄운다 (두 손가락 확대, 확대 중 끌어서 옮기기, 두 번 톡 확대/원래대로, ← 나 뒤로 가기로 닫기)
+  let photoEl = null;
+  const photoOpen = () => !!photoEl && !photoEl.classList.contains('hidden');
+  function closePhoto() { if (photoEl) { photoEl.classList.add('hidden'); photoEl.querySelector('img').removeAttribute('src'); } }
+  function openPhoto(src) {
+    if (!src) return;
+    if (!photoEl) {
+      photoEl = document.createElement('div');
+      photoEl.className = 'photo-view hidden';
+      photoEl.innerHTML = '<button type="button" class="photo-back" data-no-i18n>←</button><img alt="" draggable="false">';
+      document.body.appendChild(photoEl);
+      const img = photoEl.querySelector('img');
+      const back = photoEl.querySelector('button');
+      back.title = window.GAMJA_I18N.t('photo.close');
+      back.onclick = closePhoto;
+      let s = 1, x = 0, y = 0, g = null, lastTap = 0;
+      const ap = () => { img.style.transform = `translate(${x}px,${y}px) scale(${s})`; };
+      const lim = () => {
+        const mx = Math.max(0, (img.offsetWidth * s - photoEl.clientWidth) / 2);
+        const my = Math.max(0, (img.offsetHeight * s - photoEl.clientHeight) / 2);
+        x = Math.max(-mx, Math.min(mx, x));
+        y = Math.max(-my, Math.min(my, y));
+      };
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const mid = (t) => (t.length > 1 ? { x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 } : { x: t[0].clientX, y: t[0].clientY });
+      const begin = (t, moved) => { const p = mid(t); g = { n: t.length, s, x, y, px: p.x, py: p.y, d: t.length > 1 ? dist(t) : 0, moved }; };
+      photoEl._reset = () => { s = 1; x = 0; y = 0; g = null; ap(); };
+      photoEl.addEventListener('touchstart', (e) => { if (!e.target.closest('button')) begin(e.touches, !!g); }, { passive: true });
+      photoEl.addEventListener('touchmove', (e) => {
+        if (!g) return;
+        e.preventDefault();
+        if (e.touches.length !== g.n) { begin(e.touches, true); return; }
+        const p = mid(e.touches);
+        if (Math.abs(p.x - g.px) + Math.abs(p.y - g.py) > 8 || g.n > 1) g.moved = true;
+        if (g.n > 1) { // 손가락 사이의 점이 그대로 손가락 밑에 있도록 확대한다
+          const ns = Math.max(1, Math.min(5, g.s * dist(e.touches) / g.d));
+          const cx = photoEl.clientWidth / 2, cy = photoEl.clientHeight / 2;
+          x = p.x - cx - ns * (g.px - cx - g.x) / g.s;
+          y = p.y - cy - ns * (g.py - cy - g.y) / g.s;
+          s = ns;
+        } else if (s > 1) {
+          x = g.x + p.x - g.px;
+          y = g.y + p.y - g.py;
+        } else return;
+        lim();
+        ap();
+      }, { passive: false });
+      const end = (e) => {
+        if (e.touches.length) { begin(e.touches, true); return; }
+        if (g && !g.moved && g.n === 1 && !e.target.closest('button')) { // 두 번 톡: 확대 ↔ 원래대로
+          const now = Date.now();
+          if (now - lastTap < 300) { s = s > 1 ? 1 : 2.5; x = 0; y = 0; lastTap = 0; } else lastTap = now;
+        }
+        g = null;
+        if (s < 1.03) { s = 1; x = 0; y = 0; }
+        lim();
+        ap();
+      };
+      photoEl.addEventListener('touchend', end);
+      photoEl.addEventListener('touchcancel', end);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && photoOpen()) closePhoto(); });
+    }
+    photoEl._reset();
+    photoEl.querySelector('img').src = src;
+    photoEl.classList.remove('hidden');
   }
   $('viewDownload').onclick = () => {
     if (!viewDl) return;
@@ -2332,6 +2400,7 @@
   }
   // 감자 앱의 뒤로 가기 버튼: 열려 있는 창부터 하나씩 닫는다 (닫았으면 true). 위에 있는 창부터 확인
   window.gamjaBack = () => {
+    if (photoOpen()) { closePhoto(); return true; } // 사진 크게 보기가 맨 위에 뜬다
     if (gsOpen) { gsOpen.close(false); return true; } // 확인 시트가 열려 있으면 그것부터 닫는다
     if (!groupSheetEl.classList.contains('hidden')) { closeGroupSheet(); return true; }
     if (!sheetEl.classList.contains('hidden')) { closeSheet(); return true; }
@@ -3408,7 +3477,7 @@
         img.src = src;
         img.alt = '첨부 이미지';
         img.loading = 'lazy';
-        img.onclick = () => window.open(src, '_blank');
+        img.onclick = () => openPhoto(src);
         box.appendChild(img);
       }
       view.bubble.appendChild(box);
@@ -3575,9 +3644,23 @@
     return { names, only: members.filter((c) => text.includes(`@${names[c]}`)) };
   }
   async function sendMessage(opts = {}) {
-    const text = els.input.value.trim();
-    if ((!text && !pending.length) || runId) return null;
+    let text = els.input.value.trim();
+    if ((!text && !pending.length && !attachPrep.jobs.size) || runId) return null;
     if (remoteRunId) { alert('이전 응답이 아직 진행 중이에요. 끝난 뒤에 보내 주세요.'); return null; }
+    // 고른 사진을 아직 준비하는 중이면, 다 준비될 때까지 기다렸다가 한꺼번에 보낸다 (기다리는 동안 또 누르면 무시)
+    if (attachPrep.jobs.size) {
+      if (attachPrep.waiting) return null;
+      attachPrep.waiting = true;
+      const proj0 = project;
+      setStatus(window.GAMJA_I18N.t('attach.preparing'));
+      try {
+        while (attachPrep.jobs.size) await Promise.all([...attachPrep.jobs]).catch(() => {});
+      } finally { attachPrep.waiting = false; }
+      setStatus('');
+      if (runId || remoteRunId || project !== proj0) return null; // 기다리는 사이 다른 방으로 갔으면 보내지 않는다
+      text = els.input.value.trim();
+      if (!text && !pending.length) return null;
+    }
     window.gaTrack('message_send');
     stopListening();
     stopSpeaking();
@@ -3835,16 +3918,28 @@
   const overLimitText = () => window.GAMJA_I18N.t('attach.limit', { n: MAX_IMAGES });
   async function addAttachments(files) {
     files = files.filter(Boolean);
-    const room = MAX_IMAGES - pending.length;
+    const room = MAX_IMAGES - pending.length - attachPrep.count;
     if (files.length > Math.max(room, 0)) toast(overLimitText());
-    for (const f of files.slice(0, Math.max(room, 0))) {
-      try {
-        pending.push(await prepareImage(f));
-      } catch (err) {
-        alert(`${f.name ? `'${f.name}': ` : ''}${err.message}`);
+    const list = files.slice(0, Math.max(room, 0));
+    if (!list.length) return;
+    attachPrep.count += list.length;
+    const job = (async () => {
+      for (const f of list) {
+        try {
+          pending.push(await prepareImage(f));
+        } catch (err) {
+          alert(`${f.name ? `'${f.name}': ` : ''}${err.message}`);
+        } finally {
+          attachPrep.count--;
+        }
       }
+    })();
+    attachPrep.jobs.add(job);
+    updateSendState();
+    try { await job; } finally {
+      attachPrep.jobs.delete(job);
+      renderAttachments();
     }
-    renderAttachments();
   }
   function renderAttachments() {
     attachBox.innerHTML = '';
@@ -3860,6 +3955,7 @@
       } else {
         item.innerHTML = `<img alt="첨부 미리보기"><button type="button" title="빼기">✕</button>`;
         item.querySelector('img').src = a.url;
+        item.querySelector('img').onclick = () => openPhoto(a.url);
       }
       item.querySelector('button').onclick = () => {
         if (a.url) URL.revokeObjectURL(a.url);
@@ -4004,7 +4100,7 @@
   // 오른쪽 버튼 모양: 응답 중 ■(setRunning이 처리) / 입력이 비면 🗣 음성 대화(쓸 수 있는 곳만) / 아니면 ➤
   function updateSendState() {
     if (runId || remoteRunId) { els.send.disabled = false; return; }
-    const hasContent = !!(els.input.value.trim() || pending.length);
+    const hasContent = !!(els.input.value.trim() || pending.length || attachPrep.jobs.size);
     const voiceOk = !hasContent && micUsable && !!window.speechSynthesis;
     els.send.dataset.mode = voiceOk ? 'voice' : 'send';
     els.send.classList.toggle('voice-btn', voiceOk);
