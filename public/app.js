@@ -1563,14 +1563,20 @@
   let reloadSince = 0;
   const speaking = () => !!(synth && (synth.speaking || synth.pending));
   let importBusyNow = false; // 이사오기 올리기·설치 중
-  function requestReload() {
+  let lastTypeAt = 0; // 입력칸에 마지막으로 글자를 친 시각
+  // 사람이 쓰는 중이거나 크루가 답하는 중인지: 이때 새로고침하면 쓰던 글(조합 중인 한글)·붙여 둔 사진·답하는 화면이 사라진다
+  const composeBusy = () => !!(runId || remoteRunId || pending.length || attachPrep.jobs.size ||
+    Date.now() - lastTypeAt < 30000 || (document.activeElement === els.input && els.input.value.trim()));
+  // user: 사용자가 직접 새로고침을 당겼을 때 (그때는 글쓰기 확인은 건너뛴다)
+  function requestReload(user = false) {
     // 알림창이 열려 있거나 이사오기를 올리는 중이면 닫을 때까지 미룬다 (알림창이 뜨자마자 사라지지 않게)
-    if (voice.on || speaking() || gsOpen || importBusyNow) { if (!reloadSince) reloadSince = Date.now(); return false; }
+    if (voice.on || speaking() || gsOpen || importBusyNow || (!user && composeBusy())) { if (!reloadSince) reloadSince = Date.now(); return false; }
     location.reload();
     return true;
   }
+  // 미뤄 둔 새로고침만 1초마다 다시 확인한다 (화면 안의 값만 보고, 감자알에는 묻지 않는다)
   setInterval(() => {
-    if (!reloadSince || runId || remoteRunId) return;
+    if (!reloadSince || composeBusy()) return;
     if (voice.on || (speaking() && Date.now() - reloadSince < 90000)) return;
     if ((gsOpen || importBusyNow) && Date.now() - reloadSince < 600000) return; // 알림창·이사오기 중에는 최대 10분까지 미룬다
     reloadSince = 0;
@@ -1903,7 +1909,7 @@
     try {
       const s = await api('/api/status' + q());
       // 감자알이 다시 켜졌다(자동 업데이트·재시작) → 새 화면 코드를 받도록 새로고침. 입력하던 글이 있으면 지우지 않도록 미룬다
-      if (s.boot && bootId && s.boot !== bootId && !runId && !remoteRunId && !els.input.value.trim()) {
+      if (s.boot && bootId && s.boot !== bootId) { // 쓰는 중·답하는 중이면 requestReload가 미뤘다가 끝나면 한다
         bootId = s.boot; // 미루는 동안 같은 일을 되풀이해서 확인하지 않도록
         if (requestReload()) return;
       }
@@ -4077,7 +4083,7 @@
     autoGrow(); // 들어가는 방의 글을 보여 준다 (project는 이미 to로 바뀐 뒤여야 한다)
     renderAttachments();
   }
-  els.input.addEventListener('input', autoGrow);
+  els.input.addEventListener('input', () => { lastTypeAt = Date.now(); autoGrow(); });
   (vv || window).addEventListener('resize', autoGrow); // 키보드가 올라오거나 내려가면 상한을 다시 계산한다
   // 스크롤바는 스크롤하는 동안만 얇게 보인다
   let scrollHide = 0;
@@ -4706,7 +4712,7 @@
       ind.classList.remove('drag');
       ind.classList.add('spin');
       show(60, true);
-      setTimeout(() => { if (!requestReload()) { ind.classList.remove('spin'); reset(); } }, 250);
+      setTimeout(() => { if (!requestReload(true)) { ind.classList.remove('spin'); reset(); } }, 250);
     };
     document.addEventListener('touchend', end, { passive: true });
     document.addEventListener('touchcancel', reset, { passive: true });
