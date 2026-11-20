@@ -1374,11 +1374,11 @@ function handleChat(req, res, body, opts = {}) {
     args.push('--add-dir', crewDir);
     try { crewGuide = fs.readFileSync(path.join(crewDir, 'CLAUDE.md'), 'utf8').slice(0, 20000); } catch { /* 지침 파일이 없는 크루 */ }
   }
-  // 프로젝트 설정이 전체 설정보다 우선. 음성 대화는 빨리 답해야 하므로 항상 Sonnet (글 채팅은 설정 그대로)
-  const model = body.voice === true && !opts.label ? 'sonnet' : (projectConf[crewOf(project)]?.model || settings.model);
+  // 프로젝트 설정이 전체 설정보다 우선. 음성 대화도 글 채팅과 같은 모델·생각 깊이 설정을 따른다
+  const model = projectConf[crewOf(project)]?.model || settings.model;
   if (model) args.push('--model', model);
-  // 생각 깊이: 음성 대화는 빨리 답해야 하므로 항상 low. 그 외에는 프로젝트 설정 → 전체 설정 순
-  const effort = body.voice === true && !opts.label ? 'low' : (projectConf[crewOf(project)]?.effort || settings.effort);
+  // 생각 깊이: 프로젝트 설정 → 전체 설정 순
+  const effort = projectConf[crewOf(project)]?.effort || settings.effort;
   if (effort) args.push('--effort', effort);
   const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), githubPrompt(project), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : ''].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
