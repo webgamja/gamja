@@ -1563,6 +1563,8 @@
       data.messages.at(-1)?.ts === history.at(-1)?.ts && els.messages.children.length && !els.messages.querySelector('.loading')) {
       sessionId = data.sessionId;
       setRunning(false);
+      // 기록이 그대로여도 읽음 처리는 한다 (화면이 꺼진 사이 받은 답은 그때 읽음 처리를 건너뛰었으므로, 돌아와 다시 불러올 때 여기서 처리)
+      if (tab === null) markSeen();
       return;
     }
     // 폴링 중 기록이 그대로면 진행 중인 말풍선만 갱신 (긴 대화를 매번 다시 그리지 않도록)
@@ -3635,6 +3637,8 @@
     };
     let lastWasTool = false;
     let finished = false;
+    const sentProject = project;
+    let inRoomAtEnd = false; // 답이 끝나는 순간 채팅방 안에 있었는지 (그 직후 ←로 나가도 이 답은 읽은 것으로 친다)
     let errorMsg = null;
     let rejected = false; // 서버가 받지 않은 메시지 (입력창에 되돌려 놓음)
 
@@ -3719,6 +3723,7 @@
     } finally {
       clearInterval(watchdog);
       if (raf) cancelAnimationFrame(raf);
+      inRoomAtEnd = tab === null && !document.hidden;
       runId = null;
       abortCtl = null;
       setRunning(false);
@@ -3731,6 +3736,8 @@
     }
     // 답변과 오류는 서버가 기록했다 → 서버 기록으로 다시 그린다 (연결이 끊겼으면 진행 중 응답을 따라감)
     await loadConversation();
+    // 답이 끝날 때 방 안에서 보고 있었는데, 기록을 다시 받는 사이 채팅 목록으로 나갔으면 여기서 읽음 처리한다
+    if (finished && inRoomAtEnd && tab !== null && project === sentProject) markSeen();
     // 검사 실패 시 서버가 곧바로 자동 후속 실행을 시작하므로 한 번 더 확인
     setTimeout(() => { if (!runId && !remoteRunId && !awaitingRestart) loadConversation(); }, 1500);
     if (!opts.voice && ttsOn && finished && bot.text && !errorMsg) speak(bot.text, false, [...els.messages.querySelectorAll('.row.bot .bubble')].pop()); // 음성 대화 모드는 직접 읽어 줌

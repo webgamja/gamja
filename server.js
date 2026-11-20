@@ -475,6 +475,20 @@ const MIME = {
   '.png': 'image/png',
   '.webmanifest': 'application/manifest+json',
 };
+// 앱 사용 통계(구글 애널리틱스)의 사용자 구분 번호. 쿠키는 접속 주소(127·192·도메인)마다 따로라 한 사람이 여러 명으로 세어지므로,
+// 폰마다 한 번 만든 임의의 번호를 대신 쓴다 (개인을 알아볼 수 없는 무작위 값). data/ga-internal 파일이 있으면 개발폰으로 표시한다
+let gaCid = '';
+function gaConfig() {
+  if (!gaCid) {
+    const f = path.join(DATA_DIR, 'ga-client-id');
+    try { gaCid = fs.readFileSync(f, 'utf8').trim(); } catch { gaCid = ''; }
+    if (!/^\d{6,12}\.\d{9,11}$/.test(gaCid)) {
+      gaCid = `${crypto.randomInt(1e8, 2 ** 31)}.${Math.floor(Date.now() / 1000)}`;
+      try { fs.writeFileSync(f, gaCid + '\n'); } catch { /* 못 쓰면 이번 실행 동안만 */ }
+    }
+  }
+  return { cid: gaCid, internal: fs.existsSync(path.join(DATA_DIR, 'ga-internal')) };
+}
 function serveStatic(req, res, urlPath) {
   const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
@@ -3959,6 +3973,11 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       return send(res, 404, { error: 'not found' });
     }
 
+    // 앱 사용 통계 설정 (analytics.js보다 먼저 읽힌다): 폰마다 한 번 만든 임의의 번호와 개발폰 표시
+    if (p === '/ga-config.js' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(`window.GAMJA_GA=${JSON.stringify(gaConfig())};`);
+    }
     if (req.method === 'GET') return serveStatic(req, res, p);
     send(res, 405, 'method not allowed');
   } catch (e) {

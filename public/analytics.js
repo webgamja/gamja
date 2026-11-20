@@ -18,11 +18,22 @@
   window.dataLayer = window.dataLayer || [];
   window.gtag = function () { window.dataLayer.push(arguments); };
   var lang = String(navigator.language || 'ko').slice(0, 2).toLowerCase() === 'ko' ? 'ko' : 'en';
+  // 감자알이 알려 준 폰마다의 임의 번호: 어떤 주소로 접속해도 같은 사용자로 센다 (없으면 구글 기본값인 쿠키를 쓴다)
+  var cfg = window.GAMJA_GA || {};
+  var cid = /^\d+\.\d+$/.test(String(cfg.cid || '')) ? String(cfg.cid) : '';
+  // 접속 방식만 보낸다 (주소는 보내지 않는다): local = 이 폰, lan = 같은 와이파이, remote = 외부
+  var host = String(location.hostname || '');
+  var access = /^(127\.|localhost$|\[?::1\]?$)/.test(host) ? 'local'
+    : /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /\.local$/.test(host) ? 'lan' : 'remote';
+  var base = { lang: lang, access: access, page_location: 'app://console/', page_title: 'console' };
+  if (cfg.internal) base.traffic_type = 'internal'; // 개발폰: 구글 애널리틱스의 "내부 트래픽" 필터로 뺄 수 있다
   window.gtag('js', new Date());
-  window.gtag('config', GA_MEASUREMENT_ID, {
+  var conf = {
     send_page_view: false, anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false,
     page_location: 'app://console/', page_title: 'console', page_referrer: '',
-  });
+  };
+  if (cid) conf.client_id = cid;
+  window.gtag('config', GA_MEASUREMENT_ID, conf);
   var s = document.createElement('script');
   s.async = true;
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(GA_MEASUREMENT_ID);
@@ -33,7 +44,8 @@
     try {
       var keys = ALLOWED[name];
       if (!keys) return;
-      var out = { lang: lang, page_location: 'app://console/', page_title: 'console' };
+      var out = {};
+      for (var b in base) out[b] = base[b];
       keys.forEach(function (k) {
         var v = params && params[k];
         if (k === 'kit' && !KIT_OK[v]) return;
