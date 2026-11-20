@@ -1102,7 +1102,6 @@ function download(url, dest, redirects = 5) {
 let tunnelPinFails = 0, tunnelPinLockUntil = 0, tunnelUnlockUntil = 0; // SSL Connect 암호 시도 제한, 통과 뒤 10분 동안 켤 수 있다
 const PRO_MODE = process.env.GAMJA_PRO === '1' || fs.existsSync(path.join(DATA_DIR, 'pro-mode'));
 async function startTunnel() {
-  if (!PRO_MODE) return; // 화면을 거치지 않고 부르더라도 막는다
   if (tunnel.status === 'on' || tunnel.status === 'starting') return;
   Object.assign(tunnel, { status: 'starting', url: null, error: null });
   try {
@@ -3703,7 +3702,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       }
       if (p === '/api/tunnel' && req.method === 'GET') {
         if (tunnel.status === 'on' && !pidAlive(tunnel.pid)) stopTunnel(); // 터널이 혼자 꺼졌으면 정리
-        return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12, pro: PRO_MODE });
+        return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12, pro: true }); // SSL Connect는 암호로 막으므로 Pro가 아니어도 연다
       }
       if (p === '/api/tunnel/auth' && req.method === 'POST') { // SSL Connect 메뉴 암호 확인 (암호 = 감자 비밀번호 + 11!!)
         const { pin } = await readBody(req);
@@ -3720,7 +3719,6 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       }
       if (p === '/api/tunnel' && req.method === 'POST') {
         const { on } = await readBody(req);
-        if (on && !PRO_MODE) return send(res, 403, { error: '외부 접속 주소는 Pro에서 제공할 예정이에요. (준비 중)' });
         if (on && tunnel.status !== 'on' && tunnel.status !== 'starting' && Date.now() > tunnelUnlockUntil) return send(res, 403, { error: '암호를 먼저 입력해 주세요.' });
         if (on) startTunnel(); else stopTunnel(); // 켜기는 오래 걸리므로 기다리지 않고, 화면이 상태를 따라감
         return send(res, 200, { ...tunnel });

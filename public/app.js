@@ -4715,8 +4715,8 @@
     return new Promise((resolve) => { voiceTap = () => { voiceTap = null; resolve(); }; });
   }
   async function voiceLoop() {
-    // 말이 없는 채로 60초가 지나면 대기로 넘어간다. 마지막 10초(50초 뒤부터)는 노란 안내에 남은 초를 보여 준다.
-    const SILENCE_MS = 60000;
+    // 말이 없는 채로 30초가 지나면 대기로 넘어간다. 마지막 10초(20초 뒤부터)는 노란 안내에 남은 초를 보여 준다.
+    const SILENCE_MS = 30000;
     let silentSince = 0;
     let forcePause = false;
     const tick = setInterval(() => {
@@ -4725,7 +4725,7 @@
       if (els.input.value.trim()) { silentSince = Date.now(); return; } // 글자로 말이 들어오는 중이면 세지 않는다
       const rem = Math.ceil((SILENCE_MS - (Date.now() - silentSince)) / 1000);
       if (rem <= 0) { forcePause = true; if (voiceRec) { try { voiceRec.abort(); } catch {} } }
-      else if (rem <= 10 && composerBox.classList.contains('voice-paused')) { const pz = $('voicePause'); if (pz) pz.textContent = `${window.GAMJA_I18N.t('voice.speakNow')} · ${window.GAMJA_I18N.t('voice.countdown', { n: rem })}`; }
+      else if (rem <= 10 && composerBox.classList.contains('voice-paused')) { const pz = $('voicePause'); if (pz) pz.textContent = window.GAMJA_I18N.t('voice.countdown', { n: rem }); }
     }, 500);
     // 크루가 이미 생각 중일 때 시작했으면: "중지 후 말하기"를 보여 주고, 누르면 멈추고 바로 듣는다. 그냥 끝나면 답을 읽어 준다
     if (runId || remoteRunId) {

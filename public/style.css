@@ -1099,13 +1099,14 @@ button.settings-row.gh-row { display: flex; width: 100%; font: inherit; color: i
 body.voice-on #homeBtn, body.voice-on #menuBtn { pointer-events: none; opacity: .4; }
 #voicePause[data-phase="speak"], #voicePause[data-phase="paused"] { font-size: 13px; } /* 좁은 폰에서 안내 글이 ...로 잘리지 않게 */
 /* 크루가 생각·말하는 중: "중지 후 말하기"를 눌러야 하는 알약 버튼처럼 보이게 */
-#voicePause[data-phase="work"], #voicePause[data-phase="speak"] {
+#voicePause[data-phase="work"], #voicePause[data-phase="speak"], #voicePause[data-phase="paused"] {
   background: var(--me); color: var(--me-fg); font-weight: 700; font-size: 14px; justify-content: center; text-align: center;
   border-radius: 18px; margin: 1px 4px; padding: 0 12px; box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: pointer;
 }
-#voicePause[data-phase="work"]:active, #voicePause[data-phase="speak"]:active { filter: brightness(.92); transform: scale(.98); }
+#voicePause[data-phase="work"]:active, #voicePause[data-phase="speak"]:active, #voicePause[data-phase="paused"]:active { filter: brightness(.92); transform: scale(.98); }
 /* 중지 후 말하기 알약이 마이크 자리까지 덮는다 (마이크 36px + 간격 4px). 노란 ⏹ 버튼은 그대로 */
-#voicePause[data-phase="work"], #voicePause[data-phase="speak"] { margin-right: -26px; } /* 노란 ⏹ 버튼과 14px 띄움 (왼쪽 ＋ 글자와 알약 사이 눈에 보이는 간격과 비슷하게) */
+#voicePause[data-phase="work"], #voicePause[data-phase="speak"], #voicePause[data-phase="paused"] { margin-right: -26px; }
+#voicePause[data-phase="paused"] { font-size: 13px; } /* 노란 ⏹ 버튼과 14px 띄움 (왼쪽 ＋ 글자와 알약 사이 눈에 보이는 간격과 비슷하게) */
 
 /* 중지했습니다 앞 ⏹ 이모지가 흰색이라 분홍 배경에서 안 보임 → 빨간 네모로 대신 그린다 */
 .stop-sq { display: inline-block; width: .8em; height: .8em; background: #c81e1e; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
@@ -1121,6 +1122,7 @@ body.voice-on #homeBtn, body.voice-on #menuBtn { pointer-events: none; opacity: 
 .row.bot .line.has-stop .bubble-stop { order: 2; margin: 0 0 2px; }
 /* 알약이 덮은 마이크가 빨갛게 깜빡이며 알약 오른쪽으로 삐져나오던 것 → 알약이 덮는 동안 마이크는 숨긴다 */
 .composer-box:has(#voicePause[data-phase="work"]) #micBtn,
-.composer-box:has(#voicePause[data-phase="speak"]) #micBtn { visibility: hidden; animation: none; }
+.composer-box:has(#voicePause[data-phase="speak"]) #micBtn,
+.composer-box:has(#voicePause[data-phase="paused"]) #micBtn { visibility: hidden; animation: none; }
 .send-btn.wait, .send-btn.wait:disabled { background: #8a8a8a; color: #e6e6e6; opacity: .6; }
 body.voice-on .speak-btn:not(.copy-msg-btn) { pointer-events: none; opacity: .3; }
