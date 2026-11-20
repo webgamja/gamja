@@ -4496,8 +4496,43 @@
     confirm: '⏳ 곧 보낼게요 — 원을 누르면 취소', work: '🤔 작업 중...',
     speak: '🔊 말하는 중 — 원을 누르면 끊고 말할 수 있어요', paused: '⏸ 쉬는 중 — 원을 누르면 다시 들어요',
   };
+  // 작업 중 알림음: 크루가 생각·작업하는 동안 1초마다 작은 "뚜-둥" (운전 중에도 아직 일하는 중인 걸 알 수 있게)
+  let beatCtx = null, beatTimer = 0;
+  function beatUnlock() { // 음성 대화를 켜는 손동작 때 소리 장치를 깨워 둔다 (폰은 손동작 없이 소리를 못 낸다)
+    try {
+      if (!beatCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) beatCtx = new AC(); }
+      if (beatCtx && beatCtx.state === 'suspended') beatCtx.resume();
+    } catch { beatCtx = null; }
+  }
+  function beatOnce() {
+    const c = beatCtx;
+    if (!c) return;
+    if (c.state === 'suspended') c.resume();
+    const tone = (f, dur, gain, at) => {
+      const t = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(c.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    };
+    tone(440, 0.12, 0.18, 0);
+    tone(660, 0.16, 0.16, 0.17);
+  }
+  function stopBeat() { clearInterval(beatTimer); beatTimer = 0; }
+  function startBeat() {
+    if (beatTimer) return;
+    beatUnlock();
+    beatTimer = setInterval(() => {
+      if (!voice.on || voice.phase !== 'work') return stopBeat();
+      if (!speaking()) beatOnce(); // 안내 음성을 읽는 동안에는 쉰다
+    }, 1000);
+  }
   function setVoice(phase, text) {
     voice.phase = phase;
+    if (phase === 'work') startBeat(); else stopBeat();
     voiceEl.dataset.phase = phase;
     $('voiceState').textContent = VOICE_LABEL[phase] || '';
     if (text !== undefined) $('voiceText').textContent = text;
@@ -4573,7 +4608,11 @@
       }
       if (!said) {
         // 두 번 연속 말이 없으면 쉬기 (계속 다시 켜면 휴대폰이 매번 알림음을 냄)
-        if (++silent >= 2) { setVoice('paused'); await waitForTap(); silent = 0; }
+        if (++silent >= 2) {
+          await speakAndWait(window.GAMJA_I18N.t('voice.waiting')); // 운전 중에도 쉬는 중으로 바뀐 걸 알 수 있게 말로 알린다
+          if (!voice.on) break;
+          setVoice('paused'); await waitForTap(); silent = 0;
+        }
         continue;
       }
       silent = 0;
@@ -4637,6 +4676,7 @@
     stopListening();
     stopSpeaking();
     if (synth) synth.speak(new SpeechSynthesisUtterance('')); // 휴대폰: 사용자 동작으로 읽기 기능 잠금 해제
+    beatUnlock(); // 작업 중 알림음도 같은 손동작으로 잠금 해제
     voice.on = true;
     voiceEl.classList.remove('hidden');
     keepAwake(true);
@@ -4644,6 +4684,7 @@
   }
   function stopVoice() {
     voice.on = false;
+    stopBeat();
     if (voiceRec) { try { voiceRec.abort(); } catch {} }
     if (voiceTap) voiceTap();
     stopSpeaking();
