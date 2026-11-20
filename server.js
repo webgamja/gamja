@@ -1099,6 +1099,7 @@ function download(url, dest, redirects = 5) {
 }
 // 개발자·Pro 모드: 외부 접속 주소(인터넷 터널)는 Pro에서 우리 서버로 제공할 예정이라, 무료 감자에서는 막아 둔다.
 // 개발 중인 폰에서만 data/pro-mode 파일을 두거나 .env에 GAMJA_PRO=1을 적으면 켜진다
+let tunnelPinFails = 0, tunnelPinLockUntil = 0, tunnelUnlockUntil = 0; // SSL Connect 암호 시도 제한, 통과 뒤 10분 동안 켤 수 있다
 const PRO_MODE = process.env.GAMJA_PRO === '1' || fs.existsSync(path.join(DATA_DIR, 'pro-mode'));
 async function startTunnel() {
   if (!PRO_MODE) return; // 화면을 거치지 않고 부르더라도 막는다
@@ -3704,9 +3705,23 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         if (tunnel.status === 'on' && !pidAlive(tunnel.pid)) stopTunnel(); // 터널이 혼자 꺼졌으면 정리
         return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12, pro: PRO_MODE });
       }
+      if (p === '/api/tunnel/auth' && req.method === 'POST') { // SSL Connect 메뉴 암호 확인 (암호는 .env의 TUNNEL_PIN)
+        const { pin } = await readBody(req);
+        const want = Buffer.from(process.env.TUNNEL_PIN || '');
+        const got = Buffer.from(String(pin || ''));
+        if (Date.now() < tunnelPinLockUntil) return send(res, 429, { error: '암호를 여러 번 틀렸어요. 잠시 뒤에 다시 해 주세요.' });
+        if (!want.length || want.length !== got.length || !crypto.timingSafeEqual(want, got)) {
+          if (++tunnelPinFails >= 5) { tunnelPinFails = 0; tunnelPinLockUntil = Date.now() + 60000; }
+          return send(res, 403, { error: '암호가 맞지 않아요.' });
+        }
+        tunnelPinFails = 0;
+        tunnelUnlockUntil = Date.now() + 10 * 60000;
+        return send(res, 200, { ok: true });
+      }
       if (p === '/api/tunnel' && req.method === 'POST') {
         const { on } = await readBody(req);
         if (on && !PRO_MODE) return send(res, 403, { error: '외부 접속 주소는 Pro에서 제공할 예정이에요. (준비 중)' });
+        if (on && tunnel.status !== 'on' && tunnel.status !== 'starting' && Date.now() > tunnelUnlockUntil) return send(res, 403, { error: '암호를 먼저 입력해 주세요.' });
         if (on) startTunnel(); else stopTunnel(); // 켜기는 오래 걸리므로 기다리지 않고, 화면이 상태를 따라감
         return send(res, 200, { ...tunnel });
       }

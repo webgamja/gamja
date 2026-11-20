@@ -273,6 +273,7 @@
         input.value = field.value || '';
         input.placeholder = field.placeholder || '';
         input.readOnly = !!field.readonly;
+        if (field.secret) { input.style.webkitTextSecurity = 'disc'; input.inputMode = 'numeric'; } // 암호는 점으로 가린다
         input.rows = field.readonly ? Math.min(6, Math.max(2, Math.ceil(input.value.length / 28))) : 1;
       }
       const asks = !!input && !field.readonly; // 글을 입력받는 시트
@@ -2937,14 +2938,24 @@
   $('lanShowApp').onclick = () => {
     try { window.GamjaApp.showAddress(); } catch { toast('감자 앱에서만 쓸 수 있어요'); }
   };
-  $('tunnelBtn').onclick = () => {
+  function openTunnelPanel(ssl) {
     const T = window.GAMJA_I18N.t;
     for (const [id, key] of [['extTitle', 'ext.title'], ['lanH', 'ext.lanH'], ['lanLabel', 'ext.lanLabel'], ['lanNote', 'ext.lanNote'],
       ['lanShowApp', 'ext.lanShowApp'], ['lanPwNote', 'ext.lanPwNote'], ['lanQrHint', 'ext.qrHint'], ['lanCopy', 'ext.copy'], ['proH', 'ext.proH'], ['proLockedTitle', 'ext.proTitle'], ['proLockedNote', 'ext.proNote']]) $(id).textContent = T(key);
+    $('lanPart').classList.toggle('hidden', ssl); // 외부 접속은 같은 와이파이만, SSL Connect는 https 주소만 보여 준다
+    $('sslPart').classList.toggle('hidden', !ssl);
+    if (ssl) $('extTitle').textContent = '🔒 SSL Connect';
     els.menu.classList.add('hidden');
     tunnelEl.classList.remove('hidden');
-    refreshLan();
+    if (!ssl) refreshLan();
     refreshTunnel();
+  }
+  $('tunnelBtn').onclick = () => openTunnelPanel(false);
+  $('sslBtn').onclick = async () => { // 눌러서 암호를 통과해야 열린다
+    const pin = await gSheet({ title: '암호를 입력해 주세요', message: 'SSL Connect는 암호가 있어야 열 수 있어요.', ok: '확인', field: { value: '', placeholder: '암호', secret: true } });
+    if (!pin) return;
+    try { await api('/api/tunnel/auth', { pin }); } catch (err) { return alert(err.message); }
+    openTunnelPanel(true);
   };
   $('tunnelBack').onclick = () => { clearTimeout(tunnelPoll); tunnelEl.classList.add('hidden'); };
   $('tunnelToggle').onclick = async () => {
