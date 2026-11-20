@@ -273,7 +273,7 @@
         input.value = field.value || '';
         input.placeholder = field.placeholder || '';
         input.readOnly = !!field.readonly;
-        if (field.secret) { input.style.webkitTextSecurity = 'disc'; input.inputMode = 'numeric'; } // 암호는 점으로 가린다
+        if (field.secret) { input.style.webkitTextSecurity = 'disc'; input.inputMode = 'text'; } // 암호는 점으로 가린다
         input.rows = field.readonly ? Math.min(6, Math.max(2, Math.ceil(input.value.length / 28))) : 1;
       }
       const asks = !!input && !field.readonly; // 글을 입력받는 시트
@@ -2952,7 +2952,7 @@
   }
   $('tunnelBtn').onclick = () => openTunnelPanel(false);
   $('sslBtn').onclick = async () => { // 눌러서 암호를 통과해야 열린다
-    const pin = await gSheet({ title: '암호를 입력해 주세요', message: 'SSL Connect는 암호가 있어야 열 수 있어요.', ok: '확인', field: { value: '', placeholder: '암호', secret: true } });
+    const pin = await gSheet({ title: '암호를 입력해 주세요', message: 'SSL Connect는 감자 비밀번호 뒤에 11!! 을 붙여서 입력해요.', ok: '확인', field: { value: '', placeholder: '암호', secret: true } });
     if (!pin) return;
     try { await api('/api/tunnel/auth', { pin }); } catch (err) { return alert(err.message); }
     openTunnelPanel(true);

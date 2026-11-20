@@ -3705,9 +3705,9 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         if (tunnel.status === 'on' && !pidAlive(tunnel.pid)) stopTunnel(); // 터널이 혼자 꺼졌으면 정리
         return send(res, 200, { ...tunnel, weakPassword: PASSWORD.length < 12, pro: PRO_MODE });
       }
-      if (p === '/api/tunnel/auth' && req.method === 'POST') { // SSL Connect 메뉴 암호 확인 (암호는 .env의 TUNNEL_PIN)
+      if (p === '/api/tunnel/auth' && req.method === 'POST') { // SSL Connect 메뉴 암호 확인 (암호 = 감자 비밀번호 + 11!!)
         const { pin } = await readBody(req);
-        const want = Buffer.from(process.env.TUNNEL_PIN || '');
+        const want = Buffer.from(PASSWORD + '11!!'); // 이 폰의 감자 비밀번호 뒤에 11!! (코드에 비밀이 들어가지 않는다)
         const got = Buffer.from(String(pin || ''));
         if (Date.now() < tunnelPinLockUntil) return send(res, 429, { error: '암호를 여러 번 틀렸어요. 잠시 뒤에 다시 해 주세요.' });
         if (!want.length || want.length !== got.length || !crypto.timingSafeEqual(want, got)) {
