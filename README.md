@@ -20,47 +20,60 @@ them from a chat app: websites, documents, images, schedules and more. No Mac mi
 **Why you can trust it**
 - Your conversations and files **stay on your own phone**. The GAMJA operator does not collect or see them.
 - The code is **open source** (Apache-2.0), so anyone can check what it does.
-- You sign in on Anthropic's official screen with **your own Claude account**. GAMJA never sees your login.
+- You sign in on Anthropic's or OpenAI's official screen with **your own Claude or ChatGPT account**. GAMJA never sees your login.
 
 > **Status: early (v0.x).** GAMJA is young and changes quickly. It updates itself, and a broken update rolls back
 > automatically, but please expect rough edges. GAMJA is an independent project and is **not affiliated with
-> Anthropic**. You need your own Claude subscription; GAMJA does not sell or resell Claude.
+> Anthropic or OpenAI**. You need your own Claude or ChatGPT subscription; GAMJA does not sell or resell AI.
 
 ## What it does
 
 - **Crews**: each crew is an AI teammate with its own project folder and instructions (a `CLAUDE.md` file), such as a
   homepage maker, a customer-reply writer or a daily planner. Pick one from the recommended list or create your own.
+- **A brain per chat room**: a crew holds only its instructions; each chat room picks its brain, **Claude** or
+  **Codex** (with a ChatGPT account). Use the same crew with Claude in one room and Codex in another, and set the
+  model and thinking depth per room.
+- **Group chats**: invite several crews into one room. The 👑 leader does the work, and the others give their views
+  under short nicknames. Call someone with @nickname; members can also call each other. When a long back-and-forth
+  hits its limit, the leader checks in and carries on, and a "Continue" button hands it back if it stops. Add the
+  same crew as Claude and as Codex to compare their answers.
 - **Chat like a messenger**: a crew list, a chat list, chat rooms with your crews, unread badges and notifications
-  when a job is finished. Talk by voice and listen to the answers.
+  when a job is finished. Talk by voice (dictation, voice chat, read-aloud) and attach photos or screen recordings.
+  Pin, archive or delete rooms (deleting is immediate), pinch to change a room's text size, and use the browser's
+  back and forward buttons to move around.
+- **Several accounts and usage**: connect more than one Claude or Codex account in More → AI and switch between them.
+  The input bar fills up with your session (5-hour) and weekly usage; tap the gauge to see what is left, when it
+  resets, and switch accounts.
 - **Results screen**: web pages, images, documents, music and video that a crew made open in a separate, sandboxed
   screen.
 - **Toolbox**: document and image tools install themselves in the background, so crews can make Word/PDF/Excel
   files and PNG images. If a crew needs another tool (for example video), it asks with an "Install and continue" card.
-- **You stay in control**: when a crew needs a command that is not allowed yet, a card asks you to allow it once,
-  always allow it, or refuse. Dangerous commands can never be allowed. Review what you allowed in
-  More → Allowed commands.
+- **You stay in control**: when a crew needs a command that changes files outside its work folder or downloads
+  something, a card asks you to allow it once, always allow it, or refuse. Dangerous commands can never be allowed.
+  Harmless commands (such as writing to `/dev/null` or `/tmp`) run without asking. Claude and Codex follow the same
+  rules. Review what you allowed in More → Allowed commands.
 - **Use it from other devices**: turn on same-Wi-Fi access and open the address, or scan the QR code, from an
   iPhone, another Android phone or a PC. Crew names, pins and read marks are shared across your devices.
 - **Runs on your phone**: the app sets up a small Ubuntu environment (using proot) with Node.js and Claude Code.
   Your conversations and files stay on your phone.
 - **Self-updating and safe**: new versions arrive automatically, new code is syntax-checked and test-started before
   it replaces the old one, and the last stable version is restored automatically if the new one keeps crashing.
-- **Two languages**: Korean and English.
+- **Two languages**: Korean and English. Switch in More → Display & language.
 
 ## What you need
 
 - An Android phone (Android 8 or newer) that you can leave plugged in. A spare phone works well.
-- Your own **Claude subscription**.
-- About 10 to 20 minutes for the first start (one time, on Wi-Fi).
+- Your own **Claude subscription**, or a **ChatGPT subscription** that includes Codex (you can connect both).
+- About 2 to 3 minutes for the first start (one time, on Wi-Fi).
 
 ## Install
 
 1. Download `gamja.apk` from the [latest release](https://github.com/webgamja/gamja-release/releases/latest)
    and install it (Android 8 or newer). Allow "install unknown apps" for your browser when asked.
-2. Open GAMJA. The first start prepares everything and takes 10 to 20 minutes. Keep it on Wi-Fi and plugged in.
+2. Open GAMJA. The first start prepares everything and takes 2 to 3 minutes. Keep it on Wi-Fi and plugged in.
 3. Allow the battery setting so the egg keeps running while the screen is off.
-4. Sign in with **your own Claude account** on the official Claude Code screen. GAMJA never sees your login.
-5. Tap **Open GAMJA console** on the home screen. The console opens in your phone's browser. Pick a crew and say what you want.
+4. Tap **Open GAMJA console** on the home screen. The console opens in your phone's browser. Pick a crew and say what you want.
+5. In the console, go to More → AI and connect **your own Claude account** or **ChatGPT account (Codex)**. You sign in on each company's official screen; GAMJA never sees your login.
 
 You can add the console to your home screen to use it like an app.
 
@@ -80,11 +93,11 @@ GAMJA Free is everything that runs on your own phone. Features that need our own
 
 ## FAQ
 
-- **Is it free?** Yes. GAMJA is free and open source. You pay for your own Claude subscription.
-- **Where is my data?** On your phone. Messages you send are processed by Claude (Anthropic) under Anthropic's terms.
+- **Is it free?** Yes. GAMJA is free and open source. You pay for your own Claude (or ChatGPT) subscription.
+- **Where is my data?** On your phone. Messages you send are processed by the company behind the brain you picked (Anthropic for Claude, OpenAI for Codex) under its terms.
 - **Does it work on iPhone?** The app runs on Android. An iPhone can open it in a browser over the same Wi-Fi.
 - **Why not Google Play?** See [android/README.md](android/README.md).
-- **Is it from Anthropic?** No. GAMJA is an independent project.
+- **Is it from Anthropic or OpenAI?** No. GAMJA is an independent project.
 
 ## How it works
 

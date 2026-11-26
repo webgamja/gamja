@@ -1,0 +1,397 @@
+{
+  "entries": [
+    {
+      "id": "2026-11-26-3",
+      "ko": [
+        "버리는 곳(/dev/null)이나 임시 폴더(/tmp)에 쓰는 것처럼 폰에 영향이 없는 명령은 허용 카드 없이 바로 실행해요"
+      ],
+      "en": [
+        "Commands that don't affect the phone, like writing to /dev/null or the temp folder (/tmp), now run without an approval card"
+      ]
+    },
+    {
+      "id": "2026-11-26-2",
+      "ko": [
+        "그룹 채팅에서 크루끼리 부르기가 10번 차도 바로 멈추지 않고, 방장이 중간 점검한 뒤 이어가요 (최대 30번)",
+        "그래도 멈추면 알림의 '이어서 하기' 버튼을 눌러 방장에게 이어서 하게 할 수 있어요"
+      ],
+      "en": [
+        "In group chats, when crews have called each other 10 times, the room leader now checks progress and keeps going instead of stopping (up to 30 calls)",
+        "If it still stops, tap 'Continue' on the notice to have the room leader pick up where it left off"
+      ]
+    },
+    {
+      "id": "2026-11-26",
+      "ko": [
+        "더보기의 화면 및 언어 설정, 계정 설정·계정 추가, Codex 제목의 이모지를 감자 아이콘으로 바꿨어요"
+      ],
+      "en": [
+        "Display & language, account settings, add account and the Codex heading in More now use GAMJA icons instead of emoji"
+      ]
+    },
+    {
+      "id": "2026-11-25",
+      "ko": [
+        "화면 언어를 English로 두면 설정·크루 고르기·외부 접속·GitHub·비밀번호·음성 안내·오류 알림까지 영어로 보여요"
+      ],
+      "en": [
+        "With the screen language set to English, settings, crew picking, external access, GitHub, password, voice prompts and error messages now all appear in English"
+      ]
+    },
+    {
+      "id": "2026-11-24-3",
+      "ko": [
+        "[변경] 시트가 두뇌 탭 없이 한 목록으로 바뀌고, 계정마다 Claude·Codex 표시와 세션 사용량이 붙어요",
+        "[변경]에서 다른 두뇌(Claude↔Codex)의 계정을 고르면, 이미 대화를 시작한 방은 그 두뇌로 새 채팅방을 열지 물어봐요"
+      ],
+      "en": [
+        "The [Switch] sheet is now one list without brain tabs, with a Claude/Codex tag and session usage on each account",
+        "Picking an account of the other brain (Claude↔Codex) in [Switch] now offers to open a new chat with that brain when the current chat has already started"
+      ]
+    },
+    {
+      "id": "2026-11-24-2",
+      "ko": [
+        "그룹 방에서 크루가 쓴 @대화명도 내 말풍선처럼 그 참여자 색으로 보여요",
+        "그룹 방에서 답을 기다리는 동안 지금 말하는 참여자의 이름이 말풍선에 붙고, 참여자마다 말풍선이 따로 생겨요"
+      ],
+      "en": [
+        "In group chats, @names written by the crew are now shown in that member's color, just like in your own messages",
+        "In group chats, the bubble you're waiting on now shows who is speaking, with a separate bubble for each member"
+      ]
+    },
+    {
+      "id": "2026-11-24",
+      "ko": [
+        "결과물 화면이 가벼워졌어요. 처음엔 20개만 보이고 [더 보기]로 이어 봐요. 3일 지난 결과물은 \"지난 결과물\" 아래로 접어 두고, 화면을 닫으면 그림들이 쓰던 메모리를 비워요",
+        "채팅방 사용량의 [변경]이 간단해졌어요. 위의 알약에서 두뇌(Claude·Codex)를 고르고, 계정을 누르면 바로 그 계정으로 바뀌어요. 계정마다 세션 사용량도 보여요",
+        "바텀시트가 열려 있을 때 뜨는 알림(예: \"답변이 진행 중이에요\")이 시트 뒤에 가려지지 않고 맨 위에 보여요",
+        "그룹 채팅에서 방장이든 참여자든 답에 @대화명을 쓰면 그 참여자에게 전해져요. 참여자끼리도 서로 부를 수 있고, 방장을 부르면 방장이 이어서 일한 뒤 정리해서 보고해요 (메시지 하나에 서로 부르기는 10번까지)",
+        "그룹 채팅에서 @로 일을 맡은 참여자도 이제 파일을 고칠 수 있어요. 각자 자기 작업 폴더(git 브랜치)에서 고치면 방장이 검토해서 방 폴더에 합쳐요 (git 도구가 설치돼 있을 때)",
+        "Claude가 설치되지 않은 폰에서는 더보기 › AI › Claude에서 바로 설치할 수 있어요. 감자는 더보기 › AI에서 연결한 계정의 AI만 써요. Codex만 연결돼 있으면 새 방이 Codex로 시작하고, 인계 노트 요약도 Codex가 해요",
+        "입력창 줄 바탕이 위(세션)·아래(주간) 두 줄로 사용량만큼 채워져요. 마이크 왼쪽 게이지 버튼을 누르면 게이지는 제자리에 있고 ‘세션 72% 사용 3시간 후 초기화’처럼 두 줄, 마이크·보내기 자리를 합친 [변경] 버튼이 나오고, 다시 누르면 입력창으로 돌아와요 (키보드가 올라와 있거나 글을 쓰는 중, 받아쓰기·음성 대화 중에는 게이지가 숨어요. 채팅방에 들어올 때 뜨던 사용량 말풍선은 없앴어요)",
+        "크루가 생각하는 중에 음성 대화를 켰다 끄면 받아쓰기(🎤) 버튼이 사라지던 문제를 고쳤어요",
+        "화면 녹화 같은 영상도 첨부할 수 있어요 (100MB까지). 크루가 영상을 보려면 도구 상자의 영상·소리 도구가 필요해요",
+        "크루가 답하는 중에도 채팅방 왼쪽 위 ← 버튼이 더 빨리 눌리게, 답을 그리는 횟수를 줄였어요",
+        "사용량을 보다가 채팅방을 나갔다 다시 들어오면 사용량 대신 입력창이 보여요",
+        "사용량 버튼을 누르고 있는 동안 버튼이 어두워져 깜빡여 보이던 문제를 고쳤어요",
+        "사용량을 잠깐 받아 오지 못하면 ‘아직 몰라요’ 대신 마지막으로 받은 값을 회색으로 보여 줘요",
+        "도구 설치가 실패하면 이유를 함께 보여 주고 기록을 남겨요. 목록 새로고침이 실패해도 설치를 이어서 해 봐요",
+        "계정 변경 시트에서 다른 계정을 고르면 시트가 닫히고 바로 입력창이 보여요"
+      ],
+      "en": [
+        "The results screen is lighter: it shows 20 at first with [Show more], folds results older than 3 days under \"Older results\", and frees image memory when closed",
+        "[Switch] in a chat's usage is simpler: pick a brain (Claude or Codex) from the pills, then tap an account to switch to it. Each account shows its session usage",
+        "Notices shown while a bottom sheet is open (e.g. \"A reply is in progress\") now appear on top instead of hiding behind the sheet",
+        "In group chats, anyone (leader or member) can write @name in a reply to pass the message to that member. Members can call each other, and calling the leader hands the work back to the leader, who reports when done (up to 10 calls per message)",
+        "In group chats, members given a task with @ can now edit files too. Each works in their own folder (a git branch), and the leader reviews and merges it into the room folder (when the git toolkit is installed)",
+        "On phones without Claude, you can install it from More › AI › Claude. Gamja only uses the AI you connected in More › AI. If only Codex is connected, new rooms start with Codex and handoff notes are summarized by Codex",
+        "The input bar background now shows usage in two rows: session on top, weekly below. Tap the gauge button left of the mic (it stays in place) to see lines like \"Session 72% used resets in 3h\" with a [Switch] button covering the mic and send spots; tap again to go back to typing (the gauge hides while the keyboard is up, while typing, dictating or in voice chat; the usage bubble shown when entering a chat is gone)",
+        "Fixed the dictation (🎤) button disappearing after turning voice chat on and off while the crew was thinking",
+        "You can now attach videos such as screen recordings (up to 100MB). Crews need the video & sound tool from the Toolbox to look at them",
+        "The ← button at the top left of a chat responds faster while the crew is answering",
+        "Leaving a chat while viewing usage and coming back now shows the input box instead",
+        "Fixed the usage button flickering dark while being pressed",
+        "If usage can’t be fetched for a moment, the last known value is shown in gray instead of ‘unknown’",
+        "When a tool install fails, the reason is now shown and a log is kept. Install continues even if the package list refresh fails",
+        "Picking another account in the account sheet closes it and goes straight back to the input box"
+      ]
+    },
+    {
+      "id": "2026-11-23-2",
+      "ko": [
+        "채팅방에 들어오면 입력창 바로 위 왼쪽에 말풍선이 잠깐 떠서 5시간·주간 사용량과 초기화 시각을 알려 줘요(5시간이 아직 시작 전이면 '아직 시작 전'). 이 방 AI(Claude/Codex)에 계정이 2개 이상이면 '계정 변경' 버튼이 나오고, 누르면 계정 목록에서 바로 바꿀 수 있어요"
+      ],
+      "en": [
+        "When you open a chat, a small bubble just above the input shows your 5-hour and weekly usage with reset times ('not started yet' if the 5-hour window hasn't begun). If this room's AI (Claude/Codex) has two or more accounts, a 'Switch account' button opens the account list so you can switch right there"
+      ]
+    },
+    {
+      "id": "2026-11-23",
+      "ko": [
+        "그룹 채팅방 입력창도 '메시지 입력'으로 짧게 보여요. 키보드를 올리면 한 줄 위로 올라가고, 내리면 다시 한 줄로 돌아오면서 커서도 사라져요",
+        "그룹 채팅방에서 @를 누르면 @가 노란색으로 켜지고 키보드가 올라오면서, 바로 오른쪽에 대화명이 가나다 순으로 나와요. 좌우로 밀어서 여러 명을 고르면 노란색으로 칠해지고, 보낼 때 말풍선 앞에 '@대화명'이 붙어요. 한 번 더 누르면 빠지고, @를 다시 누르면 접혀요. 아무것도 안 쓰고 대화창을 누르거나 키보드를 내려도 접혀요",
+        "그룹 채팅방의 크루마다 고유 색이 생겼어요. 말풍선 테두리와 @ 대화명 테두리가 같은 색이고, 고른 대화명은 그 색으로 칠해져요. 내 말풍선의 @대화명도 그 색 배경으로 보여요. 방장이 한 말에는 '정리' 대신 '방장'이 붙어요",
+        "입력창 아래 줄 바탕이 5시간 사용량만큼 왼쪽부터 은은하게 차올라요. 70%를 넘으면 주황, 90%를 넘으면 빨강이 돼요. 같은 계정이면 채팅방에 들어오자마자 지난 값부터 바로 보이고, 처음 쓰는 계정이면 받아 오는 동안 빛이 훑고 지나가요"
+      ],
+      "en": [
+        "Group chats now show a short 'Message' hint in the input. It moves up a line when the keyboard opens and returns to one line, without a blinking cursor, when it closes",
+        "Tap @ in a group chat to light it up, open the keyboard and show names in alphabetical order right next to it. Swipe to pick one or more (picked names turn yellow, tap again to remove); they're added as '@name' in front of your message when you send. Tap @ again to close, or just tap the chat or close the keyboard before typing anything",
+        "Each crew in a group chat now has its own color, shown on its message bubbles and its @ name. Picked names fill with that color, and so do the @names in your own bubbles. The leader's messages are now labeled 'Leader' instead of 'Summary'",
+        "The bar behind the input now softly fills from the left with your 5-hour usage. It turns orange above 70% and red above 90%. The same account shows its last value right away when you open a chat; a new account shows a soft shimmer while loading"
+      ]
+    },
+    {
+      "id": "2026-11-22-21",
+      "ko": [
+        "더보기의 '화면'과 '언어 설정'을 '화면 및 언어 설정' 하나로 합쳤어요",
+        "더보기에서 대화 글자 크기 고르기를 뺐어요. 대화 화면에서 두 손가락으로 벌리거나 오므리면 그 방의 글자 크기를 바꿀 수 있어요",
+        "크루 탭의 '친구가 보낸 크루 추가' 버튼을 뺐어요"
+      ],
+      "en": [
+        "Merged 'Display' and 'Language' in More into one 'Display & language' page",
+        "Removed the chat text size choice from More. Pinch in a chat to change that chat's text size",
+        "Removed the 'Add a crew from a friend' button from the Crew tab"
+      ]
+    },
+    {
+      "id": "2026-11-22-20",
+      "ko": [
+        "더보기의 '소리·화면'을 '화면'으로 바꾸고, '답이 끝나면 소리로 읽어 줘요' 설정을 뺐어요. 읽어주기는 대화방 ⋯ 메뉴에서 켜고 끌 수 있어요"
+      ],
+      "en": [
+        "Renamed 'Sound & display' in More to 'Display' and removed the 'Read replies aloud' switch. You can still turn read-aloud on or off from a chat's ⋯ menu"
+      ]
+    },
+    {
+      "id": "2026-11-22-19",
+      "ko": [
+        "채팅 탭 오른쪽 위 ＋ 버튼이 눌리지 않던 문제를 고쳤어요. 누르면 새 채팅을 만들 수 있어요"
+      ],
+      "en": [
+        "Fixed the ＋ button at the top right of the Chats tab not responding. Tap it to start a new chat"
+      ]
+    },
+    {
+      "id": "2026-11-22-18",
+      "ko": [
+        "크루를 직접 만들거나 코드로 가져오거나 추천 크루를 고르면, 채팅방으로 넘어가지 않고 크루 탭의 내 크루에 추가돼요. 채팅은 새 채팅에서 시작해요",
+        "참여자 초대에서 고른 크루와 두뇌 고르기가 같은 배경으로 묶여 보여요"
+      ],
+      "en": [
+        "Creating a crew, importing one by code, or picking a recommended crew now adds it to My crews in the Crews tab instead of opening a chat. Start chatting from New chat",
+        "In Invite members, the picked crew and its brain choice now share one highlighted block"
+      ]
+    },
+    {
+      "id": "2026-11-22-17",
+      "ko": [
+        "참여자 초대 화면에서 크루가 한 줄로 보이고, 크루를 고르면 그 아래에 두뇌(Claude·Codex)가 나와요. 선택을 빼면 두뇌도 사라져요"
+      ],
+      "en": [
+        "In Invite members, crews show on one line; pick one and its brain choice (Claude or Codex) appears right below. Unpick it and the brain choice goes away"
+      ]
+    },
+    {
+      "id": "2026-11-22-16",
+      "ko": [
+        "업데이트 전부터 쓰던 채팅방도 두 글자 대화명이 붙어, 이름이 \"크루 이름 / 크루 이름 · 두뇌\"처럼 겹쳐 보이지 않아요",
+        "채팅방 설정에서 참여자를 누르면 크루 지침은 읽기만 할 수 있어요. 지침은 크루 탭의 ⚙️ 설정에서 고쳐요"
+      ],
+      "en": [
+        "Chat rooms from before the update now get a two-letter nickname too, so the crew name no longer shows twice",
+        "In chat room settings, a member's crew instructions are now read-only. Edit them from the crew's ⚙️ settings in the Crews tab"
+      ]
+    },
+    {
+      "id": "2026-11-22-15",
+      "ko": [
+        "새 채팅의 참여자도 \"하늘\", \"누리\"처럼 두 글자 대화명이 무작위로 붙어요 (전에는 크루 이름이 그대로 쓰였어요)",
+        "입력창은 평소 한 줄이고, 키보드가 올라오면 입력칸이 한 줄 위로 올라가요. 비어 있는 채로 키보드를 닫으면 다시 한 줄로 내려와요",
+        "그룹 채팅에서는 ＋ 옆의 @ 버튼을 누르면 참여자가 펼쳐지고, 누르면 @대화명이 들어가요"
+      ],
+      "en": [
+        "Members of new chats now get a random two-letter nickname too (like \"하늘\") instead of the crew name",
+        "The message box stays one line; when the keyboard opens the text field moves up a line, and drops back when you close the keyboard with nothing typed",
+        "In group chats, tap the @ button next to ＋ to show members, then tap one to insert @nickname"
+      ]
+    },
+    {
+      "id": "2026-11-22-14",
+      "ko": [
+        "참여자를 초대하면 \"하늘\", \"누리\"처럼 두 글자 대화명이 무작위로 붙어요. 참여자를 눌러 바꿀 수 있어요"
+      ],
+      "en": [
+        "Invited members now get a random two-letter Korean nickname (like \"하늘\"). Tap a member to change it"
+      ]
+    },
+    {
+      "id": "2026-11-22-13",
+      "ko": [
+        "새로 설치한 감자에서 Codex 설치가 \"npm을 찾을 수 없어요\"로 멈추던 문제를 고쳤어요. npm이 없으면 감자알이 직접 받아서 설치해요"
+      ],
+      "en": [
+        "Fixed Codex install stopping with \"npm not found\" on fresh GAMJA installs. If npm is missing, GAMJA egg now downloads it itself"
+      ]
+    },
+    {
+      "id": "2026-11-22-12",
+      "ko": [
+        "채팅방 말풍선 위 이름도 두 줄로 보여요: 첫 줄은 대화명, 둘째 줄은 \"크루 이름 · 두뇌\""
+      ],
+      "en": [
+        "Names above chat bubbles now show on two lines too: nickname first, then \"crew name · brain\""
+      ]
+    },
+    {
+      "id": "2026-11-22-11",
+      "ko": [
+        "Codex 설치가 \"종료 코드 127\"로 멈추던 문제를 고쳤어요. 설치가 안 되면 무엇 때문인지도 같이 보여요"
+      ],
+      "en": [
+        "Fixed Codex install stopping with \"exit code 127\". If install fails, the reason is now shown too"
+      ]
+    },
+    {
+      "id": "2026-11-22-10",
+      "ko": [
+        "새 채팅에서 두뇌를 고르면, 채팅방에 들어가서 두뇌를 또 묻지 않아요",
+        "새 채팅 화면에서 두뇌 고르기가 참여자(크루) 카드 안으로 들어가, 그 크루의 두뇌라는 게 보여요",
+        "참여자는 두 줄로 보여요: 첫 줄은 대화명, 둘째 줄은 \"크루 이름 · 두뇌\". 목록의 긴 크루 이름도 두 줄까지 보여요"
+      ],
+      "en": [
+        "If you pick a brain when creating a chat, the room no longer asks again",
+        "In New chat, the brain picker now sits inside the participant (crew) card, so it's clear it's that crew's brain",
+        "Participants show on two lines: nickname first, then \"crew name · brain\". Long crew names in lists show up to two lines"
+      ]
+    },
+    {
+      "id": "2026-11-22-9",
+      "ko": [
+        "음성 대화에서 말한 내용이 \"그룹 그룹 방에서 그룹 방에서 말을…\"처럼 겹쳐 적히던 문제를 고쳤어요"
+      ],
+      "en": [
+        "Fixed voice chat writing your words over and over (\"group group room group room talk…\")"
+      ]
+    },
+    {
+      "id": "2026-11-22-8",
+      "ko": [
+        "그룹 채팅이 열렸어요. 채팅방 설정 → 참여자 초대에서 크루와 두뇌를 골라 넣으면, 지금 방의 크루가 👑 방장이 되어 하던 일을 그대로 이어가요",
+        "일(파일 고치기·명령 실행)은 방장만 해요. 입력창 위 버튼으로 @방장을 부르면 방장이 일하고, 다른 참여자를 부르면 그 참여자만 의견을 내요",
+        "아무도 부르지 않으면 참여자들이 차례로 의견을 내고 방장이 정리해요. 같은 크루를 Claude와 Codex로 함께 넣어 의견을 비교할 수도 있어요",
+        "참여자를 누르면 대화명·생각 깊이를 바꾸고, 방장으로 정하거나 내보낼 수 있어요"
+      ],
+      "en": [
+        "Group chat is here. In room settings → Invite members, pick a crew and a brain; this room's crew becomes 👑 the leader and carries on its work",
+        "Only the leader does the work (editing files, running commands). Tap a button above the message box to mention @leader for work, or mention another member to hear just their opinion",
+        "With no mention, members give their opinions in turn and the leader sums up. You can even add the same crew with both Claude and Codex to compare",
+        "Tap a member to change its nickname or thinking depth, make it the leader, or remove it"
+      ]
+    },
+    {
+      "id": "2026-11-22-7",
+      "ko": [
+        "크루에는 지침만 남고, 두뇌(Claude·Codex)는 채팅방마다 골라요. 같은 크루를 이 방에서는 Claude, 저 방에서는 Codex로 쓸 수 있어요",
+        "새 채팅을 만들 때나 첫 메시지를 보내기 전에 두뇌를 골라요. 마지막에 고른 두뇌가 미리 골라져 있고, 대화를 시작하면 그 방의 두뇌는 고정돼요",
+        "채팅방 설정에서 참여자를 누르면 대화명과 생각 깊이를 바꿀 수 있어요. 참여자는 \"대화명 (크루 · 두뇌)\"로 보여요",
+        "예전에 크루 설정에서 고른 두뇌·모델·생각 깊이는 그 크루의 채팅방으로 그대로 옮겨졌어요"
+      ],
+      "en": [
+        "Crews now hold only instructions; you pick the brain (Claude or Codex) per chat room. The same crew can use Claude in one room and Codex in another",
+        "Pick the brain when you create a chat or before the first message. Your last choice is preselected, and the room's brain is fixed once the chat starts",
+        "Tap a participant in chat room settings to change its nickname and thinking depth. Participants show as \"nickname (crew · brain)\"",
+        "The brain, model and thinking depth you chose in crew settings before have moved to that crew's chat rooms"
+      ]
+    },
+    {
+      "id": "2026-11-22-6",
+      "ko": [
+        "채팅방을 보관할 수 있어요 (채팅방 설정 → 채팅방 보관하기). 보관한 채팅은 채팅 탭 맨 아래 '보관한 채팅'에서 꺼낼 수 있어요",
+        "채팅방을 삭제하면 대화와 결과물이 바로 지워지고 복구할 수 없어요",
+        "크루가 들어가 있는 채팅방(보관한 방 포함)이 있으면 크루를 지울 수 없어요. 크루를 지우면 지침과 폴더가 바로 지워져요",
+        "크루를 추가해도 채팅방이 저절로 생기지 않고, 같은 이름으로 다시 추가해도 옛 채팅이 되살아나지 않아요"
+      ],
+      "en": [
+        "You can archive a chat room (Chat room settings → Archive chat room). Take it out again from 'Archived chats' at the bottom of the Chats tab",
+        "Deleting a chat room now erases its conversation and results right away; it can't be undone",
+        "A crew can't be deleted while it's in any chat room (including archived ones). Deleting a crew erases its instructions and folder right away",
+        "Adding a crew no longer creates a chat room by itself, and re-adding a crew with the same name doesn't bring old chats back"
+      ]
+    },
+    {
+      "id": "2026-11-22-5",
+      "ko": [
+        "Codex 계정 설정이 Claude 계정 설정과 같은 모양이 됐어요. 계정 추가·전환·삭제, 사용량(D·W), 다시 로그인을 할 수 있어요",
+        "Codex 대화 설정에서 모델·생각 깊이·압축 시점을 고를 수 있고, 기본값이 실제로 어떤 모델·깊이인지 보여요"
+      ],
+      "en": [
+        "Codex account settings now look like Claude's: add, switch and remove accounts, see usage (D·W), and sign in again",
+        "In Codex chat settings you can pick the model, thinking depth and when to compact, and see which model and depth the default actually uses"
+      ]
+    },
+    {
+      "id": "2026-11-22-4",
+      "ko": [
+        "크루 설정에서 크루의 두뇌를 Claude 또는 Codex로 고를 수 있어요. Codex를 고르면 Codex의 모델과 생각 깊이도 고를 수 있어요",
+        "Codex 크루도 감자의 안전장치를 따라요. 위험한 명령은 막고, 작업 폴더 밖을 바꾸는 명령은 허용 카드로 물어봐요"
+      ],
+      "en": [
+        "In crew settings you can choose the crew's brain: Claude or Codex. With Codex you can also pick its model and thinking depth",
+        "Codex crews follow GAMJA safety rules too: dangerous commands are blocked, and changes outside the work folder ask with a permission card"
+      ]
+    },
+    {
+      "id": "2026-11-22-3",
+      "ko": [
+        "더보기 → AI → Codex → 계정 설정에서 Codex를 설치하고 ChatGPT 계정으로 로그인할 수 있어요 (대화에서 쓰는 기능은 준비 중)"
+      ],
+      "en": [
+        "In More → AI → Codex → Account settings you can install Codex and sign in with your ChatGPT account (using it in chats is coming soon)"
+      ]
+    },
+    {
+      "id": "2026-11-22-2",
+      "ko": [
+        "더보기 → AI 화면에서 Claude·Codex의 계정 설정과 대화 설정을 바로 열 수 있어요 (한 단계 줄었어요)",
+        "Claude 계정 설정의 계정 목록 위에 \"연결된 계정\" 제목이 보여요"
+      ],
+      "en": [
+        "Account and chat settings for Claude and Codex now open straight from More > AI (one step fewer)",
+        "Claude account settings now shows a \"Connected accounts\" title above the list"
+      ]
+    },
+    {
+      "id": "2026-11-22",
+      "ko": [
+        "Claude 계정 설정: 계정을 바꿔도 목록 순서가 그대로이고, 지금 쓰는 계정이 색으로 강조돼요",
+        "Claude 계정 오른쪽에 사용량(D: 5시간 한도, W: 주간 한도)과 초기화 시각이 보여요"
+      ],
+      "en": [
+        "Claude account settings: the list keeps its order when you switch, and the active account is highlighted",
+        "Each Claude account shows its usage (D: 5-hour limit, W: weekly limit) and reset time on the right"
+      ]
+    },
+    {
+      "id": "2026-11-21-3",
+      "ko": [
+        "\"Claude 다시 로그인\"이 더보기 → AI → Claude → 계정 설정 맨 아래로 옮겨졌어요"
+      ],
+      "en": [
+        "\"Sign in to Claude again\" moved to the bottom of More > AI > Claude > Account settings"
+      ]
+    },
+    {
+      "id": "2026-11-21-2",
+      "ko": [
+        "삭제한 채팅방이 뒤로 가기를 누르면 다시 생기던 문제를 고쳤어요"
+      ],
+      "en": [
+        "Fixed a deleted chat coming back when you pressed back"
+      ]
+    },
+    {
+      "id": "2026-11-21",
+      "ko": [
+        "브라우저의 뒤로·앞으로 가기로 콘솔 화면을 오갈 수 있어요",
+        "더보기의 \"최근 감자알 업데이트\"를 누르면 바뀐 내용을 볼 수 있어요",
+        "처음 설정이 2단계로 짧아지고, AI 계정은 콘솔의 더보기 → AI에서 연결해요",
+        "Claude 로그인이 짧아졌어요 (바로 브라우저에서 로그인)",
+        "감자 톡톡의 이름이 감자쑥쑥으로 바뀌고 첫 화면을 새로 꾸몄어요",
+        "감자쑥쑥에서 두 손가락으로 키운 글자 크기가 저장돼요",
+        "감자알 업데이트 뒤에도 쓰던 글이 남아 있어요",
+        "추천 크루 순서를 바꿨어요"
+      ],
+      "en": [
+        "Browser back and forward now move between console screens",
+        "Tap \"Recent GAMJA egg updates\" in More to see what changed",
+        "Setup is now 2 steps, and you connect your AI account in More > AI",
+        "Claude sign-in is shorter (sign in straight in the browser)",
+        "GAMJA TalkTalk is now GAMJA SSook2, with a new first screen",
+        "Text size you pinch-zoom in GAMJA SSook2 is now saved",
+        "Your unsent text stays after a GAMJA egg update",
+        "Recommended crews are in a new order"
+      ]
+    }
+  ]
+}

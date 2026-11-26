@@ -16,20 +16,12 @@ class Paths(ctx: Context) {
     val serverLog = File(files, "server.log")
     val appDir = File(rootfs, "root/gamja-egg") // 감자알 (Ubuntu 안의 /root/gamja-egg)
     val envFile = File(appDir, ".env")
-    val claudeBin = File(rootfs, "root/.local/bin/claude")
 
     init { Ports.envFile = envFile } // 앱의 다른 곳(MainActivity.BASE 등)이 감자알의 포트를 알 수 있게 .env 위치를 알려 둔다
 
     fun marker(name: String) = File(markers, name)
 
     fun isInstalled() = marker("installed").exists()
-
-    /** 공식 Claude Code에 로그인했는지 (Claude Code가 남기는 파일로 추정) */
-    fun isLoggedIn(): Boolean {
-        if (File(rootfs, "root/.claude/.credentials.json").exists()) return true
-        val cfg = File(rootfs, "root/.claude.json")
-        return cfg.exists() && runCatching { cfg.readText().contains("oauthAccount") }.getOrDefault(false)
-    }
 
     fun password(): String? = envFile.takeIf { it.exists() }?.readLines()
         ?.firstOrNull { it.startsWith("APP_PASSWORD=") }?.substringAfter("=")
@@ -40,7 +32,7 @@ class Paths(ctx: Context) {
  * 새로 설치한 폰은 26514다. .env에 PORT가 없으면 감자알의 기본값(26514)과 같게 맞춘다.
  */
 object Ports {
-    const val DEFAULT = 26514
+    val DEFAULT = if (BuildConfig.DEV) 26515 else 26514 // 개발판은 운영 감자와 동시에 켜도 겹치지 않게
     @Volatile var envFile: File? = null
 
     fun current(): Int {

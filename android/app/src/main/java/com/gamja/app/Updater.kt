@@ -37,7 +37,8 @@ object Updater {
     }.getOrNull()
 
     /** 지금 설치된 것보다 새 버전이 있으면 그 정보, 없으면 null */
-    fun newer(ctx: Context): Info? = fetchLatest()?.takeIf { it.code > currentCode(ctx) }
+    // 개발판(감자 개발)은 운영 APK로 바뀌면 안 되니 업데이트를 찾지 않는다
+    fun newer(ctx: Context): Info? = if (BuildConfig.DEV) null else fetchLatest()?.takeIf { it.code > currentCode(ctx) }
 
     /** APK를 내려받아 체크섬을 확인한 뒤 설치 화면을 띄운다. 성공이면 null, 실패면 이유를 돌려준다 */
     fun downloadAndInstall(ctx: Context, info: Info, onStep: (String) -> Unit): String? {

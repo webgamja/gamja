@@ -2,7 +2,7 @@ name: 감자 APK 빌드
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev] # dev: 운영에 올리지 않고 "감자 개발" APK만 만든다 (Actions 실행 화면의 gamja-dev-apk)
   workflow_dispatch:
     inputs:
       full:
@@ -20,6 +20,10 @@ jobs:
 
       # 감자알 번호(빌드 번호): 감자알의 자동 업데이트는 "내 번호보다 큰가"로 새 버전을 알아본다.
       # 보통은 이 저장소의 실행 번호를 쓰지만, 이미 올라간 최신 번호보다 작거나 같으면(저장소를 새로 시작한 경우 등) 최신 번호보다 1 크게 한다.
+      - name: 개발판인지 확인
+        if: github.ref == 'refs/heads/dev'
+        run: echo "GAMJA_DEV=1" >> "$GITHUB_ENV"
+
       - name: 감자알 번호 정하기
         run: |
           prev=$(curl -fsSL "https://github.com/webgamja/gamja-release/releases/latest/download/latest.json" || true)
@@ -53,7 +57,7 @@ jobs:
           prev=$(curl -fsSL "https://github.com/webgamja/gamja-release/releases/latest/download/latest.json" || true)
           prev_code=$(echo "$prev" | sed -n 's/.*"appCode":\([0-9]*\).*/\1/p')
           prev_sha=$(echo "$prev" | sed -n 's/.*"apkSha256":"\([0-9a-f]*\)".*/\1/p')
-          if [ "$FULL" != "true" ] && [ -n "$prev_code" ] && [ -n "$prev_sha" ] && [ "$prev_code" = "$GAMJA_APP_CODE" ]; then
+          if [ "$GAMJA_DEV" != "1" ] && [ "$FULL" != "true" ] && [ -n "$prev_code" ] && [ -n "$prev_sha" ] && [ "$prev_code" = "$GAMJA_APP_CODE" ]; then
             echo "APP_CHANGED=false" >> "$GITHUB_ENV"
             echo "PREV_APK_SHA=$prev_sha" >> "$GITHUB_ENV"
             echo "앱은 그대로예요 ($prev_code). APK 빌드를 건너뛰고 감자알만 올려요."
@@ -160,7 +164,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: env.APP_CHANGED == 'true'
         with:
-          name: gamja-apk
+          name: ${{ github.ref == 'refs/heads/dev' && 'gamja-dev-apk' || 'gamja-apk' }}
           path: android/app/build/outputs/apk/debug/*.apk
 
       # 공개 저장소(gamja-release)에 새 버전을 올린다. 감자·감자알이 여기서 최신 버전을 확인해 업데이트한다.
@@ -182,7 +186,17 @@ jobs:
           sed -i 's/^ *//' release/latest.json
           cat release/latest.json
           summary=$(git log -1 --pretty=%s | head -c 240)
-          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
+          # 릴리스마다 gamja-release에 빈 커밋을 새로 만들고 거기에 태그를 붙인다.
+          # 모든 태그가 같은 커밋을 가리키면 Releases 화면이 태그 이름(글자) 순으로 정렬돼 최신이 묻힌다 (b99가 b209보다 위)
+          # 커밋 만들기에 실패해도 릴리스는 그대로 올린다
+          rr=repos/webgamja/gamja-release
+          target=""
+          if br=$(gh api $rr --jq .default_branch) && head=$(gh api $rr/git/ref/heads/$br --jq .object.sha) \
+            && tree=$(gh api $rr/git/commits/$head --jq .tree.sha) \
+            && new=$(gh api $rr/git/commits -f message="build $GAMJA_BUILD" -f tree="$tree" -f "parents[]=$head" --jq .sha) \
+            && gh api -X PATCH $rr/git/refs/heads/$br -f sha="$new" >/dev/null; then target="--target $new"; fi
+          echo "release target: ${target:-(기본)}"
+          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json $target \
             --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD"$'\n\n'"변경: $summary"
           echo "## ✅ 새 버전 0.1.$GAMJA_BUILD 을 gamja-release에 올렸어요" >> "$GITHUB_STEP_SUMMARY"
 
@@ -206,6 +220,16 @@ jobs:
           sed -i 's/^ *//' release/latest.json
           cat release/latest.json
           summary=$(git log -1 --pretty=%s | head -c 240)
-          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json \
+          # 릴리스마다 gamja-release에 빈 커밋을 새로 만들고 거기에 태그를 붙인다.
+          # 모든 태그가 같은 커밋을 가리키면 Releases 화면이 태그 이름(글자) 순으로 정렬돼 최신이 묻힌다 (b99가 b209보다 위)
+          # 커밋 만들기에 실패해도 릴리스는 그대로 올린다
+          rr=repos/webgamja/gamja-release
+          target=""
+          if br=$(gh api $rr --jq .default_branch) && head=$(gh api $rr/git/ref/heads/$br --jq .object.sha) \
+            && tree=$(gh api $rr/git/commits/$head --jq .tree.sha) \
+            && new=$(gh api $rr/git/commits -f message="build $GAMJA_BUILD" -f tree="$tree" -f "parents[]=$head" --jq .sha) \
+            && gh api -X PATCH $rr/git/refs/heads/$br -f sha="$new" >/dev/null; then target="--target $new"; fi
+          echo "release target: ${target:-(기본)}"
+          gh release create "b$GAMJA_BUILD" release/gamja.apk release/gamja-egg.pack release/latest.json $target \
             --repo webgamja/gamja-release --title "감자 $GAMJA_APP_NAME · 감자알 0.1.$GAMJA_BUILD" --notes "자동 빌드 #$GAMJA_BUILD (감자알만 업데이트, 앱은 그대로)"$'\n\n'"변경: $summary"
           echo "## ✅ 감자알 0.1.$GAMJA_BUILD 만 gamja-release에 올렸어요 (앱 빌드 건너뜀)" >> "$GITHUB_STEP_SUMMARY"

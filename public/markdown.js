@@ -38,7 +38,7 @@
 
   function codeBlock(lang, code) {
     return `<div class="codeblock"><div class="code-head"><span>${esc(lang || 'code')}</span>` +
-      `<button class="copy" type="button">복사</button></div><pre><code>${highlight(code)}</code></pre></div>`;
+      `<button class="copy" type="button">${window.GAMJA_I18N ? window.GAMJA_I18N.trText('복사') : '복사'}</button></div><pre><code>${highlight(code)}</code></pre></div>`;
   }
 
   function splitRow(line) {

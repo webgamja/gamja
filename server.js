@@ -6,6 +6,15 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+// 개발용 감자알(start.sh 감시 밖, 예: 방 폴더에서 app start로 켠 것)은 자기 폴더의 .env를 직접 읽는다. 이미 있는 환경변수는 덮어쓰지 않는다
+if (process.env.GAMJA_SUPERVISED !== '1') {
+  try {
+    for (const line of fs.readFileSync(path.join(__dirname, '.env'), 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+    }
+  } catch {}
+}
 const TM = require('./tools/test-mode'); // 시험용 주입 지점의 관문: 시험 모드(GAMJA_TEST_MODE=1)에서만 켜진다
 TM.enforce(); // 운영 모드에 시험용 설정이 남아 있거나 운영 환경에서 시험 모드를 켰으면 여기서 끝낸다
 
@@ -238,6 +247,8 @@ function uploadDir(cwd) {
 const isUploadName = (n) => typeof n === 'string' && /^\d+-[a-z0-9]+\.(jpg|png|webp|gif)$/.test(n);
 // 사진이 아닌 일반 파일: "시각-무작위-원래이름" (크루가 이름을 보고 어떤 파일인지 알 수 있게 원래 이름을 남긴다)
 const MAX_FILE_BYTES = 50e6;
+const MAX_VIDEO_BYTES = 100e6;
+const VIDEO_FILE_RE = /\.(mp4|m4v|mov|avi|mkv|webm|3gp|3g2|wmv|flv|mpe?g|m2ts|hevc)$/i;
 const isFileUploadName = (n) => typeof n === 'string' && n.length <= 100 && n === path.basename(n) &&
   /^\d+-[a-f0-9]{8}-[^\/\\\0]+$/.test(n);
 function safeFileName(raw) {
@@ -371,9 +382,9 @@ async function fetchCrewInstructions(id, ver) { // 목록의 최신 버전만 �
 // 채팅방 번호(rid): 첫 방은 크루 폴더 이름 그대로(예전 대화 기록이 그대로 이어진다), 같은 크루의 다른 방은 "크루@짧은번호".
 // 대화·진행 중 작업은 방 번호로, 폴더와 설정은 크루(= @ 앞부분)로 찾는다
 const ROOM_SUFFIX = /^[a-z0-9]{3,8}$/;
-// 그룹 채팅(handleGroupChat·참여자 초대)은 다 만들어 뒀지만 고도화 전이라 막아 둔다. 열 때 true로 (화면 쪽 app.js의 GROUP_CHAT_ENABLED도 같이)
-const GROUP_CHAT_ENABLED = false;
-const MAX_ROOM_MEMBERS = 4; // 한 채팅방의 참여자 수 한도 (크루마다 Claude를 한 번씩 부르므로 사용량과 폰 부담 때문에 4명까지)
+// 그룹 채팅: 한 크루의 방에 다른 참여자를 초대하면 그룹 방이 된다. 일은 방장만 하고, 나머지는 의견만 낸다 (화면 쪽 app.js의 GROUP_CHAT_ENABLED도 같이)
+const GROUP_CHAT_ENABLED = true;
+const MAX_ROOM_MEMBERS = 4; // 한 채팅방의 참여자 수 한도 (참여자마다 AI를 한 번씩 부르므로 사용량과 폰 부담 때문에 4명까지)
 // 방이 어느 크루의 방인지. 옛 방은 아이디 앞부분("크루@번호")이 크루이고, 새 방("@번호")은 대화 파일의 crew 기록을 따른다.
 // 크루 칸이 비어 있는 방은 크루가 없다(감자 톡톡·그룹 방)
 function crewOf(rid) {
@@ -464,6 +475,45 @@ function roomFilesOf(crew) {
     }
   } catch { /* 대화 폴더가 아직 없으면 방도 없다 */ }
   return out;
+}
+// 이 크루가 들어가 있는 채팅방 수 (진행 중 + 보관). 하나라도 있으면 크루를 지울 수 없다.
+// 크루의 첫 방은 채팅 목록에 보일 때만 센다: 대화가 있거나, 방을 열었거나(roomMade), 고정했거나, 보관했을 때
+function crewRoomUsage(crew) {
+  let rooms = 0, archived = 0;
+  const done = new Set();
+  const uiOn = (map, k) => !!(uiState[map] && uiState[map][k] && uiState[map][k].v);
+  const count = (rid) => {
+    if (done.has(rid)) return;
+    done.add(rid);
+    const conv = fs.existsSync(convFile(rid)) ? peekConv(rid) : { messages: [] };
+    if (!conv) { rooms++; return; } // 읽지 못한 방도 방으로 센다 (모르고 지우지 않게)
+    if (rid === crew && !conv.archived && !uiOn('roomMade', rid) && !uiOn('roomPin', rid)
+      && !(conv.messages || []).some((m) => m.role === 'user' || m.role === 'bot')) return;
+    rooms++;
+    if (conv.archived) archived++;
+  };
+  count(crew);
+  for (const r of roomFilesOf(crew)) count(r.rid);
+  // 다른 크루의 방(그룹 방)에 참여자로 들어가 있어도 센다
+  try {
+    for (const f of fs.readdirSync(CONV_DIR)) {
+      if (!f.startsWith('p_%40') || !f.endsWith('.json')) continue;
+      const rid = `@${f.slice(5, -5)}`;
+      if (done.has(rid) || !ROOM_SUFFIX.test(rid.slice(1)) || isQuarantinedName(rid)) continue;
+      const c = peekConv(rid);
+      if (c && Array.isArray(c.participants) && c.participants.includes(crew)) count(rid);
+    }
+  } catch { /* 대화 폴더가 아직 없으면 방도 없다 */ }
+  return { rooms, archived };
+}
+// 화면 정보(이름·고정·만든 시각)에서 지운 방을 뺀다 (기기들은 더 늦은 ts를 따르므로 null로 덮는다)
+function forgetRoomUi(rid) {
+  let changed = false;
+  for (const map of ['roomTitle', 'roomPin', 'roomMade']) {
+    const m = uiState[map];
+    if (m && m[rid] && m[rid].v !== null) { m[rid] = { v: null, ts: Date.now() }; changed = true; }
+  }
+  if (changed) saveUi();
 }
 
 const MIME = {
@@ -705,17 +755,181 @@ function recordUsage(input, output, cost) {
 let lastModel = null;
 let claudeVersion = null;
 function readClaudeInfo() {
+  if (!claudeInstalled()) return;
   require('child_process').execFile(CLAUDE_BIN, ['--version'], { env: childEnv(), timeout: 15000 }, (err, out) => {
     if (!err) claudeVersion = String(out).trim().split(/\s+/)[0];
   });
 }
 function claudeAccount() {
   try {
-    const email = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude.json'), 'utf8')).oauthAccount?.emailAddress;
+    const email = JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf8')).oauthAccount?.emailAddress;
     if (!email) return null;
     const [user, domain] = email.split('@');
     return `${user.slice(0, 1)}***@${domain}`; // 화면에는 가려서
   } catch { return null; }
+}
+
+
+// Claude 계정 여러 개 저장·전환: 로그인 정보(토큰 파일 + 설정 파일의 계정 칸)를 계정별로 보관해 두고 바꿔 끼운다. 대화 기록·메모리는 건드리지 않는다
+// CLAUDE_CONFIG_DIR(개발용 감자알 등)가 있으면 Claude Code처럼 그 폴더에 로그인 정보와 설정 파일을 둔다 → 운영 감자알의 로그인과 섞이지 않는다
+const CLAUDE_CFG_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : '';
+const CLAUDE_CRED = path.join(CLAUDE_CFG_DIR || path.join(os.homedir(), '.claude'), '.credentials.json');
+const CLAUDE_JSON = CLAUDE_CFG_DIR ? path.join(CLAUDE_CFG_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json');
+const ACCT_DIR = path.join(DATA_DIR, 'accounts');
+// Claude Code가 설치돼 있는지. 처음 설치 때 넣지 않고 더보기 › AI › Claude에서 설치할 수 있다 (Codex와 같은 방식)
+let claudeOk = false;
+function claudeInstalled() {
+  if (claudeOk) return true;
+  if (claudeJob.installing) return false;
+  claudeOk = CLAUDE_BIN.includes('/') ? (() => { try { fs.accessSync(CLAUDE_BIN, fs.constants.X_OK); return true; } catch { return false; } })() : hasCmd(CLAUDE_BIN);
+  return claudeOk;
+}
+const claudeJob = { installing: false, installError: '', log: [] };
+const claudeInstallState = () => ({ installed: claudeInstalled(), installing: claudeJob.installing, installError: claudeJob.installError, log: claudeJob.log.slice(-3) });
+// 공식 설치 스크립트로 설치한다 (앱 첫 설치 때와 같은 명령). 실행 파일은 ~/.local/bin/claude 에 생긴다
+function claudeInstall() {
+  if (claudeJob.installing || claudeInstalled()) return;
+  claudeJob.installing = true; claudeJob.installError = ''; claudeJob.log = [];
+  const p = spawn('bash', ['-c', 'set -o pipefail; curl -fsSL https://claude.ai/install.sh | bash'], { env: childEnv() });
+  const feed = (b) => { for (const ln of String(b).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\n')) if (ln.trim()) claudeJob.log.push(ln.slice(0, 200)); claudeJob.log = claudeJob.log.slice(-20); };
+  p.stdout.on('data', feed); p.stderr.on('data', feed);
+  p.on('error', (e) => { claudeJob.installing = false; claudeJob.installError = e.message; });
+  p.on('close', (code) => {
+    claudeJob.installing = false;
+    if (code === 0 && claudeInstalled()) { readClaudeInfo(); return; }
+    const last = claudeJob.log[claudeJob.log.length - 1] || '';
+    claudeJob.installError = code === 0
+      ? `설치는 끝났는데 Claude Code를 찾지 못했어요 (${CLAUDE_BIN}).`
+      : `설치가 끝까지 되지 않았어요 (종료 코드 ${code})${last ? `: ${last}` : ''}. 인터넷 연결과 저장 공간을 확인한 뒤 다시 눌러 주세요.`;
+  });
+}
+const CLAUDE_MISSING = 'Claude가 연결되어 있지 않아요. 더보기 → AI → Claude에서 설치하고 로그인해 주세요.';
+// 사용자가 연결한 AI만 쓴다: Claude는 설치돼 있고 로그인까지 돼 있어야 '연결됨'
+const claudeAvailable = () => claudeInstalled() && claudeReady();
+// Claude 계정이 연결돼 있는지 (로그인 정보 파일 또는 환경변수의 키). 콘솔은 이걸 보고 "AI 계정을 연결하세요" 안내를 띄운다
+function claudeReady() {
+  if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN) return true;
+  try { return !!JSON.parse(fs.readFileSync(CLAUDE_CRED, 'utf8')).claudeAiOauth; } catch { return false; }
+}
+function maskEmail(email) { const [u, d] = String(email || '').split('@'); return d ? `${u.slice(0, 1)}***@${d}` : '-'; }
+function saveCurrentAccount() {
+  try {
+    const cred = JSON.parse(fs.readFileSync(CLAUDE_CRED, 'utf8'));
+    const oa = JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf8')).oauthAccount;
+    if (!cred?.claudeAiOauth || !oa?.accountUuid) return null;
+    fs.mkdirSync(ACCT_DIR, { recursive: true, mode: 0o700 });
+    const f = path.join(ACCT_DIR, oa.accountUuid + '.json');
+    // addedAt: 처음 목록에 들어온 시각. 목록 순서는 이걸로 정한다 (savedAt은 저장할 때마다 바뀌어서, 쓰는 계정이 맨 아래로 내려갔다)
+    let addedAt = Date.now();
+    try { const old = JSON.parse(fs.readFileSync(f, 'utf8')); addedAt = old.addedAt || old.savedAt || addedAt; } catch {}
+    fs.writeFileSync(f + '.tmp', JSON.stringify({ cred, oauthAccount: oa, savedAt: Date.now(), addedAt }), { mode: 0o600 });
+    fs.renameSync(f + '.tmp', f);
+    return oa.accountUuid;
+  } catch { return null; }
+}
+function listClaudeAccounts() {
+  const active = saveCurrentAccount();
+  let out = [];
+  try {
+    out = fs.readdirSync(ACCT_DIR).filter((n) => /^[0-9a-f-]{36}\.json$/.test(n)).map((n) => {
+      const d = JSON.parse(fs.readFileSync(path.join(ACCT_DIR, n), 'utf8'));
+      return { id: n.slice(0, -5), email: maskEmail(d.oauthAccount?.emailAddress), plan: d.cred?.claudeAiOauth?.subscriptionType || '', active: n.slice(0, -5) === active, addedAt: d.addedAt || d.savedAt || 0 };
+    });
+  } catch {}
+  return out.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
+}
+// 계정별 구독 사용량 (Claude Code의 /usage와 같은 곳에서 받는다. 공식 문서에 없는 주소라 실패하면 그 계정은 빈 값)
+// 저장된 로그인 정보가 만료된 계정은 묻지 않는다 — 여기서 토큰을 새로 받으면 그 계정의 로그인이 풀릴 수 있다
+async function claudeAccountsUsage() {
+  const out = {};
+  let names = [];
+  try { names = fs.readdirSync(ACCT_DIR).filter((n) => /^[0-9a-f-]{36}\.json$/.test(n)); } catch {}
+  await Promise.all(names.map(async (n) => {
+    try {
+      const o = JSON.parse(fs.readFileSync(path.join(ACCT_DIR, n), 'utf8')).cred?.claudeAiOauth;
+      if (!o?.accessToken || (o.expiresAt && o.expiresAt < Date.now() + 60000)) return;
+      const r = await fetch('https://api.anthropic.com/api/oauth/usage', {
+        headers: { Authorization: 'Bearer ' + o.accessToken, 'anthropic-beta': 'oauth-2025-04-20', 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      const pick = (x) => (x && typeof x.utilization === 'number' ? (x.resets_at ? { pct: Math.round(x.utilization), resetsAt: x.resets_at } : { pct: 0, resetsAt: '', idle: true }) : null);
+      out[n.slice(0, -5)] = { d: pick(j.five_hour), w: pick(j.seven_day) };
+    } catch {}
+  }));
+  return out;
+}
+// 입력창 뒤 5시간 사용량: 지금 쓰는 Claude 계정의 5시간 한도만, 1분 동안은 받아 둔 값을 쓴다 (화면이 여러 개여도 1분에 한 번만 묻는다)
+// 계정별 마지막 값은 data/usage-now.json에 남긴다. 같은 계정이면 채팅방에 들어오자마자 그 값을 먼저 보여 주고, 뒤에서 새로 받는다
+const USAGE_NOW_FILE = path.join(DATA_DIR, 'usage-now.json');
+let usageRec = {};
+try { usageRec = JSON.parse(fs.readFileSync(USAGE_NOW_FILE, 'utf8')) || {}; } catch {}
+function currentClaudeAcct() { try { return JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf8')).oauthAccount?.accountUuid || ''; } catch { return ''; } }
+function lastClaudeUsage() {
+  const d = usageRec[currentClaudeAcct()];
+  if (!d) return null; // 처음 보는 계정 (또는 계정을 바꿈) → 화면은 불러오는 중 표시
+  if (d.resetsAt && Date.parse(d.resetsAt) <= Date.now()) return { pct: 0, resetsAt: '', idle: true, w: d.w && d.w.resetsAt && Date.parse(d.w.resetsAt) > Date.now() ? d.w : null }; // 초기화 시각이 지났으면 0%부터
+  const w = d.w && d.w.resetsAt && Date.parse(d.w.resetsAt) <= Date.now() ? { pct: 0, resetsAt: '', idle: true } : d.w || null;
+  return { pct: d.pct, resetsAt: d.resetsAt, idle: !!d.idle, w };
+}
+let nowUsage = { acct: '', at: 0, d: null, p: null };
+function claudeNowUsage() {
+  const acct = currentClaudeAcct();
+  if (nowUsage.acct === acct && Date.now() - nowUsage.at < 60000) return Promise.resolve(nowUsage.d);
+  if (nowUsage.p && nowUsage.acct === acct) return nowUsage.p;
+  nowUsage.acct = acct;
+  nowUsage.p = (async () => {
+    let d = null;
+    try {
+      const o = JSON.parse(fs.readFileSync(CLAUDE_CRED, 'utf8')).claudeAiOauth;
+      if (o?.accessToken && !(o.expiresAt && o.expiresAt < Date.now() + 60000)) {
+        const r = await fetch('https://api.anthropic.com/api/oauth/usage', {
+          headers: { Authorization: 'Bearer ' + o.accessToken, 'anthropic-beta': 'oauth-2025-04-20', 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (r.ok) {
+          const j = await r.json(), x = j.five_hour, y = j.seven_day;
+          const w = y && typeof y.utilization === 'number' ? (y.resets_at ? { pct: Math.round(y.utilization), resetsAt: y.resets_at } : { pct: 0, resetsAt: '', idle: true }) : null;
+          // 5시간 창이 아직 시작 전이면(값이 없거나 초기화 시각이 없음) 0% · idle. 그래도 주간 값은 같이 넘긴다 (입력창 위 말풍선)
+          if (x && typeof x.utilization === 'number' && x.resets_at) d = { pct: Math.round(x.utilization), resetsAt: x.resets_at };
+          else if (x || w) d = { pct: 0, resetsAt: '', idle: true };
+          if (d && w) d.w = w;
+        }
+      }
+    } catch {}
+    // 받아 오지 못하면(열쇠 만료·거절·시간 초과) 이 계정의 마지막 값을 stale로 넘긴다. 화면은 회색으로 보여 준다.
+    // 초기화 시각이 이미 지난 칸은 0%·idle로 (그 사이 사용량이 비워졌다)
+    if (!d && acct && usageRec[acct]) {
+      const L = usageRec[acct], past = (x) => x && x.resetsAt && new Date(x.resetsAt) <= Date.now();
+      d = past(L) || L.idle ? { pct: 0, resetsAt: '', idle: true } : { pct: L.pct, resetsAt: L.resetsAt };
+      if (L.w) d.w = past(L.w) ? { pct: 0, resetsAt: '', idle: true } : L.w;
+      d.stale = true;
+    }
+    if (d && acct && !d.stale) {
+      usageRec[acct] = { ...d, at: Date.now() };
+      const keep = Object.entries(usageRec).sort((a, b) => b[1].at - a[1].at).slice(0, 20); // 최근 계정 20개만
+      usageRec = Object.fromEntries(keep);
+      try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(USAGE_NOW_FILE, JSON.stringify(usageRec)); } catch {}
+    }
+    if (nowUsage.acct === acct) nowUsage = { acct, at: Date.now(), d, p: null };
+    return d;
+  })();
+  return nowUsage.p;
+}
+function switchClaudeAccount(id) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error('알 수 없는 계정');
+  const f = path.join(ACCT_DIR, id + '.json');
+  if (!fs.existsSync(f)) throw new Error('저장된 계정이 아니에요');
+  saveCurrentAccount(); // 지금 계정의 최신 로그인 정보부터 보관
+  nowUsage.at = 0; // 입력창 뒤 사용량은 새 계정 것으로 다시 받는다
+  const d = JSON.parse(fs.readFileSync(f, 'utf8'));
+  fs.writeFileSync(CLAUDE_CRED + '.tmp', JSON.stringify(d.cred), { mode: 0o600 });
+  fs.renameSync(CLAUDE_CRED + '.tmp', CLAUDE_CRED);
+  const cj = JSON.parse(fs.readFileSync(CLAUDE_JSON, 'utf8'));
+  cj.oauthAccount = d.oauthAccount;
+  fs.writeFileSync(CLAUDE_JSON + '.tmp', JSON.stringify(cj, null, 2), { mode: 0o600 });
+  fs.renameSync(CLAUDE_JSON + '.tmp', CLAUDE_JSON);
 }
 
 function addNotice(project, text, extra = {}) {
@@ -979,13 +1193,35 @@ const UPDATES_FILE = path.join(DATA_DIR, 'updates.json');
 function recentUpdates() {
   try { return JSON.parse(fs.readFileSync(UPDATES_FILE, 'utf8')); } catch { return []; }
 }
-function recordUpdate(version) {
-  const list = [...recentUpdates(), { version, ts: Date.now() }].slice(-20);
+function recordUpdate(version, notes = []) {
+  const list = [...recentUpdates(), { version, ts: Date.now(), ...(notes.length ? { notes } : {}) }].slice(-20);
   try { fs.writeFileSync(UPDATES_FILE, JSON.stringify(list)); } catch {}
 }
 
+// 바뀐 내용 (public/whatsnew.json · 새것이 먼저). 이 폰이 처음 보는 항목 = 방금 업데이트로 들어온 내용이라서, 그 업데이트 기록에 붙여 둔다
+const WHATSNEW_SEEN = path.join(DATA_DIR, 'whatsnew-seen.json');
+function readWhatsNew() {
+  try { const d = JSON.parse(fs.readFileSync(path.join(PUBLIC_DIR, 'whatsnew.json'), 'utf8')); return Array.isArray(d.entries) ? d.entries.filter((e) => e && e.id) : []; } catch { return []; }
+}
+// 켤 때 한 번: 처음 보는 항목 id들을 돌려주고 "본 것"에 더한다. 기록이 없으면(첫 설치) 업데이트로 켜진 때만 전부 새것으로 본다
+function syncWhatsNew(isUpdate) {
+  const ids = readWhatsNew().map((e) => e.id);
+  let seen = null;
+  try { seen = JSON.parse(fs.readFileSync(WHATSNEW_SEEN, 'utf8')); } catch {}
+  if (!Array.isArray(seen)) seen = null;
+  const fresh = seen ? ids.filter((id) => !seen.includes(id)) : (isUpdate ? ids : []);
+  if (!seen || fresh.length) { try { fs.writeFileSync(WHATSNEW_SEEN, JSON.stringify([...new Set([...(seen || []), ...ids])].slice(-500))); } catch {} }
+  return fresh;
+}
+// 화면에 보낼 업데이트 기록: 붙여 둔 항목 id를 실제 내용(ko/en 목록)으로 바꾼다
+function updatesWithNotes() {
+  const byId = Object.fromEntries(readWhatsNew().map((e) => [e.id, e]));
+  return recentUpdates().slice(-8).reverse().map((u) => ({ version: u.version, ts: u.ts, notes: (u.notes || []).map((id) => byId[id]).filter(Boolean).map((e) => ({ ko: e.ko || [], en: e.en || [] })) }));
+}
+
+const AUTO_UPDATE_OFF = process.env.GAMJA_AUTO_UPDATE === 'off'; // 개발판 감자 앱의 감자알: 운영 코드로 바뀌지 않게 자동 업데이트를 끈다
 function startAutoUpdate() {
-  if (!SUPERVISED || !fs.existsSync(BUILD_FILE)) return;
+  if (!SUPERVISED || !fs.existsSync(BUILD_FILE) || AUTO_UPDATE_OFF) return;
   const tick = async () => {
     let wait = 3 * 3600 * 1000; // 켤 때 한 번(2분 뒤), 이후 3시간마다
     try { if (settings.autoUpdate !== false && (await updateOnce()) === 'busy') wait = 10 * 60 * 1000; }
@@ -1182,6 +1418,374 @@ const projectRuns = new Map(); // project -> { runId, live: { text, tools, statu
 
 // Termux(tmux 등)에서 상속된 LD_PRELOAD(bionic용 .so)는 glibc 바이너리인 claude를 깨뜨린다
 // ("error while loading shared libraries: libc.so") → 자식 프로세스 환경에서 제거
+// ---- 웹 로그인용 가상 터미널 ----
+class MiniScreen { // 화면 글자만 필요한 아주 작은 터미널 (색은 버린다)
+  constructor() { this.lines = ['']; this.r = 0; this.c = 0; this.esc = ''; this.rows = 36; }
+  _line(r) { while (this.lines.length <= r) this.lines.push(''); return r; }
+  _put(ch) { this._line(this.r); let l = this.lines[this.r]; if (l.length < this.c) l = l.padEnd(this.c); this.lines[this.r] = l.slice(0, this.c) + ch + l.slice(this.c + 1); this.c++; }
+  feed(str) {
+    for (const ch of str) {
+      if (this.esc) {
+        this.esc += ch;
+        const e = this.esc;
+        if (e.length === 2 && ch !== '[' && ch !== ']' && ch !== 'P') { this.esc = ''; continue; }
+        if (e[1] === 'P') { if (e.endsWith('\x1b\\')) this.esc = ''; continue; }
+        if (e[1] === ']') { if (ch === '\x07' || e.endsWith('\x1b\\')) this.esc = ''; continue; }
+        if (e[1] === '[' && /[@-~]/.test(ch) && e.length > 2) { this._csi(e.slice(2, -1), ch); this.esc = ''; }
+        continue;
+      }
+      if (ch === '\x1b') this.esc = ch;
+      else if (ch === '\r') this.c = 0;
+      else if (ch === '\n') { this.r++; this._line(this.r); }
+      else if (ch === '\b') this.c = Math.max(0, this.c - 1);
+      else if (ch === '\t') this.c = (this.c + 8) & ~7;
+      else if (ch >= ' ') this._put(ch);
+    }
+    if (this.lines.length > 600) { const cut = this.lines.length - 600; this.lines.splice(0, cut); this.r = Math.max(0, this.r - cut); }
+  }
+  _csi(args, f) {
+    const n = parseInt(args.replace(/[^0-9;]/g, '').split(';')[0], 10) || 0;
+    const top = Math.max(0, this.lines.length - this.rows);
+    if (f === 'A') this.r = Math.max(0, this.r - (n || 1));
+    else if (f === 'B') { this.r += n || 1; this._line(this.r); }
+    else if (f === 'C') this.c += n || 1;
+    else if (f === 'D') this.c = Math.max(0, this.c - (n || 1));
+    else if (f === 'G') this.c = Math.max(0, (n || 1) - 1);
+    else if (f === 'H' || f === 'f') { const [rr, cc] = args.split(';').map((x) => parseInt(x, 10) || 1); this.r = top + rr - 1; this._line(this.r); this.c = cc - 1; }
+    else if (f === 'K') { this._line(this.r); const l = this.lines[this.r]; this.lines[this.r] = n === 2 ? '' : n === 1 ? ' '.repeat(Math.min(this.c + 1, l.length)) + l.slice(this.c + 1) : l.slice(0, this.c); }
+    else if (f === 'J') { if (n === 0) { this.lines.length = this.r + 1; this.lines[this.r] = (this.lines[this.r] || '').slice(0, this.c); } else if (n >= 2) { this.lines = ['']; this.r = 0; } }
+  }
+  text() { return this.lines.map((l) => l.replace(/\s+$/, '')).join('\n'); }
+}
+const cliLogin = { child: null, screen: null, relogin: false, sentLogin: false, timer: null };
+function cliLoginStop() {
+  const c = cliLogin.child;
+  cliLogin.child = null;
+  clearTimeout(cliLogin.timer);
+  clearTimeout(cliLogin.fallback);
+  if (c) { try { process.kill(-c.pid, 'SIGKILL'); } catch { try { c.kill('SIGKILL'); } catch {} } }
+}
+function cliLoginStart(relogin, full) {
+  cliLoginStop();
+  const screen = new MiniScreen();
+  Object.assign(cliLogin, { screen, relogin, sentLogin: false, readyAt: 0, stage: 'STARTING' });
+  // 처음 로그인이든 다시 로그인·계정 추가든 구독 계정 로그인 명령으로 바로 브라우저 단계부터 (감자는 -p 로만 Claude를 써서 글자 스타일 선택은 필요 없다)
+  // 이 명령이 15초 안에 로그인 주소를 못 띄우면 예전처럼 공식 첫 화면(글자 스타일 → 로그인 방법 → 브라우저)으로 넘어간다
+  const bin = JSON.stringify(CLAUDE_BIN);
+  const cmd = full ? bin : `${bin} auth login --claudeai`;
+  const env = { ...childEnv(), TERM: 'xterm-256color', BROWSER: 'true' };
+  delete env.TMUX; delete env.TMUX_PANE; // tmux 안에서 돌고 있어도 Claude Code가 tmux 전용 신호를 쓰지 않게
+  cliLogin.startedAt = Date.now(); cliLogin.auth = !full;
+  const child = spawn('script', ['-qfc', `stty cols 100 rows 36; exec ${cmd}`, '/dev/null'], { cwd: __dirname, detached: true, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  cliLogin.child = child;
+  const eat = (d) => screen.feed(d.toString());
+  child.stdout.on('data', eat); child.stderr.on('data', eat);
+  child.on('error', () => {});
+  const t0 = cliLogin.startedAt;
+  const noUrl = () => cliLogin.screen === screen && !full && !credChangedSince(t0) && !screen.text().includes('oauth/authorize');
+  child.on('close', () => {
+    if (cliLogin.child !== child) return; // 나가기·다시 시작으로 감자알이 끈 것
+    cliLogin.child = null;
+    if (noUrl()) cliLoginStart(relogin, true); // 주소도 없이 바로 끝났다 (명령을 모르는 옛 버전 등)
+  });
+  if (!full) { cliLogin.fallback = setTimeout(() => { if (noUrl() && cliLogin.child === child) cliLoginStart(relogin, true); }, 15000); cliLogin.fallback.unref(); }
+  cliLogin.timer = setTimeout(cliLoginStop, 15 * 60 * 1000);
+  cliLogin.timer.unref();
+}
+function cliLoginKey(k, text, submit) {
+  const c = cliLogin.child;
+  if (!c) return;
+  const KEYS = { up: '\x1b[A', down: '\x1b[B', enter: '\r', esc: '\x1b' };
+  if (KEYS[k]) c.stdin.write(KEYS[k]);
+  else if (k === 'text' && text && text.length <= 2000 && !/[\x00-\x1f\x7f]/.test(text)) {
+    c.stdin.write(text);
+    // 붙여 넣은 글과 Enter를 한꺼번에 보내면 Enter가 글의 일부로 들어가 완료가 안 될 수 있다 → 잠깐 뒤에 따로 보낸다
+    if (submit) setTimeout(() => { if (cliLogin.child === c) c.stdin.write('\r'); }, 500);
+  }
+}
+function credChangedSince(t) { try { return fs.statSync(CLAUDE_CRED).mtimeMs > t; } catch { return false; } }
+function claudeLoggedIn() { try { return !!JSON.parse(fs.readFileSync(CLAUDE_CRED, 'utf8')).claudeAiOauth; } catch { return false; } }
+// ---------- Codex (OpenAI) 설치·로그인: 더보기 → AI → Codex → 계정 설정 ----------
+// 로그인은 Codex CLI의 "기기 코드" 방식(codex login --device-auth): 화면에 주소와 코드를 보여 주고, 사용자가 브라우저에서 넣으면 끝난다
+// 아직 대화에는 쓰지 않는다 (/api/me 의 ai.codex는 false 그대로 — 콘솔이 "AI 연결됨"으로 오해하지 않게). 로그인 상태는 codexLogin으로 따로 알린다
+const CODEX_HOME = process.env.CODEX_HOME ? path.resolve(process.env.CODEX_HOME) : path.join(os.homedir(), '.codex');
+const codexJob = { installing: false, installError: '', log: [], login: null };
+// codex 명령이 있어도 실행 파일이 빠져 있을 수 있어서(위 설치 설명) 실제로 --version이 되는지 본다. 한 번 되면 기억해 둔다
+// 감자알 환경(Termux LD_PRELOAD)에서는 codex 명령의 첫 줄(#!/usr/bin/env node)이 Ubuntu 쪽 env로 풀려 libc.so 오류로 못 켠다
+// → PATH에서 찾은 codex의 실제 파일(codex.js)을 지금 쓰는 node로 바로 실행한다
+function codexCmd(args) {
+  for (const dir of String(process.env.PATH || '').split(':')) {
+    if (!dir) continue;
+    try { const f = fs.realpathSync(path.join(dir, 'codex')); if (/\.js$/.test(f)) return [process.execPath, [f, ...args]]; return [f, args]; } catch { /* 다음 폴더 */ }
+  }
+  return ['codex', args];
+}
+let codexOk = false;
+function codexInstalled() {
+  if (codexOk) return true;
+  if (codexJob.installing || !hasCmd('codex')) return false;
+  try { require('child_process').execFileSync(...codexCmd(['--version']), { stdio: 'ignore', timeout: 8000 }); codexOk = true; } catch {}
+  return codexOk;
+}
+function codexAccount() {
+  try {
+    const a = JSON.parse(fs.readFileSync(path.join(CODEX_HOME, 'auth.json'), 'utf8'));
+    if (a.OPENAI_API_KEY) return { ok: true, email: 'API key' };
+    const idt = a.tokens?.id_token;
+    if (!idt) return { ok: false };
+    let email = '';
+    try { email = JSON.parse(Buffer.from(String(idt).split('.')[1], 'base64url').toString()).email || ''; } catch {}
+    return { ok: true, email: email ? maskEmail(email) : '' };
+  } catch { return { ok: false }; }
+}
+function codexState() {
+  const acc = codexAccount(), l = codexJob.login;
+  return {
+    installed: codexInstalled(), installing: codexJob.installing, installError: codexJob.installError, log: codexJob.log.slice(-3),
+    loggedIn: acc.ok, account: acc.email || '',
+    login: l ? { stage: l.stage, url: l.url, code: l.code, error: l.error, expiresAt: l.expiresAt } : null,
+    accounts: listCodexAccounts(),
+  };
+}
+function codexInstall() {
+  if (codexJob.installing) return;
+  codexJob.installing = true; codexJob.installError = ''; codexJob.log = [];
+  // npm은 이 폰의 Node를 "android"로 보고 리눅스용 실행 파일을 빼먹는다 → 그때는 같은 버전의 리눅스용 묶음을 받아 vendor 폴더에 넣는다
+  // npm·node는 "지금 감자알을 돌리는 node"로 바로 부른다: PATH에 node가 안 잡히거나 npm의 첫 줄(#!/usr/bin/env node)이 못 풀리는 환경에서 종료 코드 127로 멈추던 문제
+  const nodeDir = path.dirname(process.execPath);
+  const npmCli = [path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'), path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')].find((f) => fs.existsSync(f)) || '';
+  // 감자 앱이 설치한 Ubuntu에는 npm이 없다(apt nodejs와 감자가 넣는 Node 24 모두 node만 있음) → 그때는 npm 묶음을 받아 data/npm에 두고 쓴다
+  // npm 10은 Node 18(Node 24를 못 받은 경우)에서도 돈다
+  const script = [
+    'set -e -o pipefail',
+    'node() { "$GAMJA_NODE" "$@"; }',
+    'for c in tar mktemp uname; do command -v $c >/dev/null 2>&1 || { echo "$c 명령을 찾을 수 없어요"; exit 127; }; done',
+    'if [ -n "$GAMJA_NPM_CLI" ]; then npm() { "$GAMJA_NODE" "$GAMJA_NPM_CLI" "$@"; }',
+    'elif ! command -v npm >/dev/null 2>&1; then',
+    '  C="$GAMJA_NPM_HOME/package/bin/npm-cli.js"',
+    '  if ! node "$C" --version >/dev/null 2>&1; then',
+    '    echo "npm 받는 중..."',
+    '    rm -rf "$GAMJA_NPM_HOME"; mkdir -p "$GAMJA_NPM_HOME"',
+    '    node -e "fetch(\'https://registry.npmjs.org/npm/next-10\').then(r=>r.json()).then(j=>fetch(j.dist.tarball)).then(r=>{if(!r.ok)throw new Error(\'npm 받기 실패 \'+r.status);return r.arrayBuffer()}).then(b=>process.stdout.write(Buffer.from(b))).catch(e=>{console.error(e.message);process.exit(1)})" | tar xz -C "$GAMJA_NPM_HOME"',
+    '  fi',
+    '  npm() { "$GAMJA_NODE" "$C" "$@"; }',
+    'fi',
+    'npm install -g @openai/codex',
+    'D="$(npm root -g)/@openai/codex"',
+    'if ! node "$D/bin/codex.js" --version >/dev/null 2>&1; then',
+    '  V=$(node -p "require(process.argv[1]).version" "$D/package.json")',
+    '  case "$(uname -m)" in aarch64|arm64) P=linux-arm64;; x86_64) P=linux-x64;; *) echo "지원하지 않는 기기예요"; exit 3;; esac',
+    '  T=$(mktemp -d); cd "$T"; npm pack "@openai/codex@$V-$P"; tar xzf ./*.tgz',
+    '  rm -rf "$D/vendor"; mv package/vendor "$D/vendor"; cd /; rm -rf "$T"',
+    'fi',
+    'node "$D/bin/codex.js" --version',
+  ].join('\n');
+  const env = { ...process.env, GAMJA_NODE: process.execPath, GAMJA_NPM_CLI: npmCli, GAMJA_NPM_HOME: path.join(DATA_DIR, 'npm'), PATH: `${nodeDir}:${process.env.PATH || ''}` };
+  const p = spawn('bash', ['-c', script], { env });
+  const feed = (b) => { for (const ln of String(b).split('\n')) if (ln.trim()) codexJob.log.push(ln.slice(0, 200)); codexJob.log = codexJob.log.slice(-20); };
+  p.stdout.on('data', feed); p.stderr.on('data', feed);
+  p.on('error', (e) => { codexJob.installing = false; codexJob.installError = e.message; });
+  p.on('close', (code) => {
+    codexJob.installing = false;
+    if (code === 0) return;
+    // 원인을 알 수 있게 설치 기록의 마지막 줄을 같이 보여 준다
+    const last = codexJob.log[codexJob.log.length - 1] || '';
+    codexJob.installError = code === 127
+      ? `설치에 필요한 명령을 찾지 못했어요 (종료 코드 127)${last ? `: ${last}` : ''}`
+      : `설치가 끝까지 되지 않았어요 (종료 코드 ${code})${last ? `: ${last}` : ''}. 인터넷 연결과 저장 공간을 확인한 뒤 다시 눌러 주세요.`;
+  });
+}
+function codexLoginStop() {
+  const l = codexJob.login;
+  if (l?.child) { try { l.child.kill(); } catch {} }
+  codexJob.login = null;
+}
+function codexLoginStart() {
+  codexLoginStop();
+  saveCodexAccount(); // 다른 계정으로 로그인하기 전에 지금 계정을 보관해 둔다
+  const l = { stage: 'STARTING', url: '', code: '', error: '', expiresAt: 0, out: '', child: null };
+  codexJob.login = l;
+  const child = spawn(...codexCmd(['login', '--device-auth']), { env: { ...process.env, NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  l.child = child;
+  const feed = (b) => {
+    l.out = (l.out + String(b).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')).slice(-8000);
+    const u = l.out.match(/https:\/\/auth\.openai\.com\/\S+/), c = l.out.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,6})\b/);
+    if (u && c && l.stage === 'STARTING') { l.url = u[0]; l.code = c[1]; l.stage = 'CODE'; l.expiresAt = Date.now() + 15 * 60 * 1000; }
+  };
+  child.stdout.on('data', feed); child.stderr.on('data', feed);
+  child.on('error', (e) => { l.stage = 'ERROR'; l.error = e.message; l.child = null; });
+  child.on('close', (code) => {
+    l.child = null;
+    if (codexJob.login !== l) return;
+    if (code === 0 && codexAccount().ok) { l.stage = 'SUCCESS'; saveCodexAccount(); return; }
+    l.stage = 'ERROR';
+    l.error = /timed out/i.test(l.out) ? '코드 시간이 지났어요. 다시 눌러 새 코드를 받아 주세요.' : ((l.out.match(/Error[^\n]*/) || [])[0] || `로그인이 끝나지 않았어요 (종료 코드 ${code})`);
+  });
+}
+function codexLogout(done) {
+  const p = spawn(...codexCmd(['logout']), { env: process.env, stdio: 'ignore' });
+  p.on('error', () => done()); p.on('close', () => done());
+}
+// Codex 계정 여러 개 저장·전환 (Claude 계정과 같은 방식): auth.json을 계정별로 보관해 두고 바꿔 끼운다
+const CODEX_AUTH = path.join(CODEX_HOME, 'auth.json');
+const CX_ACCT_DIR = path.join(DATA_DIR, 'codex-accounts');
+function cxClaims(auth) {
+  try { return JSON.parse(Buffer.from(String(auth.tokens.id_token).split('.')[1], 'base64url').toString()); } catch { return null; }
+}
+function cxAcctId(auth) {
+  if (!auth) return '';
+  if (auth.OPENAI_API_KEY && !auth.tokens) return 'apikey';
+  const c = cxClaims(auth);
+  if (!c) return '';
+  const o = c['https://api.openai.com/auth'] || {};
+  return crypto.createHash('sha1').update(`${o.chatgpt_user_id || c.sub || ''}:${o.chatgpt_account_id || auth.tokens?.account_id || ''}`).digest('hex').slice(0, 16);
+}
+function cxWriteSecret(f, data) {
+  fs.writeFileSync(f + '.tmp', JSON.stringify(data, null, 2), { mode: 0o600 });
+  fs.renameSync(f + '.tmp', f);
+}
+function saveCodexAccount() {
+  try {
+    const auth = JSON.parse(fs.readFileSync(CODEX_AUTH, 'utf8'));
+    const id = cxAcctId(auth);
+    if (!id) return null;
+    fs.mkdirSync(CX_ACCT_DIR, { recursive: true, mode: 0o700 });
+    const f = path.join(CX_ACCT_DIR, id + '.json');
+    let old = {};
+    try { old = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
+    if (JSON.stringify(old.auth) !== JSON.stringify(auth)) cxWriteSecret(f, { ...old, auth, savedAt: Date.now(), addedAt: old.addedAt || Date.now() });
+    return id;
+  } catch { return null; }
+}
+function cxAcctFiles() {
+  try { return fs.readdirSync(CX_ACCT_DIR).filter((n) => /^\w{1,40}\.json$/.test(n)); } catch { return []; }
+}
+function listCodexAccounts() {
+  const active = saveCodexAccount();
+  const out = [];
+  for (const n of cxAcctFiles()) {
+    try {
+      const d = JSON.parse(fs.readFileSync(path.join(CX_ACCT_DIR, n), 'utf8'));
+      const id = n.slice(0, -5), c = cxClaims(d.auth) || {}, o = c['https://api.openai.com/auth'] || {};
+      out.push({ id, email: id === 'apikey' ? 'API key' : maskEmail(c.email), plan: o.chatgpt_plan_type || '', active: id === active, addedAt: d.addedAt || 0 });
+    } catch {}
+  }
+  return out.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
+}
+function switchCodexAccount(id) {
+  if (!/^\w{1,40}$/.test(id)) throw new Error('알 수 없는 계정');
+  const f = path.join(CX_ACCT_DIR, id + '.json');
+  if (!fs.existsSync(f)) throw new Error('저장된 계정이 아니에요');
+  saveCodexAccount(); // 지금 계정의 최신 로그인 정보부터 보관
+  cxWriteSecret(CODEX_AUTH, JSON.parse(fs.readFileSync(f, 'utf8')).auth);
+}
+// Codex 대화 기록 파일(rollout)들. 이름에 시각이 들어 있어 이름순 = 시간순
+function codexRollouts(limit) {
+  const root = path.join(CODEX_HOME, 'sessions'), out = [];
+  const desc = (d) => { try { return fs.readdirSync(d).sort().reverse(); } catch { return []; } };
+  for (const y of desc(root)) for (const m of desc(path.join(root, y))) for (const dd of desc(path.join(root, y, m))) {
+    for (const f of desc(path.join(root, y, m, dd))) {
+      if (/^rollout-.*\.jsonl$/.test(f)) out.push(path.join(root, y, m, dd, f));
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+function lastTokenCount(text) {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"token_count"')) continue;
+    try { const p = JSON.parse(lines[i]).payload; if (p && p.type === 'token_count') return p; } catch {}
+  }
+  return null;
+}
+// 계정별 사용량(D: 5시간 한도, W: 주간 한도): Codex가 대화마다 기록하는 한도 정보 중 가장 최근 것. 마지막으로 Codex를 쓴 때 기준이다
+function codexAccountsUsage() {
+  const latest = {}; // chatgpt_user_id → rate_limits
+  for (const f of codexRollouts(20)) {
+    try {
+      const text = fs.readFileSync(f, 'utf8');
+      const uid = JSON.parse(text.slice(0, text.indexOf('\n'))).payload?.creator_user_id;
+      if (!uid || latest[uid]) continue;
+      const rl = lastTokenCount(text)?.rate_limits;
+      if (rl) latest[uid] = rl;
+    } catch {}
+  }
+  const pick = (x) => {
+    if (!x || typeof x.used_percent !== 'number') return null;
+    const at = Number(x.resets_at) * 1000;
+    if (!at || at < Date.now()) return { pct: 0, resetsAt: '', idle: true }; // 초기화가 지났으면 새 창은 아직 시작 전
+    return { pct: Math.round(x.used_percent), resetsAt: new Date(at).toISOString() };
+  };
+  const out = {};
+  for (const n of cxAcctFiles()) {
+    try {
+      const f = path.join(CX_ACCT_DIR, n), d = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const uid = (cxClaims(d.auth) || {})['https://api.openai.com/auth']?.chatgpt_user_id;
+      const rl = uid && latest[uid];
+      if (rl) { d.usage = { d: rl.primary || null, w: rl.secondary || null }; cxWriteSecret(f, d); }
+      if (d.usage) out[n.slice(0, -5)] = { d: pick(d.usage.d), w: pick(d.usage.w) };
+    } catch {}
+  }
+  return out;
+}
+// Codex 자체 설정(config.toml)에서 기본 모델·생각 깊이를 읽는다. 없으면 모델 목록의 첫 모델과 그 모델의 기본 깊이
+function codexDefaults() {
+  let model = '', effort = '';
+  try {
+    const top = fs.readFileSync(path.join(CODEX_HOME, 'config.toml'), 'utf8').split(/^\s*\[/m)[0];
+    model = (/^\s*model\s*=\s*"([^"]+)"/m.exec(top) || [])[1] || '';
+    effort = (/^\s*model_reasoning_effort\s*=\s*"([^"]+)"/m.exec(top) || [])[1] || '';
+  } catch {}
+  const list = codexModels();
+  const m = list.find((x) => x.id === model) || (!model && list[0]) || null;
+  return { model: model || (m ? m.id : ''), name: m ? m.name : model, effort: effort || (m ? m.defEffort : ''), fromConfig: { model: !!model, effort: !!effort } };
+}
+// 이 방의 Codex 대화 길이: 그 대화 기록의 마지막 한도 정보에서 읽는다
+function codexContext(threadId) {
+  if (!threadId || !/^[\w-]{8,80}$/.test(threadId)) return null;
+  const f = codexRollouts(400).find((x) => x.endsWith(`-${threadId}.jsonl`));
+  if (!f) return null;
+  try {
+    const info = lastTokenCount(fs.readFileSync(f, 'utf8'))?.info;
+    return info?.last_token_usage ? { tokens: info.last_token_usage.input_tokens || 0, window: info.model_context_window || 0 } : null;
+  } catch { return null; }
+}
+const CX_COMPACT = { '100k': 100000, '150k': 150000, '200k': 200000, '400k': 400000 };
+
+function cliLoginState() {
+  const sc = cliLogin.screen;
+  const all = sc ? sc.text() : '';
+  const text = all.slice(-4000);
+  const prev = cliLogin.stage || 'STARTING';
+  let stage = prev;
+  if (!sc) stage = 'STARTING';
+  else if (/Login successful/i.test(text)) stage = 'SUCCESS';
+  else if (/Paste code here/i.test(text)) stage = 'CODE';
+  else if (/Yes, I trust this folder|Quick safety check/i.test(text) && prev !== 'METHOD') stage = 'TRUST';
+  else if (text.includes('oauth/authorize')) stage = 'BROWSER';
+  else if (/login method/i.test(text)) stage = 'METHOD';
+  else if (/text style/i.test(text) || /Dark mode/i.test(text)) stage = 'THEME';
+  else if (!cliLogin.auth && claudeLoggedIn() && (prev === 'STARTING' || prev === 'TRUST') && text.trim()) stage = 'READY';
+  if (stage !== 'SUCCESS' && sc && !cliLogin.child && credChangedSince(cliLogin.startedAt)) stage = 'SUCCESS';
+  cliLogin.stage = stage;
+  // 다른 계정으로 로그인(다시 로그인·계정 추가)이면 READY에서 /login 을 대신 입력한다
+  let url = '';
+  if (stage === 'BROWSER' || stage === 'CODE') {
+    const st = all.lastIndexOf('https://claude.');
+    if (st >= 0) {
+      let end = all.indexOf('Paste code', st);
+      if (end < 0) end = all.indexOf('\n\n', st);
+      if (end < 0) end = all.length;
+      const m = all.slice(st, end).replace(/\s/g, '').match(/^https:\/\/[\w\-._~:/?#\[\]@!$&'()*+,;=%]+/);
+      if (m) url = m[0];
+    }
+  }
+  if (stage === 'SUCCESS') saveCurrentAccount();
+  if (stage === 'SUCCESS' && cliLogin.child && claudeLoggedIn()) setTimeout(cliLoginStop, 1500);
+  const view = all.split('\n').filter((l, i, a) => l.trim() || i > a.length - 3).slice(-30).join('\n');
+  return { stage: sc ? stage : 'STARTING', url, screen: view, running: !!cliLogin.child, loggedIn: claudeLoggedIn(), flow: cliLogin.auth ? 'short' : 'full' };
+}
 function childEnv() {
   const env = { ...process.env };
   if (env.LD_PRELOAD && /termux/.test(env.LD_PRELOAD)) delete env.LD_PRELOAD;
@@ -1190,17 +1794,20 @@ function childEnv() {
   return env;
 }
 
-// ---------- 👥 그룹 채팅: 한 방에 여러 크루가 함께 있고, 사용자가 말하면 크루들이 차례로 자기 분야 의견을 낸다 ----------
-// 규칙: ① 크루끼리 알아서 대화하지 않는다 (사용자가 말할 때마다 각자 한 번씩) ② 의견만 낸다 (파일을 고치거나 명령을 실행하지 못한다)
-// ③ 한 번에 한 크루씩 차례로 (폰이 버티도록) ④ 마지막에 감자 톡톡이 사회자로 정리한다 (둘 이상 답했을 때)
-// 각 크루는 자기 폴더의 CLAUDE.md를 읽은 채 새로 시작하고, 방의 최근 대화를 글로 받아서 맥락을 안다. @이름으로 부른 크루만 답하게 할 수 있다
+// ---------- 👥 한 번만 묻기 (읽기 전용): 그룹 채팅의 의견·인계 노트 요약 등 ----------
+// 그룹 채팅 규칙: ① 참여자끼리 알아서 대화하지 않는다 (사용자가 말할 때마다 각자 한 번씩) ② 방장 말고는 의견만 낸다
+// ③ 한 번에 한 명씩 차례로 (폰이 버티도록). 참여자는 방의 최근 대화를 글로 받아서 맥락을 안다
 const GROUP_HISTORY = 14; // 크루에게 알려 주는 방의 최근 말 수
 const GROUP_READONLY = ['--permission-mode', 'default', '--allowedTools', 'Read Grep Glob',
   '--disallowedTools', 'Edit Write MultiEdit NotebookEdit Bash WebFetch WebSearch'];
-function askOnce({ cwd, prompt, system, model, effort, runId, noTools }) {
+// 일을 맡은 참여자: 자기 작업 폴더에서 파일 읽기·고치기만 (명령 실행·인터넷은 방장 몫)
+const GROUP_WRITE = ['--permission-mode', 'acceptEdits', '--allowedTools', 'Read Grep Glob Edit Write MultiEdit',
+  '--disallowedTools', 'NotebookEdit Bash WebFetch WebSearch'];
+function askOnce({ cwd, prompt, system, model, effort, runId, noTools, addDirs, write }) {
   return new Promise((resolve) => {
     // noTools: 가져온 자료를 요약할 때처럼 읽기도 필요 없는 호출. 도구를 모두 끈다(--tools "")
-    const args = ['-p', '--output-format', 'json', ...(noTools ? ['--tools', ''] : GROUP_READONLY)];
+    const args = ['-p', '--output-format', 'json', ...(noTools ? ['--tools', ''] : write ? GROUP_WRITE : GROUP_READONLY)];
+    for (const d of addDirs || []) args.push('--add-dir', d); // 읽기만 하는 폴더 (참여자의 크루 폴더)
     if (model) args.push('--model', model);
     if (effort) args.push('--effort', effort);
     if (system) args.push('--append-system-prompt', system);
@@ -1209,7 +1816,7 @@ function askOnce({ cwd, prompt, system, model, effort, runId, noTools }) {
     running.set(runId, child); // 중지 버튼이 지금 돌고 있는 크루를 끊는다
     let out = '';
     let err = '';
-    const timer = setTimeout(() => child.kill('SIGKILL'), 5 * 60 * 1000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), (write ? 15 : 5) * 60 * 1000);
     child.stdout.on('data', (c) => { out += c.toString('utf8'); });
     child.stderr.on('data', (c) => { err = (err + c.toString('utf8')).slice(-3000); });
     child.stdin.on('error', () => {});
@@ -1227,83 +1834,431 @@ function askOnce({ cwd, prompt, system, model, effort, runId, noTools }) {
     });
   });
 }
-async function handleGroupChat(res, body, project, conv) {
+// 감자알이 혼자 쓰는 요약(인계 노트 등): Claude가 연결돼 있으면 Claude, 아니면 연결된 Codex로 (읽기만)
+function askSummary(o) {
+  if (claudeAvailable()) return askOnce(o);
+  if (codexReady()) return askCodexOnce({ cwd: o.cwd, prompt: o.prompt, system: o.system, runId: o.runId, model: settings.cxModel || '', effort: settings.cxEffort || '' });
+  return Promise.resolve({ error: '요약할 AI가 없어요' });
+}
+// ---------- 👑 방장이 있는 그룹 채팅 ----------
+// conv.members = [{ id:'#1', crew, brain, model?, effort?, nick, since? }], conv.leader = 방장 id.
+// 방장은 이 방의 원래 주인 자리다: conv.crew·conv.agent는 늘 방장을 그대로 비춘다(syncLeader). 그래서 일하는 길(handleChat)은 혼자 방과 같다.
+// 방장만 파일을 고치고 명령을 실행한다. 나머지 참여자는 읽기만 하며 의견을 낸다.
+// 부르는 법: @방장만 → 방장이 일한다 / @다른 참여자 → 그 참여자만 의견 / 아무도 안 부르면 → 방장 말고 모두 의견을 낸 뒤 방장이 정리(읽기만)
+const MEMBER_AGENT_KEYS = ['brain', 'model', 'effort', 'nick', 'since'];
+function agentPart(m) {
+  const a = {};
+  for (const k of MEMBER_AGENT_KEYS) if (m && m[k] !== undefined && m[k] !== '') a[k] = m[k];
+  return a;
+}
+const isGroup = (conv) => !!conv && Array.isArray(conv.members) && conv.members.length > 1;
+function leaderOf(conv) {
+  if (!isGroup(conv)) return null;
+  return conv.members.find((m) => m.id === conv.leader) || conv.members[0];
+}
+// 같은 방에서 대화명은 겹치지 않게 (@로 부르므로). 겹치면 뒤에 2, 3…을 붙인다
+function uniqueNick(conv, want, selfId) {
+  const base = cleanNick(want).slice(0, 26) || 'crew';
+  const taken = (n) => (conv.members || []).some((m) => m.id !== selfId && String(m.nick || '').toLowerCase() === n.toLowerCase());
+  let n = base, i = 2;
+  while (taken(n)) n = `${base}${i++}`;
+  return n;
+}
+// 초대할 때 대화명을 따로 안 정하면 두 글자 이름을 무작위로 준다 (크루 이름은 둘째 줄에 따로 보이니까). 방 안에서 겹치지 않는 것 중에서 고른다
+const RANDOM_NICKS = ['하늘', '바다', '구름', '별빛', '햇살', '노을', '이슬', '바람', '새벽', '단비', '보리', '콩이', '두부', '호두', '밤톨', '모래', '솔잎', '들꽃', '나무', '여름', '가을', '겨울', '봄비', '달빛', '은하', '파도', '소라', '포도', '머루', '다래', '자두', '앵두', '하람', '가람', '누리', '한별', '다솜', '라온', '아라', '미르'];
+function randomNick(conv) {
+  const taken = new Set((conv.members || []).map((m) => String(m.nick || '').toLowerCase()));
+  const free = RANDOM_NICKS.filter((n) => !taken.has(n));
+  const pool = free.length ? free : RANDOM_NICKS;
+  return pool[crypto.randomInt(pool.length)];
+}
+// 참여자마다 고유 색 번호(0~7, 화면의 색 목록 순서). 말풍선 테두리와 @ 대화명 버튼에 같은 색을 쓴다.
+// 초대하거나 채팅을 시작할 때 그 방에서 아직 안 쓴 색 중에서 무작위로 준다. 8명이 넘으면 겹칠 수 있다
+const MEMBER_COLORS = 8;
+function pickColor(conv) {
+  const used = new Set((conv.members || []).map((m) => m.color).filter(Number.isInteger));
+  const free = [...Array(MEMBER_COLORS).keys()].filter((c) => !used.has(c));
+  const pool = free.length ? free : [...Array(MEMBER_COLORS).keys()];
+  return pool[crypto.randomInt(pool.length)];
+}
+// 색이 없던 예전 참여자는 순서대로 빈 색을 준다 (무작위가 아니라서 저장 전에 여러 번 불려도 같은 색이 나온다)
+function fillColors(conv) {
+  const used = new Set((conv.members || []).map((m) => m.color).filter(Number.isInteger));
+  for (const m of conv.members || []) {
+    if (Number.isInteger(m.color)) continue;
+    let c = 0;
+    while (used.has(c) && c < MEMBER_COLORS) c++;
+    m.color = c < MEMBER_COLORS ? c : used.size % MEMBER_COLORS;
+    used.add(m.color);
+  }
+}
+// 방장 → 방의 크루·두뇌, 참여자 → 크루 목록(크루 삭제 확인·이름 바꾸기·개수 세기에 쓴다)
+function syncLeader(conv) {
+  const l = leaderOf(conv);
+  if (!l) return;
+  conv.leader = l.id;
+  conv.agent = agentPart(l);
+  conv.crew = l.crew;
+  conv.participants = [...new Set(conv.members.map((m) => m.crew))];
+}
+// 그룹이 아니게 되면(한 명 남음) 그 사람이 다시 혼자 방의 주인이 된다
+function ungroup(conv) {
+  const m = (conv.members || [])[0];
+  if (m) { conv.agent = agentPart(m); conv.crew = m.crew; conv.participants = [m.crew]; } else conv.participants = (conv.participants || []).slice(0, 1);
+  delete conv.members; delete conv.leader; delete conv.memberSeq;
+}
+// 혼자 방(또는 예전 그룹 방)을 참여자 목록 모양으로. 첫 크루가 방장이 된다
+function ensureMembers(conv, rid, names = {}) {
+  if (Array.isArray(conv.members) && conv.members.length) return;
+  const crews = (Array.isArray(conv.participants) && conv.participants.length ? conv.participants : [crewOf(rid)])
+    .filter((c) => typeof c === 'string' && c && !c.includes('@'));
+  conv.members = [];
+  crews.forEach((c, i) => {
+    const base = i === 0 && agentOk(conv.agent) ? agentPart(conv.agent) : (i === 0 ? legacyAgent(c) : { brain: 'claude' });
+    const m = { id: `#${i + 1}`, crew: c, ...base };
+    m.nick = uniqueNick(conv, m.nick || randomNick(conv), m.id); // 대화명이 없던 참여자도 두 글자 이름으로
+    m.color = pickColor(conv);
+    conv.members.push(m);
+  });
+  conv.leader = conv.members.length ? conv.members[0].id : undefined;
+  conv.memberSeq = conv.members.length;
+}
+// 방장이 일할 방 폴더. 폴더가 없던 방은 새로 주고, 이어가던 기억은 폴더에 묶여 있어서 새로 시작한다(최근 대화를 붙여 준다)
+function ensureRoomDir(conv, rid) {
+  if (conv.dir || !rid.startsWith('@')) return;
+  conv.dir = `chat-${rid.slice(1)}`;
+  if (conv.sessionId || conv.codexThread) conv.recap = 'folder';
+  delete conv.sessionId; delete conv.codexThread;
+  try { fs.mkdirSync(path.join(ROOMS_DIR, conv.dir), { recursive: true }); } catch (e) { console.error('방 폴더 만들기 실패:', e.message); }
+}
+// 화면에 보여 줄 참여자 목록
+function publicGroup(conv) {
+  if (!isGroup(conv)) return null;
+  fillColors(conv);
+  return conv.members.map((m) => ({ id: m.id, crew: m.crew, brain: m.brain, model: m.model || '', effort: m.effort || '', nick: m.nick || m.crew, leader: m.id === conv.leader, locked: !!m.since, color: m.color }));
+}
+// 글에서 @대화명으로 부른 참여자 (긴 대화명부터 찾아서 "감자"가 "감자2"를 가로채지 않게. 뒤에 조사가 붙어도 된다)
+function mentionedMembers(conv, text) {
+  let rest = String(text || '');
+  const hit = new Set();
+  for (const m of [...conv.members].sort((a, b) => String(b.nick || '').length - String(a.nick || '').length)) {
+    if (!m.nick) continue;
+    const re = new RegExp('@' + m.nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+    if (re.test(rest)) { hit.add(m.id); rest = rest.replace(re, ' '); }
+  }
+  return conv.members.filter((m) => hit.has(m.id));
+}
+// 메시지를 쓴 사람의 이름 (그룹이 끝난 뒤에도 보이도록 byName을 같이 남긴다)
+function speakerName(conv, m, fallback) {
+  if (m.byName) return m.byName;
+  const mem = (conv.members || []).find((x) => x.id === m.by);
+  if (mem) return mem.nick || mem.crew;
+  return m.by || fallback || '크루';
+}
+function groupLeaderPrompt(conv) {
+  const l = leaderOf(conv);
+  if (!l) return '';
+  const others = conv.members.filter((m) => m.id !== l.id).map((m) => `${m.nick} (${m.crew}, ${m.brain === 'codex' ? 'Codex' : 'Claude'})`).join(', ');
+  const wt = kitInstalled('git') && !!conv.dir;
+  return `[그룹 채팅] 이 방에는 여러 참여자가 있고, 당신은 방장 '${l.nick}'이에요. 방 폴더(지금 폴더)를 고치고 명령을 실행하는 건 방장인 당신만 해요. ` +
+    `다른 참여자(${others})는 평소에는 의견만 내요. 사용자가 다른 참여자의 의견을 참고하라고 하면 대화 맥락에 있는 그 의견을 반영해요.\n` +
+    `다른 참여자에게 조사·검토·의견·초안${wt ? '·파일 작업' : ''}을 맡기려면 답에 "@대화명"을 쓰고 무엇을 해 달라는지 적어요. 답이 끝나면 감자알이 그 참여자에게 전하고, 참여자의 답을 받아 당신에게 다시 넘겨 줘요. ` +
+    `참여자끼리도 @로 서로 부를 수 있고, 참여자가 @${l.nick}으로 당신을 부르면 당신에게 넘어와요. ` +
+    (wt
+      ? `@로 일을 맡은 참여자는 자기 작업 폴더(${CREW_WT_DIR}/m번호, git 브랜치 crew/m번호)에서 파일을 직접 고치고, 감자알이 그 브랜치에 커밋해 둬요. ` +
+        '방 폴더는 git 저장소예요. 참여자에게 맡기기 직전에 감자알이 당신 작업을 자동으로 커밋해요. 참여자가 고친 브랜치는 검토한 뒤 방 폴더에서 git merge로 합치고, 충돌은 당신이 해결해요. ' +
+        `${CREW_WT_DIR} 폴더 안은 직접 고치지 마세요. `
+      : '참여자는 파일을 읽기만 하니 실제 수정은 당신이 해요. ') +
+    `이렇게 전하는 건 한 번에 ${MAX_RELAY}번까지예요. 다 차면 감자알이 당신에게 중간 점검을 맡기고, 남은 일이 있으면 다시 ${MAX_RELAY}번을 더 쓸 수 있어요 (사용자 메시지 한 번에 모두 ${MAX_RELAY * MAX_ROUNDS}번까지). ` +
+    '일이 끝났으면 더 부르지 말고 사용자에게 보고해요. ' +
+    '사용자에게 결과를 보고할 때나 참여자를 다시 부를 게 아닐 때는 "@"를 붙이지 말고 대화명만 써요 (@를 붙이면 그 참여자를 다시 불러요).';
+}
+// @ 부르기 전달: 누구든(방장·참여자) 답에 @대화명을 쓰면 감자알이 그 참여자에게 전한다
+const MAX_RELAY = 10; // 사용자 메시지 한 번에 전하는 횟수 (참여자가 답한 차례 + 방장에게 넘긴 차례를 모두 센다)
+const MAX_ROUNDS = 3; // 한도(MAX_RELAY)가 차면 방장이 중간 점검하고 다시 MAX_RELAY번을 더 쓴다. 처음 것을 포함해 이만큼까지 (그 뒤에는 사용자가 "이어서 하기"로)
+const RELAY_STOP = `⚠️ 서로 부르기가 ${MAX_RELAY * MAX_ROUNDS}번을 넘어서 멈췄어요. 아래 "이어서 하기"를 누르면 방장이 이어서 해요.`;
+const RELAY_NEXT = (round) => `🔁 서로 부르기 ${MAX_RELAY}번이 차서 방장이 중간 점검하고 이어가요 (${round}/${MAX_ROUNDS})`;
+const relayStopNotice = (project, conv) => addNotice(project, RELAY_STOP, { relayStop: true, leader: (leaderOf(conv) || {}).nick || '' });
+// text에서 @로 부른 참여자 (말한 사람 자신과 크루가 사라진 참여자는 뺀다)
+function calledMembers(conv, text, selfId) {
+  return mentionedMembers(conv, text).filter((m) => m.id !== selfId && m.crew && listProjects().includes(m.crew));
+}
+// ---------- 🌿 참여자 작업 폴더 (git worktree) ----------
+// @로 일을 맡은 참여자는 방 폴더 저장소의 자기 브랜치(crew/m번호)를 받아 자기 작업 폴더(.crew/m번호)에서 파일을 고친다.
+// 끝나면 감자알이 그 브랜치에 커밋해 두고, 방장이 검토해서 방 폴더에 합친다(git merge). git 도구가 없거나 방 폴더가 없는 옛 방은 예전처럼 읽기만 한다
+const CREW_WT_DIR = '.crew';
+const GIT_ID = ['-c', 'user.name=gamja', '-c', 'user.email=gamja@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.quotepath=false'];
+function gitRun(cwd, args) {
+  return new Promise((resolve) => {
+    require('child_process').execFile('git', [...GIT_ID, ...args], { cwd, encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
+      (err, out, errOut) => resolve({ ok: !err, out: String(out || '').trim(), err: String(errOut || (err && err.message) || '').trim() }));
+  });
+}
+const memberBranch = (m) => `crew/m${String(m.id).replace(/\D/g, '') || '0'}`;
+async function commitWorktree(wt, m, msg) {
+  await gitRun(wt, ['add', '-A']);
+  if ((await gitRun(wt, ['diff', '--cached', '--quiet'])).ok) return false;
+  return (await gitRun(wt, ['commit', '-q', '-m', `${m.nick}: ${msg}`])).ok;
+}
+// 참여자의 작업 폴더를 준비한다. 실패하면 null (그 차례는 읽기만)
+async function memberWorktree(roomDir, m) {
+  if (!kitInstalled('git')) return null;
+  try {
+    if (!fs.existsSync(path.join(roomDir, '.git')) && !(await gitRun(roomDir, ['init', '-q'])).ok) return null;
+    if (fs.existsSync(path.join(roomDir, '.git', 'MERGE_HEAD'))) return null; // 방장이 합치다 충돌을 푸는 중이면 건드리지 않는다
+    const gi = path.join(roomDir, '.gitignore');
+    let cur = '';
+    try { cur = fs.readFileSync(gi, 'utf8'); } catch { /* 처음 */ }
+    const need = [`/${CREW_WT_DIR}/`, `/${UPLOAD_DIR}/`, 'node_modules/'].filter((l) => !cur.split('\n').includes(l));
+    if (need.length) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + need.join('\n') + '\n');
+    // 방장이 지금까지 한 일을 저장(커밋)해 두고 그 위에서 시작한다
+    await gitRun(roomDir, ['add', '-A']);
+    const hasHead = (await gitRun(roomDir, ['rev-parse', '-q', '--verify', 'HEAD'])).ok;
+    if ((!hasHead || !(await gitRun(roomDir, ['diff', '--cached', '--quiet'])).ok) &&
+      !(await gitRun(roomDir, ['commit', '-q', '--allow-empty', '-m', '방장 작업 자동 저장 (참여자에게 맡기기 전)'])).ok) return null;
+    const head = (await gitRun(roomDir, ['rev-parse', 'HEAD'])).out;
+    const branch = memberBranch(m);
+    const wt = path.join(roomDir, CREW_WT_DIR, branch.slice(5));
+    if (!fs.existsSync(path.join(wt, '.git'))) {
+      await gitRun(roomDir, ['worktree', 'prune']);
+      const exists = (await gitRun(roomDir, ['rev-parse', '-q', '--verify', `refs/heads/${branch}`])).ok;
+      if (!(await gitRun(roomDir, exists ? ['worktree', 'add', '-q', wt, branch] : ['worktree', 'add', '-q', '-b', branch, wt, head])).ok) return null;
+    }
+    // 지난번에 남은 수정은 저장하고, 방 폴더의 새 내용을 받아 온다 (합친 브랜치는 그대로 따라가고, 아직 안 합친 작업은 살린다. 충돌하면 그만둔다)
+    await commitWorktree(wt, m, '지난 작업 저장');
+    if (!(await gitRun(wt, ['merge', '-q', '--no-edit', head])).ok) await gitRun(wt, ['merge', '--abort']);
+    return { wt, branch, base: (await gitRun(wt, ['rev-parse', 'HEAD'])).out };
+  } catch (e) { console.error('참여자 작업 폴더 준비 실패:', e.message); return null; }
+}
+// 참여자의 차례가 끝난 뒤: 고친 것을 커밋하고, 이번에 바뀐 파일 목록을 돌려준다
+async function finishWorktree(w, m, answer) {
+  const first = String(answer || '').split('\n').map((s) => s.replace(/[#*`>]/g, '').trim()).find(Boolean) || '작업';
+  await commitWorktree(w.wt, m, first.slice(0, 70));
+  const r = await gitRun(w.wt, ['diff', '--name-only', w.base, 'HEAD']);
+  return r.ok ? r.out.split('\n').filter(Boolean) : [];
+}
+
+// Codex에게 한 번만 묻기 (읽기 전용 샌드박스. 기록을 이어가지 않는다). write: 참여자 작업 폴더 안에서만 고칠 수 있게
+function askCodexOnce({ cwd, prompt, system, model, effort, runId, write }) {
+  return new Promise((resolve) => {
+    const a = ['exec', '--json', '--skip-git-repo-check', '-c', `sandbox_mode="${write ? 'workspace-write' : 'read-only'}"`];
+    const mInfo = codexModels().find((x) => x.id === (model || codexDefaults().model));
+    if (effort && mInfo && mInfo.efforts.length && !mInfo.efforts.includes(effort)) effort = '';
+    if (model) a.push('-m', model);
+    if (effort) a.push('-c', `model_reasoning_effort="${effort}"`);
+    if (system) a.push('-c', `developer_instructions=${JSON.stringify(system)}`);
+    a.push('-');
+    const [cmd, args] = codexCmd(a);
+    let child;
+    try { child = spawn(cmd, args, { cwd, env: childEnv(), stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return resolve({ error: 'Codex 실행 실패: ' + e.message }); }
+    running.set(runId, child);
+    const started = Date.now();
+    let buf = '', err = '', cxErr = '';
+    const texts = [];
+    let usage = null;
+    const timer = setTimeout(() => child.kill('SIGKILL'), (write ? 15 : 5) * 60 * 1000);
+    child.stdout.on('data', (c) => {
+      buf += c.toString('utf8');
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        let ev;
+        try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.type === 'item.completed' && ev.item && ev.item.type === 'agent_message' && ev.item.text) texts.push(String(ev.item.text));
+        else if (ev.type === 'turn.completed') usage = ev.usage || {};
+        else if (ev.type === 'turn.failed') cxErr = String((ev.error && ev.error.message) || 'Codex 오류');
+        else if (ev.type === 'error' && !/dangerously-bypass-hook-trust/.test(String(ev.message || ''))) cxErr = String(ev.message || '');
+      }
+    });
+    child.stderr.on('data', (c) => { err = (err + c.toString('utf8')).slice(-3000); });
+    child.stdin.on('error', () => {});
+    child.stdin.end(prompt);
+    child.on('error', (e) => { clearTimeout(timer); resolve({ error: `Codex 실행 실패 (${e.code || e.message})` }); });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if (child.stoppedByUser) return resolve({ stopped: true });
+      if (texts.length && usage) {
+        const u = usage;
+        return resolve({ text: texts.join('\n\n').trim(), cost: 0, usage: { input_tokens: u.input_tokens || 0, output_tokens: (u.output_tokens || 0) + (u.reasoning_output_tokens || 0) }, ms: Date.now() - started });
+      }
+      resolve({ error: (cxErr || (signal ? `강제로 끝났어요 (${signal})` : `Codex 종료 코드 ${code}\n${err.trim().slice(-500)}`)).slice(0, 1500) });
+    });
+  });
+}
+// 참여자의 두뇌로 한 번 묻기 (읽기만). 참여자의 크루 지침을 함께 준다
+function askMember(m, o) {
+  const crewDir = m.crew && listProjects().includes(m.crew) ? path.join(CREWS_DIR, m.crew) : '';
+  let guide = '';
+  if (crewDir) { try { guide = fs.readFileSync(path.join(crewDir, 'CLAUDE.md'), 'utf8').slice(0, 12000); } catch { /* 지침 파일이 없는 크루 */ } }
+  const system = [o.system, guide ? `[당신 크루(${m.crew})의 지침 — 그대로 따르되, 이 방에서는 ${o.write ? '당신 작업 폴더(지금 폴더) 안의 파일만 고쳐요' : '읽기만 해요'}]\n${guide}` : ''].filter(Boolean).join('\n\n');
+  if (m.brain === 'codex') {
+    if (!codexReady()) return Promise.resolve({ error: 'Codex가 연결되어 있지 않아요. 더보기 → AI → Codex에서 먼저 연결해 주세요.' });
+    return askCodexOnce({ cwd: o.cwd, prompt: o.prompt, system, runId: o.runId, write: !!o.write, model: m.model || settings.cxModel || '', effort: m.effort || settings.cxEffort || '' });
+  }
+  if (!claudeAvailable()) return Promise.resolve({ error: CLAUDE_MISSING });
+  return askOnce({ cwd: o.cwd, prompt: o.prompt, system, runId: o.runId, write: !!o.write, model: m.model || settings.model, effort: m.effort || settings.effort, addDirs: crewDir ? [crewDir] : [] });
+}
+// 의견 차례: hit(부른 참여자)가 있으면 그들만, 없으면 방장 말고 모두 → 방장이 정리
+// relay: 방장이 답에서 @로 부른 참여자에게 전하는 차례 ({ hops: 지금까지 전한 횟수, depth }). 사용자 메시지를 새로 남기지 않고, 끝나면 답을 방장에게 넘긴다
+// 어느 차례든 참여자가 답에 @대화명을 쓰면: 다른 참여자는 이어서 답하고, 방장을 부르면 끝난 뒤 방장에게 넘긴다 (방장이 일한다)
+async function handleGroupChat(res, body, project, conv, hit, relay = null) {
   const text = String(body.message || '').trim();
   if (!text) return send(res, 400, { error: '메시지가 비어 있습니다' });
   if (projectRuns.has(project)) return send(res, 409, { error: '이 방에서 이미 응답이 진행 중이에요. 끝난 뒤에 보내 주세요.' });
-  const names = body.names && typeof body.names === 'object' ? body.names : {};
-  const label = (c) => String(names[c] || (c === '' ? '감자 톡톡' : c)).slice(0, 40);
-  const members = (conv.participants || []).filter((c) => typeof c === 'string' && !c.includes('@') && resolveProject(c)).slice(0, MAX_ROOM_MEMBERS);
-  if (!members.length) return send(res, 400, { error: '이 방에 남아 있는 크루가 없어요.' });
-  const only = Array.isArray(body.only) ? body.only.map(String) : [];
-  const speakers = only.length ? members.filter((c) => only.includes(c)) : members;
+  const leader = leaderOf(conv);
+  const alive = (m) => !!m.crew && listProjects().includes(m.crew);
+  const speakers = (hit.length ? hit : conv.members.filter((m) => m.id !== leader.id)).filter(alive);
+  if (!speakers.length) return send(res, 400, { error: '이 방에 의견을 낼 수 있는 참여자가 없어요.' });
+  const cwd = resolveProject(project);
+  try { fs.mkdirSync(cwd, { recursive: true }); } catch {}
+  const images = (Array.isArray(body.images) ? body.images : []).slice(0, MAX_IMAGES).filter((n) => isUploadName(n) && fs.existsSync(path.join(cwd, UPLOAD_DIR, n)));
+  const files = (Array.isArray(body.files) ? body.files : []).slice(0, MAX_IMAGES).filter((n) => isFileUploadName(n) && fs.existsSync(path.join(cwd, UPLOAD_DIR, n)));
+  const fallback = leader.nick || crewOf(project);
   const lines = conv.messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text).slice(-GROUP_HISTORY)
-    .map((m) => `${m.role === 'user' ? '사용자' : label(m.by ?? crewOf(project))}: ${String(m.text).slice(0, 1200)}`); // by가 없는 말은 방을 만들 때의 크루가 한 말
-  conv.messages.push({ role: 'user', text, ts: Date.now() });
-  lines.push(`사용자: ${text}`);
-  saveConv(project);
+    .map((m) => `${m.role === 'user' ? '사용자' : speakerName(conv, m, fallback)}: ${String(m.text).slice(0, 1200)}`); // by가 없는 말은 방장(방의 원래 주인)이 한 말
+  if (relay && lines.length) lines[lines.length - 1] = `${leader.nick}: ${text.slice(0, 6000)}`; // 방장이 맡긴 말은 잘리지 않게 길게
+  if (!relay) { // 방장이 부른 차례는 방장의 말이 이미 기록(lines)의 마지막에 있다
+    conv.messages.push({ role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}), ...(files.length ? { files } : {}) });
+    const att = [...images, ...files].map((n) => `${UPLOAD_DIR}/${n}`);
+    lines.push(`사용자: ${text}${att.length ? `\n(첨부: ${att.join(', ')} — Read로 열어 볼 수 있어요)` : ''}`);
+    saveConv(project);
+  }
 
   res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   let clientGone = false;
   res.on('close', () => { clientGone = true; });
   const runId = crypto.randomUUID();
-  const live = { text: '', tools: [], status: '🤔 크루들이 생각하는 중...' };
+  const live = { text: '', tools: [], status: '🤔 생각하는 중...', by: '' }; // by: 지금 말하는 참여자 (화면이 진행 중 말풍선에 그 이름을 붙인다)
   projectRuns.set(project, { runId, live, group: true, since: Date.now() });
   const emit = (event, data) => { if (!clientGone) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
   const heartbeat = setInterval(() => { if (!clientGone) res.write(': ping\n\n'); }, 15000);
   emit('start', { runId });
   const startedAt = Date.now();
-  const lang = body.lang === 'en' ? 'en' : '';
-  const base = settingsPrompt(lang);
-  const header = `[그룹 채팅] 참여한 크루: ${members.map(label).join(', ')}\n\n지금까지의 대화:\n`;
+  const base = settingsPrompt(body.lang === 'en' ? 'en' : '');
+  const roster = conv.members.map((m) => `${m.nick}${m.id === leader.id ? '(방장)' : ''}`).join(', ');
+  const header = `[그룹 채팅] 참여자: ${roster}\n\n지금까지의 대화:\n`;
   let stopped = false;
   let errorText = null;
   let lastBot = null;
   let answered = 0;
-  const say = (bot, title) => {
+  const say = (bot) => {
     conv.messages.push(bot);
     saveConv(project);
     lastBot = bot;
-    const chunk = `**${title}**\n${bot.text}\n\n`; // 진행 중에는 한 말풍선에 이어서 보이고, 끝나면 기록에서 크루별 말풍선으로 다시 그려진다
-    live.text += chunk;
-    emit('delta', { text: chunk });
+    // 화면은 참여자마다 말풍선을 따로 만든다. 끝난 답은 기록에 들어갔으니 진행 중 글(live.text)은 비운다 (따라가는 화면에 두 번 보이지 않게)
+    live.text = '';
+    emit('delta', { text: bot.text, by: bot.by, turn: true });
   };
+  const fail = (who, r) => { errorText = `${who}: ${r.error}`; conv.messages.push({ role: 'error', text: errorText, ts: Date.now() }); saveConv(project); emit('error', { message: errorText }); };
   const record = (r) => { if (r.usage) recordUsage((r.usage.input_tokens || 0) + (r.usage.cache_creation_input_tokens || 0) + (r.usage.cache_read_input_tokens || 0), r.usage.output_tokens || 0, r.cost || 0); };
-  for (const crew of speakers) {
-    live.status = `💬 ${label(crew)}이(가) 생각하는 중...`;
-    emit('status', { text: live.status });
-    const system = [`당신은 '${label(crew)}' 크루예요. 여러 크루가 한 방에서 사용자와 함께 의논하고 있어요. ` +
-      '당신 분야의 관점에서만 의견을 말하고, 6문장 이내로 핵심부터 짧게 답해요. 앞서 다른 크루가 한 말은 되풀이하지 말고 보태거나 다른 점만 말해요. ' +
-      '파일을 고치거나 명령을 실행하지 말고 읽기만 해요. 모르는 것은 지어내지 말고 모른다고 해요. 사용자가 일을 시키면 "제 방에서 맡을게요"라고 안내해요.', base].filter(Boolean).join('\n');
-    const r = await askOnce({
-      cwd: resolveProject(crew), prompt: header + lines.join('\n'), system,
-      model: projectConf[crew]?.model || settings.model, effort: projectConf[crew]?.effort || settings.effort, runId,
-    });
+  const lock = (m) => { if (!m.since) { m.since = Date.now(); if (m.id === leader.id) syncLeader(conv); } };
+  const queue = [...speakers];
+  const calledBy = new Map(relay ? speakers.map((m) => [m.id, leader.nick]) : []); // 참여자 id → 그를 @로 부른 사람
+  let hops = relay ? relay.hops : 0;
+  const round = relay ? (relay.round || 1) : 1; // 몇 번째 한도(MAX_RELAY) 묶음인지
+  let leaderCalled = false, capHit = false;
+  const roomDir = roomDirName(project) ? cwd : ''; // 참여자 작업 폴더는 방 전용 폴더가 있는 방에서만 (크루 폴더를 git 저장소로 만들지 않는다)
+  const branches = []; // 이번에 참여자가 고쳐서 커밋한 브랜치
+  const callRule = `다른 참여자나 방장에게 일을 맡기거나 물어보려면 답에 "@대화명"을 쓰면 감자알이 전해 줘요 (방장 '${leader.nick}'을 부르면 방장이 이어서 실제 작업을 해요). ` +
+    '부를 게 아니면 "@" 없이 대화명만 써요.';
+  for (let i = 0; i < queue.length; i++) {
+    const m = queue[i];
+    live.status = `💬 ${m.nick}이(가) 생각하는 중...`;
+    live.by = m.id;
+    emit('status', { text: live.status, by: m.id });
+    const isLeader = m.id === leader.id;
+    const caller = calledBy.get(m.id);
+    // 일을 맡은 참여자는 자기 작업 폴더(git 브랜치)에서 파일을 고친다. 준비가 안 되면 읽기만
+    let w = null;
+    if (caller && roomDir) {
+      live.status = `🌿 ${m.nick}의 작업 폴더를 준비하는 중...`;
+      emit('status', { text: live.status, by: m.id });
+      w = await memberWorktree(roomDir, m);
+      live.status = `💬 ${m.nick}이(가) ${w ? '일하는' : '생각하는'} 중...`;
+      emit('status', { text: live.status, by: m.id });
+    }
+    const system = [caller
+      ? `당신은 이 그룹 채팅의 참여자 '${m.nick}'(${m.crew} 크루)예요. '${caller}'이(가) 대화에서 당신을 불러 일을 맡겼어요. ` +
+        `당신 분야의 관점에서 맡은 일(조사·검토·의견·초안·파일 작업)을 해서 답해요. 핵심부터 쓰되 필요한 만큼 구체적으로 써요. ` +
+        (w
+          ? `지금 폴더는 당신만의 작업 폴더예요 (방 폴더의 복사본, git 브랜치 ${w.branch}). 맡은 일에 필요하면 이 폴더의 파일을 직접 만들고 고쳐요. ` +
+            `${m.brain === 'codex' ? '명령은 이 폴더 안에서만 실행해요. ' : '명령 실행은 안 돼요(필요하면 방장에게 부탁해요). '}` +
+            `커밋은 감자알이 대신 해 주니 하지 마세요. 방장 '${leader.nick}'이 검토해서 방 폴더에 합쳐요. 답에는 무엇을 왜 고쳤는지 짧게 적어요. `
+          : `파일을 고치거나 명령을 실행하지 말고 읽기만 해요. 파일을 바꿔야 하면 어느 파일의 무엇을 어떻게 바꿀지 적어서 방장 '${leader.nick}'이 적용하게 해요. `) +
+        '모르는 것은 지어내지 말고 모른다고 해요. ' + callRule
+      : `당신은 이 그룹 채팅의 참여자 '${m.nick}'(${m.crew} 크루)예요. ${isLeader ? '당신은 방장이지만 지금은 의견만 묻고 있어요. ' : `실제 작업은 방장 '${leader.nick}'이 해요. `}` +
+      '당신 분야의 관점에서 의견을 말하고, 6문장 이내로 핵심부터 짧게 답해요. 앞서 다른 참여자가 한 말은 되풀이하지 말고 보태거나 다른 점만 말해요. ' +
+      '파일을 고치거나 명령을 실행하지 말고 읽기만 해요. 모르는 것은 지어내지 말고 모른다고 해요. ' + (isLeader ? '' : callRule), base].filter(Boolean).join('\n');
+    const r = await askMember(m, { cwd: w ? w.wt : cwd, prompt: header + lines.join('\n'), system, runId, write: !!w });
+    const changed = w ? await finishWorktree(w, m, r.text) : []; // 멈추거나 실패해도 고친 것은 브랜치에 남겨 둔다
+    if (changed.length) branches.push({ nick: m.nick, branch: w.branch, n: changed.length });
     if (r.stopped) { stopped = true; break; }
-    if (r.error) { errorText = `${label(crew)}: ${r.error}`; conv.messages.push({ role: 'error', text: errorText, ts: Date.now() }); saveConv(project); emit('error', { message: errorText }); continue; }
+    if (r.error) { fail(m.nick, r); continue; }
+    if (changed.length) r.text += `\n\n📦 파일 ${changed.length}개를 고쳐서 브랜치 \`${w.branch}\`에 커밋했어요: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ' …' : ''}`;
     record(r);
+    lock(m);
     answered++;
-    lines.push(`${label(crew)}: ${r.text}`);
-    say({ role: 'bot', text: r.text, ts: Date.now(), by: crew, meta: `${(r.ms / 1000).toFixed(1)}초` }, label(crew));
+    lines.push(`${m.nick}: ${r.text}`);
+    say({ role: 'bot', text: r.text, ts: Date.now(), by: m.id, byName: m.nick, meta: `${(r.ms / 1000).toFixed(1)}초${m.brain === 'codex' ? ' · Codex' : ''}` });
+    if (isLeader) continue; // 의견만 낸 방장의 @는 부르기로 치지 않는다
+    for (const x of calledMembers(conv, r.text, m.id)) { // 이 참여자가 @로 부른 사람
+      if (x.id === leader.id) { leaderCalled = true; continue; } // 방장은 모두 끝난 뒤에 넘긴다
+      if (queue.slice(i + 1).some((q) => q.id === x.id)) continue; // 이미 차례를 기다리는 참여자
+      if (hops >= MAX_RELAY) { capHit = true; continue; }
+      hops++;
+      queue.push(x);
+      calledBy.set(x.id, m.nick);
+    }
   }
-  if (!stopped && answered >= 2) { // 사회자: 의견을 정리만 한다 (새 의견은 만들지 않는다)
-    live.status = '📝 의견을 정리하는 중...';
-    emit('status', { text: live.status });
-    const system = ['당신은 이 그룹 채팅의 사회자예요. 위 크루들의 의견을 정리만 하고 새 의견은 만들지 않아요. ' +
-      '"공통 의견", "서로 다른 점", "추천하는 다음 행동" 세 부분으로 각 1~3줄 쓰고, 어느 크루에게 일을 맡기면 좋을지도 한 줄 덧붙여요. 파일을 고치거나 명령을 실행하지 않아요.', base].filter(Boolean).join('\n');
-    const r = await askOnce({ cwd: WORK_BASE, prompt: header + lines.join('\n') + '\n\n위 의견들을 정리해 주세요.', system, model: settings.model, effort: settings.effort, runId });
+  const handoff = !stopped && answered >= 1 && (relay || leaderCalled) && alive(leader) && !restarting;
+  if (handoff && hops >= MAX_RELAY) capHit = true;
+  // 한도가 찼어도 묶음이 남았으면 멈추지 않고 방장에게 중간 점검을 맡긴다 (방장이 정리하고 필요하면 다시 부른다)
+  const checkpoint = capHit && !stopped && answered >= 1 && alive(leader) && !restarting && round < MAX_ROUNDS;
+  const opinionOnly = !relay && !leaderCalled && !hit.length;
+  const wrap = opinionOnly && alive(leader) && !checkpoint;
+  if (!stopped && wrap && answered >= 1) { // 방장이 정리: 의견을 모아 다음 할 일을 제안한다 (읽기만. 실제 작업은 @방장으로 시킬 때)
+    live.status = `📝 ${leader.nick}이(가) 정리하는 중...`;
+    live.by = leader.id; live.summary = true;
+    emit('status', { text: live.status, by: leader.id, summary: true });
+    const system = [`당신은 이 그룹 채팅의 방장 '${leader.nick}'(${leader.crew} 크루)예요. 위 참여자들의 의견을 모아 정리해요. ` +
+      '"공통 의견", "서로 다른 점", "제가 할 일" 세 부분으로 각 1~3줄 써요. 지금은 파일을 고치거나 명령을 실행하지 말고 읽기만 해요. ' +
+      `실제 작업은 사용자가 @${leader.nick}으로 시키면 한다고 마지막에 한 줄 안내해요.`, base].filter(Boolean).join('\n');
+    const r = await askMember(leader, { cwd, prompt: header + lines.join('\n') + '\n\n위 의견들을 정리해 주세요.', system, runId });
     if (r.stopped) stopped = true;
-    else if (r.error) { errorText = `정리: ${r.error}`; conv.messages.push({ role: 'error', text: errorText, ts: Date.now() }); saveConv(project); }
-    else { record(r); say({ role: 'bot', text: r.text, ts: Date.now(), by: '', summary: true, meta: `${(r.ms / 1000).toFixed(1)}초` }, '정리'); }
+    else if (r.error) fail(leader.nick, r);
+    else { record(r); lock(leader); say({ role: 'bot', text: r.text, ts: Date.now(), by: leader.id, byName: leader.nick, summary: true, meta: `${(r.ms / 1000).toFixed(1)}초${leader.brain === 'codex' ? ' · Codex' : ''}` }); }
   }
   clearInterval(heartbeat);
   running.delete(runId);
   if (stopped) { errorText = '⏹ 중지했습니다.'; conv.messages.push({ role: 'error', text: errorText, ts: Date.now() }); emit('error', { message: errorText }); }
   saveConv(project);
   projectRuns.delete(project);
-  recordDone(project, lastBot || { text: '' }, stopped || !answered ? errorText : null, Date.now() - startedAt, {});
+  const passOn = handoff && !capHit;
+  if (capHit && !checkpoint) relayStopNotice(project, conv);
+  if (!passOn && !checkpoint) recordDone(project, lastBot || { text: '' }, stopped || !answered ? errorText : null, Date.now() - startedAt, {});
   emit('result', { isError: false, meta: '' });
+  emit('done', {});
   if (!clientGone) res.end();
+  // 방장이 부른 차례이거나 참여자가 @방장을 불렀으면: 답을 방장에게 넘긴다. 같은 틱에 바로 시작해서 화면이 "진행 중"을 놓치지 않게 한다
+  // (방장이 쉬는 동안 오간 말은 handleChat이 leaderSeen 뒤의 말로 붙여 준다)
+  const merge = branches.length ? ` 참여자가 고친 브랜치: ${branches.map((b) => `${b.branch}(${b.nick}, 파일 ${b.n}개)`).join(', ')}. ` +
+      `git diff HEAD...브랜치 로 검토하고, 받아들일 것은 당신 작업을 먼저 커밋한 뒤 방 폴더에서 git merge 브랜치 로 합쳐요. 충돌은 당신이 해결해요.` : '';
+  if (passOn) {
+    const names = [...new Set(queue.map((m) => m.nick))].join(', ');
+    const why = relay ? `당신이 부른 참여자(${names})의 답이 위에 있어요.` : `참여자가 당신을 @로 불렀어요. 위 대화를 보고`;
+    handleChat(null, nullRes(), { project, lang: body.lang,
+      message: `[감자알 안내: ${why}${merge} 이어서 일해요. 더 맡길 게 있으면 "@대화명"으로 부르고, 일이 끝났으면 사용자에게 무엇을 했는지 정리해서 보고해요. 이 안내는 언급하지 마세요.]` },
+    { label: `📨 ${names}의 답을 방장 ${leader.nick}에게 전했어요`, depth: relay ? relay.depth : 0, relay: hops + 1, round });
+  }
+  if (checkpoint) {
+    handleChat(null, nullRes(), { project, lang: body.lang,
+      message: `[감자알 안내: 서로 부르기가 한 번에 쓸 수 있는 ${MAX_RELAY}번을 다 써서 멈췄어요. 위 대화를 보고 중간 점검해요. 지금까지 한 것과 남은 것을 짧게 정리하고, ` +
+        `남은 일이 있으면 "@대화명"으로 다시 불러 이어가요 (다시 ${MAX_RELAY}번까지 쓸 수 있어요). 일이 끝났으면 더 부르지 말고 사용자에게 보고해요.` +
+        (opinionOnly ? ' 사용자는 의견만 물었으니 파일을 고치지 말고 의견을 정리해요.' : '') +
+        `${merge} 이 안내는 언급하지 마세요.]` },
+    { label: RELAY_NEXT(round + 1), depth: relay ? relay.depth : 0, relay: 0, round: round + 1 });
+  }
 }
 
 // opts (서버 내부 자동 실행 전용): label = 대화에 사용자 메시지 대신 보여 줄 알림, depth = 자동 실행 단계
@@ -1315,9 +2270,21 @@ function handleChat(req, res, body, opts = {}) {
   const inRoomDir = !!roomDirName(project);
   if (inRoomDir) { try { fs.mkdirSync(cwd, { recursive: true }); } catch {} } // 방 폴더가 지워졌어도 다시 만든다
   const gconv = loadConv(project);
-  if (!opts.label && Array.isArray(gconv.participants) && gconv.participants.length > 1) {
+  // 예전 그룹 방(참여자 목록만 있고 방장이 없는 방): 첫 크루를 방장으로 정하고 방 폴더를 준다
+  if (!isGroup(gconv) && project.startsWith('@') && Array.isArray(gconv.participants) && gconv.participants.length > 1) {
     if (!GROUP_CHAT_ENABLED) return send(res, 403, { error: '그룹 채팅은 준비 중이에요.' });
-    return handleGroupChat(res, body, project, gconv);
+    if (projectRuns.has(project)) return send(res, 409, { error: '이 방에서 이미 응답이 진행 중이에요. 끝난 뒤에 보내 주세요.' });
+    ensureMembers(gconv, project, body.names && typeof body.names === 'object' ? body.names : {});
+    if (isGroup(gconv)) { ensureRoomDir(gconv, project); gconv.leaderSeen = Date.now(); syncLeader(gconv); } else ungroup(gconv);
+    saveConv(project);
+    return handleChat(req, res, body, opts);
+  }
+  // 그룹 방: @방장만 불렀을 때만 방장이 일한다. 그 밖에는 의견 차례 (자동 실행·압축은 늘 방장의 기억으로)
+  if (!opts.label && isGroup(gconv)) {
+    if (!GROUP_CHAT_ENABLED) return send(res, 403, { error: '그룹 채팅은 준비 중이에요.' });
+    const hit = mentionedMembers(gconv, body.message);
+    const lead = leaderOf(gconv);
+    if (!(hit.length === 1 && hit[0].id === lead.id)) return handleGroupChat(res, body, project, gconv, hit);
   }
   const images = (Array.isArray(body.images) ? body.images : []).slice(0, MAX_IMAGES)
     .filter((n) => isUploadName(n) && fs.existsSync(path.join(cwd, UPLOAD_DIR, n)));
@@ -1329,6 +2296,7 @@ function handleChat(req, res, body, opts = {}) {
   let message = text || (images.length ? '(이미지를 보냈어요)' : files.length ? '(파일을 보냈어요)' : '');
   if (images.length) message += `\n\n[첨부 이미지 ${images.length}장 — Read 도구로 열어서 확인해 주세요]\n` + images.map((n) => `- ${UPLOAD_DIR}/${n}`).join('\n');
   if (files.length) message += `\n\n[첨부 파일 ${files.length}개 — 사용자가 올린 파일이에요. 이름 앞의 숫자-기호는 감자가 붙인 것이고 원래 이름은 그 뒤예요. Read 도구로 열거나 명령으로 처리해 주세요]\n` + files.map((n) => `- ${UPLOAD_DIR}/${n}`).join('\n');
+  if (files.some((n) => VIDEO_FILE_RE.test(n))) message += '\n[영상은 Read 도구로 볼 수 없어요. 영상 도구(ffmpeg)로 장면 몇 장을 사진으로 뽑아 Read로 보세요. 도구가 없으면 더보기 → 도구 상자에서 영상·소리 도구를 설치해 달라고 안내해 주세요]';
   // 🗣 음성 대화 모드: 답을 소리로 읽어 주므로 짧게 말하듯 답해 달라고 덧붙인다 (대화 기록에는 사용자가 한 말만 남음)
   if (body.voice === true && !opts.label) message += `\n\n${VOICE_HINT}`;
   // 같은 세션을 동시에 두 번 돌리면 기록이 갈라지므로 프로젝트당 하나만
@@ -1338,15 +2306,40 @@ function handleChat(req, res, body, opts = {}) {
   if (pendingResults && pendingResults.length) { message = `${pendingResults.join('\n\n')}\n\n${message}`; permResults.delete(project); }
 
   const conv = loadConv(project);
-  const sessionId = conv.sessionId;
+  // 이 방 참여자의 두뇌(Claude/Codex). 아직 정하지 않은 방은 화면에서 고른 두뇌로 정하고, 첫 메시지부터는 바뀌지 않는다
+  const agent = agentOk(conv.agent) ? { ...conv.agent } : (BRAINS.includes(body.brain) ? { brain: body.brain } : legacyAgent(crewOf(project)));
+  const brain = agent.brain;
+  if (opts.compact && brain === 'codex') return send(res, 400, { error: 'Codex 크루는 대화를 스스로 압축해요.' });
+  const useCodex = brain === 'codex';
+  if (useCodex && !codexReady()) return send(res, 400, { error: 'Codex가 연결되어 있지 않아요. 더보기 → AI → Codex에서 먼저 연결해 주세요.' });
+  if (!useCodex && !claudeAvailable()) return send(res, 400, { error: CLAUDE_MISSING });
+  if (!opts.label && !agent.since) agent.since = Date.now();
+  if (!agent.nick) agent.nick = randomNick(conv); // 대화명이 없던 방도 두 글자 이름으로
+  conv.agent = agent;
+  const lm = leaderOf(conv); // 그룹 방의 방장 (방장 자리 = 이 방의 원래 주인 자리)
+  if (lm) Object.assign(lm, agentPart(agent));
+  if ((conv.brain || 'claude') !== brain) {
+    if (conv.sessionId || conv.codexThread) conv.recap = 'brain';
+    delete conv.sessionId; delete conv.codexThread;
+    conv.brain = brain;
+  }
+  const sessionId = useCodex ? conv.codexThread : conv.sessionId;
   // 폴더를 옮기면서 Claude의 이어가기가 끊긴 방(recap 표시): 첫 메시지에 최근 대화를 붙여서 맥락을 잇는다 (대화 기록에는 사용자가 쓴 글만 남는다)
+  let recapped = false;
   if (conv.recap) {
+    const why = conv.recap === 'brain' ? '이 크루의 두뇌(AI)를 바꿔서' : conv.recap === 'leader' ? '이 방의 방장이 바뀌어서' : '폴더를 정리하면서';
     delete conv.recap;
     if (!sessionId) {
       const recent = conv.messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text).slice(-10)
-        .map((m) => `${m.role === 'user' ? '사용자' : '크루'}: ${m.text.replace(/\s+/g, ' ').slice(0, 400)}`);
-      if (recent.length) message = `[감자알 안내: 폴더를 정리하면서 이전 대화의 기억이 새로 시작됐어요. 아래는 이 방의 최근 대화예요. 맥락으로만 참고하고 이 안내는 언급하지 마세요.]\n${recent.join('\n')}\n\n[새 메시지]\n${message}`;
+        .map((m) => `${m.role === 'user' ? '사용자' : speakerName(conv, m, '크루')}: ${m.text.replace(/\s+/g, ' ').slice(0, 400)}`);
+      if (recent.length) { recapped = true; message = `[감자알 안내: ${why} 이전 대화의 기억이 새로 시작됐어요. 아래는 이 방의 최근 대화예요. 맥락으로만 참고하고 이 안내는 언급하지 마세요.]\n${recent.join('\n')}\n\n[새 메시지]\n${message}`; }
     }
+  }
+  // 그룹 방: 방장이 마지막으로 일한 뒤에 오간 말(다른 참여자의 의견 등)은 방장의 기억에 없으므로 붙여 준다
+  if (!recapped && conv.leaderSeen && !opts.compact) {
+    const unseen = conv.messages.filter((m) => (m.role === 'user' || m.role === 'bot') && m.text && (m.ts || 0) > conv.leaderSeen).slice(-GROUP_HISTORY)
+      .map((m) => `${m.role === 'user' ? '사용자' : speakerName(conv, m, '참여자')}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 1200)}`);
+    if (unseen.length) message = `[감자알 안내: 당신이 일하지 않는 동안 이 방에서 오간 말이에요. 맥락으로 참고하고 이 안내는 언급하지 마세요.]\n${unseen.join('\n')}\n\n[새 메시지]\n${message}`;
   }
   // 새 채팅으로 이어가기로 만든 방의 첫 메시지: 인계 노트를 붙인다 (대화 기록에는 사용자가 쓴 글만 남는다)
   if (conv.handoff) {
@@ -1359,7 +2352,7 @@ function handleChat(req, res, body, opts = {}) {
     : { role: 'user', text, ts: Date.now(), ...(images.length ? { images } : {}), ...(files.length ? { files } : {}) });
   saveConv(project);
   // 서버가 직접 답변을 모아 저장 → 클라이언트 연결이 끊겨도 기록이 남는다
-  const bot = { role: 'bot', text: '', ts: Date.now(), tools: [] };
+  const bot = { role: 'bot', text: '', ts: Date.now(), tools: [], ...(lm ? { by: lm.id, byName: lm.nick } : {}) };
   let lastCtx = 0; // 이번 실행에서 마지막으로 잰 대화 길이(토큰)
   let lastWasTool = false;
   let errorText = null;
@@ -1375,20 +2368,43 @@ function handleChat(req, res, body, opts = {}) {
     try { crewGuide = fs.readFileSync(path.join(crewDir, 'CLAUDE.md'), 'utf8').slice(0, 20000); } catch { /* 지침 파일이 없는 크루 */ }
   }
   // 프로젝트 설정이 전체 설정보다 우선. 음성 대화도 글 채팅과 같은 모델·생각 깊이 설정을 따른다
-  const model = projectConf[crewOf(project)]?.model || settings.model;
+  const model = (!useCodex && agent.model) || settings.model;
   if (model) args.push('--model', model);
-  // 생각 깊이: 프로젝트 설정 → 전체 설정 순
-  const effort = projectConf[crewOf(project)]?.effort || settings.effort;
+  // 생각 깊이: 이 방 참여자의 설정 → 더보기 › AI › Claude 대화 설정 순
+  const effort = (!useCodex && agent.effort) || settings.effort;
   if (effort) args.push('--effort', effort);
-  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), githubPrompt(project), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : ''].filter(Boolean).join('\n');
+  const extraPrompt = [settingsPrompt(body.lang === 'en' ? 'en' : ''), toolsPrompt(), githubPrompt(project), PERM_PROMPT, crewOf(project) === '' ? (inRoomDir ? TALK_ROOM_PROMPT : TALK_PROMPT) : '', crewOf(project) !== '' && inRoomDir ? roomDirPrompt(crewDir, crewGuide) : '', groupLeaderPrompt(conv)].filter(Boolean).join('\n');
   if (extraPrompt) args.push('--append-system-prompt', extraPrompt);
   // 자동 압축 시점: 기본은 Claude Code가 한계 가까이에서 압축. 더 일찍 압축하면 빠르고 가볍다
   if (settings.autocompact) args.push('--autocompact', settings.autocompact);
   // 도구 상자에서 설치한 도구는 gamja-make 한 가지 명령으로만 허용한다 (.env의 ALLOWED_TOOLS가 있으면 함께)
-  const allowed = [ALLOWED_TOOLS, `Bash(${MAKE_CMD}:*)`, ...permRulesFor(crewOf(project))].filter(Boolean).join(' ');
+  const permRules = [`Bash(${MAKE_CMD}:*)`, ...permRulesFor(crewOf(project))];
+  const allowed = [ALLOWED_TOOLS, ...permRules].filter(Boolean).join(' ');
   if (allowed) args.push('--allowedTools', allowed);
   // 명령어 위험 수준: 안전한 명령은 묻지 않고 실행, 위험한 명령은 조용히 차단, 나머지(주의)는 기존처럼 허용 카드로 물어본다
   args.push('--settings', PERM_HOOK_SETTINGS(crewOf(project) === 'gamja')); // 감자를 고치는 gamja 방은 모든 명령을 허용 (사용자 결정)
+
+  // Codex 크루: 같은 지시문을 developer_instructions로 넣고, 이어서 말할 때는 resume. 프롬프트는 stdin('-')으로
+  let spawnCmd = CLAUDE_BIN, spawnArgs = args;
+  const who = useCodex ? 'Codex' : 'claude';
+  if (useCodex) {
+    const a = ['exec'];
+    if (sessionId) a.push('resume');
+    for (const n of images) a.push('-i', path.join(cwd, UPLOAD_DIR, n));
+    a.push('--json', '--skip-git-repo-check', '-c', 'sandbox_mode="danger-full-access"', '--dangerously-bypass-hook-trust', '-c', CODEX_HOOK(crewOf(project) === 'gamja'));
+    // 이 방 참여자의 설정 → 없으면 더보기 › AI › Codex 대화 설정 → 없으면 Codex 자체 기본값
+    const cxModel = agent.model || settings.cxModel || '';
+    let cxEffort = agent.effort || settings.cxEffort || '';
+    const mInfo = codexModels().find((m) => m.id === (cxModel || codexDefaults().model));
+    if (cxEffort && mInfo && mInfo.efforts.length && !mInfo.efforts.includes(cxEffort)) cxEffort = ''; // 그 모델이 못 하는 깊이는 빼고 모델 기본값으로
+    if (cxModel) a.push('-m', cxModel);
+    if (cxEffort) a.push('-c', `model_reasoning_effort="${cxEffort}"`);
+    if (CX_COMPACT[settings.cxCompact]) a.push('-c', `model_auto_compact_token_limit=${CX_COMPACT[settings.cxCompact]}`);
+    if (extraPrompt) a.push('-c', `developer_instructions=${JSON.stringify(extraPrompt)}`);
+    if (sessionId) a.push(sessionId);
+    a.push('-');
+    [spawnCmd, spawnArgs] = codexCmd(a);
+  }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -1423,9 +2439,9 @@ function handleChat(req, res, body, opts = {}) {
 
   let child;
   try {
-    child = spawn(CLAUDE_BIN, args, { cwd, env: { ...childEnv(), ...appEnv(cwd), ...gitEnv(project) }, stdio: ['pipe', 'pipe', 'pipe'] });
+    child = spawn(spawnCmd, spawnArgs, { cwd, env: { ...childEnv(), ...appEnv(cwd), ...gitEnv(project), ...(useCodex ? { GAMJA_PERM_RULES: JSON.stringify(permRules) } : {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
   } catch (e) {
-    emit('error', { message: 'claude 실행 실패: ' + e.message });
+    emit('error', { message: `${who} 실행 실패: ` + e.message });
     conv.messages.push({ role: 'error', text: errorText, ts: Date.now() });
     saveConv(project);
     return res.end();
@@ -1453,9 +2469,74 @@ function handleChat(req, res, body, opts = {}) {
       if (!line) continue;
       let ev;
       try { ev = JSON.parse(line); } catch { continue; }
-      handleEvent(ev);
+      if (useCodex) handleCodexEvent(ev); else handleEvent(ev);
     }
   });
+
+  // Codex의 JSONL 이벤트 → 감자 화면의 delta·tool·result
+  const cxSeen = new Set();
+  let cxThread = sessionId || '';
+  let cxErr = '';
+  function handleCodexEvent(ev) {
+    if (ev.type === 'thread.started' && ev.thread_id) {
+      cxThread = String(ev.thread_id);
+      if (conv.codexThread !== cxThread) { conv.codexThread = cxThread; saveConv(project); }
+      emit('session', { sessionId: cxThread, model: 'codex' });
+    } else if (ev.type === 'turn.started') {
+      emit('status', { text: '🤔 생각 중...' });
+    } else if (ev.type === 'item.started' || ev.type === 'item.completed') {
+      const it = ev.item || {};
+      const first = it.id ? !cxSeen.has(it.id) : true;
+      if (it.id) cxSeen.add(it.id);
+      if (it.type === 'agent_message') {
+        if (ev.type === 'item.completed' && it.text) emit('delta', { text: (bot.text && !lastWasTool && !bot.text.endsWith('\n\n') ? '\n\n' : '') + it.text });
+      } else if (it.type === 'command_execution') {
+        if (first) emit('tool', { name: 'Bash', text: toolStatus('Bash', { command: codexShownCmd(it.command) }) });
+        if (ev.type === 'item.completed') emit('status', { text: '🤔 생각 중...' });
+      } else if (it.type === 'file_change') {
+        if (ev.type === 'item.completed') for (const c of (it.changes || []).slice(0, 10)) emit('tool', { name: c.kind === 'add' ? 'Write' : 'Edit', text: toolStatus(c.kind === 'add' ? 'Write' : 'Edit', { file_path: c.path }) });
+      } else if (it.type === 'reasoning') {
+        emit('status', { text: '🤔 생각 중...' });
+      } else if (it.type === 'web_search') {
+        if (first) emit('tool', { name: 'WebSearch', text: toolStatus('WebSearch', { query: it.query }) });
+      } else if (it.type === 'error') {
+        if (!/dangerously-bypass-hook-trust/.test(String(it.message || ''))) cxErr = String(it.message || '').slice(0, 1500);
+      }
+    } else if (ev.type === 'turn.failed') {
+      emit('error', { message: `Codex 오류: ${String((ev.error && ev.error.message) || cxErr || '알 수 없는 오류').slice(0, 1500)}` });
+    } else if (ev.type === 'error') {
+      cxErr = String(ev.message || '').slice(0, 1500);
+    } else if (ev.type === 'turn.completed') {
+      gotResult = true;
+      // 훅이 "허용 카드로 물어볼 명령"과 "막은 명령"을 기록해 둔다
+      const cards = deniedCards(takeHookLog('denied', cxThread).map((x) => ({ tool_name: 'Bash', tool_input: { command: x.cmd } })), cwd);
+      if (cards.length) bot.denied = cards;
+      const seen = new Set();
+      const blocked = takeHookLog('blocked', cxThread).filter((x) => !seen.has(x.cmd) && seen.add(x.cmd)).slice(-3)
+        .map((x) => ({ cmd: String(x.cmd).slice(0, 300), why: String(x.why || '').slice(0, 120) }));
+      if (blocked.length) bot.blocked = blocked;
+      const u = ev.usage || {};
+      const input = u.input_tokens || 0; // 캐시로 읽은 양(cached_input_tokens)도 이 안에 들어 있다
+      const output = (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
+      const durationMs = Date.now() - startedAt;
+      const tokTotal = input + output;
+      const parts = [`${(durationMs / 1000).toFixed(1)}초`];
+      if (tokTotal) parts.push(`토큰 ${tokTotal >= 10000 ? `${(tokTotal / 10000).toFixed(1)}만` : tokTotal >= 1000 ? `${(tokTotal / 1000).toFixed(1)}천` : tokTotal}`);
+      parts.push('Codex');
+      bot.meta = parts.join(' · ');
+      const cu = conv.usage || {};
+      conv.usage = { in: (cu.in || 0) + input, out: (cu.out || 0) + output, cost: cu.cost || 0 };
+      recordUsage(input, output, 0);
+      conv.context = 0; // Codex는 대화 길이를 스스로 관리한다 (감자의 압축 안내를 띄우지 않는다)
+      const needKits = [...bot.text.matchAll(INSTALL_MARK)].map((m) => m[1]);
+      if (needKits.length) {
+        bot.text = bot.text.replace(INSTALL_MARK, '\n').trim();
+        bot.install = [...new Set(needKits)].filter((id) => !kitInstalled(id)).map((id) => ({ id, name: TOOLKITS[id].name, size: TOOLKITS[id].size }));
+        live.text = bot.text;
+      }
+      emit('result', { sessionId: cxThread, isError: false, subtype: 'success', meta: bot.meta, durationMs, numTurns: 1, denials: [], denied: bot.denied, blocked: bot.blocked, install: bot.install });
+    }
+  }
   child.stderr.on('data', (c) => { stderr += c.toString('utf8'); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
 
   function handleEvent(ev) {
@@ -1567,7 +2648,7 @@ function handleChat(req, res, body, opts = {}) {
 
   let finished = false;
   child.on('error', (e) => {
-    emit('error', { message: `claude 실행 실패 (${e.code || e.message}). CLAUDE_BIN 경로를 확인하세요.` });
+    emit('error', { message: useCodex ? `Codex 실행 실패 (${e.code || e.message}). 더보기 › AI › Codex에서 설치를 확인해 주세요.` : `claude 실행 실패 (${e.code || e.message}). CLAUDE_BIN 경로를 확인하세요.` });
     if (!child.pid) finish(); // 실행 자체가 안 되면 close가 오지 않을 수 있음
   });
   child.on('close', (code, signal) => {
@@ -1575,7 +2656,10 @@ function handleChat(req, res, body, opts = {}) {
       if (child.stoppedByUser) emit('error', { message: '⏹ 중지했습니다.' });
       // 사용자가 멈춘 게 아닌데 신호로 끝났다면 폰이 강제로 끝낸 것이다 (메모리 부족 등). 중지한 것처럼 보이면 헷갈린다
       else if (signal) emit('error', { message: `⚠️ 폰이 작업을 강제로 끝냈어요 (${signal}). 폰의 메모리가 부족할 때 생겨요. 잠시 뒤 다시 보내 보고, 계속 그러면 ⋯ → 새 대화를 눌러 주세요.` });
-      else if (code !== 0) emit('error', { message: `claude 종료 코드 ${code}\n${stderr.trim().slice(-1500)}` });
+      else if (code !== 0) emit('error', { message: `${who} 종료 코드 ${code}\n${(useCodex && cxErr ? cxErr + '\n' : '') + stderr.trim().slice(-1500)}` });
+      else if (useCodex) emit('error', { message: `Codex가 답을 끝내지 못했어요.${cxErr ? '\n' + cxErr : ''}` });
+      // 이어가던 Codex 기록을 못 찾으면 다음 메시지는 새 기억으로 시작한다
+      if (useCodex && sessionId && /not found|no such|could not find|no rollout|unknown (session|thread)/i.test(stderr + cxErr)) { delete conv.codexThread; conv.recap = 'brain'; }
     }
     finish();
   });
@@ -1585,6 +2669,7 @@ function handleChat(req, res, body, opts = {}) {
     clearInterval(heartbeat);
     running.delete(runId);
     if (bot.text || bot.tools.length) { bot.ts = Date.now(); conv.messages.push(bot); } // 말풍선 시각 = 답변이 끝난 시각 (시작 시각이 아니라)
+    if (conv.leaderSeen) conv.leaderSeen = Date.now(); // 여기까지는 방장의 기억에 있다
     if (errorText) conv.messages.push({ role: 'error', text: errorText, ts: Date.now(), ...(AUTH_ERR.test(errorText) ? { auth: true } : {}) });
     saveConv(project);
     projectRuns.delete(project);
@@ -1593,6 +2678,17 @@ function handleChat(req, res, body, opts = {}) {
     // Claude가 코드를 고치고 재시작을 요청했으면 여기서 검사 → 재시작 (결과는 알림으로 기록)
     let r = { status: 'none' };
     try { r = await restartIfRequested(project, emit, depth); } catch (e) { addNotice(project, `❌ 재시작 처리 중 오류: ${e.message}`); }
+    // 그룹 방: 방장이 답에서 다른 참여자를 @로 불렀으면 감자알이 전해 준다 ('done' 전에 시작해서 화면이 이어서 따라온다)
+    if (r.status === 'none' && !restarting && !opts.compact && !errorText && !(child && child.stoppedByUser) && bot.text && isGroup(conv) && !projectRuns.has(project)) {
+      let hops = opts.relay || 0, round = opts.round || 1;
+      const all = calledMembers(conv, bot.text, (leaderOf(conv) || {}).id);
+      // 한도가 찬 뒤에도 방장이 다시 불렀으면 방장이 스스로 중간 점검한 것으로 보고 다음 묶음을 쓴다 (묶음이 남았을 때만)
+      if (all.length && hops >= MAX_RELAY && round < MAX_ROUNDS) { hops = 0; round++; addNotice(project, RELAY_NEXT(round)); }
+      const calls = all.slice(0, Math.max(0, MAX_RELAY - hops));
+      if (all.length && !calls.length) relayStopNotice(project, conv);
+      else if (calls.length) handleGroupChat(nullRes(), { message: bot.text, project, lang: body.lang }, project, conv, calls, { hops: hops + calls.length, depth, round })
+        .catch((e) => { console.error('참여자 부르기 실패:', e); addNotice(project, `❌ 참여자에게 전하지 못했어요: ${e.message}`); });
+    }
     emit('done', {});
     if (!clientGone) res.end();
     // 검사 실패 → Claude에게 오류를 넘겨 스스로 고치게 한다
@@ -2087,24 +3183,42 @@ function hasCmd(cmd) {
 const kitInstalled = (id) => TOOLKITS[id].need.every(hasCmd);
 const anyKit = () => Object.keys(TOOLKITS).some(kitInstalled);
 const toolInstall = { kit: null, startedAt: 0, log: [], error: '' };
-function toolLog(line) { toolInstall.log.push(String(line).slice(0, 300)); toolInstall.log = toolInstall.log.slice(-40); }
+// 설치 기록 파일: 실패 원인을 나중에 볼 수 있게 apt-get 출력 전체를 남긴다 (256KB 넘으면 뒤쪽 128KB만 남김)
+const TOOL_LOG_FILE = path.join(DATA_DIR, 'tool-install.log');
+function toolLogFile(text) {
+  try {
+    try { if (fs.statSync(TOOL_LOG_FILE).size > 256e3) fs.writeFileSync(TOOL_LOG_FILE, fs.readFileSync(TOOL_LOG_FILE, 'utf8').slice(-128e3)); } catch {}
+    fs.appendFileSync(TOOL_LOG_FILE, text);
+  } catch {}
+}
+function toolLog(line) {
+  line = String(line);
+  toolInstall.log.push(line.slice(0, 300)); toolInstall.log = toolInstall.log.slice(-40);
+  toolLogFile(line + '\n');
+}
 function installKit(id, done) {
   const kit = TOOLKITS[id];
-  const finishKit = () => { if (done) done(!toolInstall.error); };
+  const finishKit = () => { toolLogFile(`=== 끝: ${toolInstall.error || '성공'} (${new Date().toISOString()})\n\n`); if (done) done(!toolInstall.error); };
   toolInstall.kit = id; toolInstall.startedAt = Date.now(); toolInstall.log = []; toolInstall.error = '';
+  toolLogFile(`=== ${new Date().toISOString()} ${id} 설치 시작 (uid ${process.getuid ? process.getuid() : '?'})\n`);
   const env = { ...process.env, DEBIAN_FRONTEND: 'noninteractive' };
-  const run = (args, next) => {
+  // 마지막 오류 줄(E: / W: / dpkg:)을 뽑아 사용자에게 보여 줄 이유로 쓴다
+  const lastErr = () => { const l = [...toolInstall.log].reverse().find((s) => /^(E:|Err:|dpkg:|W:)/.test(s)); return l ? l.slice(0, 160) : ''; };
+  const run = (args, next, soft) => {
     toolLog(`$ apt-get ${args.join(' ')}`);
-    const p = spawn('apt-get', args, { env });
+    // stdin을 열어 두면 묻는 창에서 멈출 수 있어 닫아 둔다
+    const p = spawn('apt-get', args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
     const feed = (b) => String(b).split('\n').filter(Boolean).forEach(toolLog);
     p.stdout.on('data', feed); p.stderr.on('data', feed);
     p.on('error', (e) => { toolInstall.error = `apt-get을 실행하지 못했어요 (${e.code || e.message})`; toolInstall.kit = null; finishKit(); });
     p.on('close', (code) => {
-      if (code !== 0) { toolInstall.error = `설치가 끝까지 되지 않았어요 (종료 코드 ${code}). 인터넷 연결과 저장 공간을 확인한 뒤 다시 눌러 주세요.`; toolInstall.kit = null; finishKit(); return; }
+      if (code !== 0 && soft) { toolLog(`(목록 새로고침이 실패했지만(종료 코드 ${code}) 지금 목록으로 설치를 이어서 해 볼게요)`); return next(); }
+      if (code !== 0) { const why = lastErr(); toolInstall.error = `설치가 끝까지 되지 않았어요 (종료 코드 ${code}).${why ? ` 이유: ${why}` : ''} 인터넷 연결을 확인한 뒤 다시 눌러 주세요.`; toolInstall.kit = null; finishKit(); return; }
       next();
     });
   };
-  run(['update'], () => run(['install', '-y', '--no-install-recommends', ...kit.apt], () => { toolLog('✅ 설치가 끝났어요'); toolInstall.kit = null; finishKit(); }));
+  // 목록 새로고침(update)은 실패해도 설치를 막지 않는다: 이미 있는 목록으로 받을 수 있는 경우가 많다
+  run(['update'], () => run(['install', '-y', '--no-install-recommends', ...kit.apt], () => { toolLog('✅ 설치가 끝났어요'); toolInstall.kit = null; finishKit(); }), true);
 }
 // 기본 도구 자동 준비: 그림·문서 도구가 없으면 답변이 없는 틈에 조용히 설치한다 (영상·소리 도구는 필요할 때 설치 버튼으로).
 // 폰 안의 우분투(root)에서만 하고, 실패하면 하루 동안은 다시 시도하지 않는다. 끄려면 data/no-auto-tools 파일을 만든다
@@ -2351,6 +3465,151 @@ function writeActivityState() {
 }
 const PERM_HOOK_CMD = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'tools', 'perm-hook.js'))} ${JSON.stringify(__dirname)} ${JSON.stringify(DATA_DIR)}`;
 const PERM_HOOK_SETTINGS = (allowAll) => JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|WebSearch|WebFetch', hooks: [{ type: 'command', command: allowAll ? PERM_HOOK_CMD + " --allow-all" : PERM_HOOK_CMD, timeout: 10 }] }] } });
+// ---------- Codex 크루 (크루 설정 › 두뇌: Codex) ----------
+// Codex의 샌드박스는 proot에서 켜지지 않아 끄고(danger-full-access), 같은 훅(perm-hook.js --codex)으로 감자의 3단계 안전장치를 건다.
+// 훅은 -c로 그때그때 넣고, 신뢰 확인은 --dangerously-bypass-hook-trust로 넘긴다 (그 안내가 error 항목으로 두 번 오는데 무시한다)
+const CODEX_HOOK = (allowAll) => `hooks.PreToolUse=[{matcher=".*",hooks=[{type="command",command=${JSON.stringify(PERM_HOOK_CMD + ' --codex' + (allowAll ? ' --allow-all' : ''))},timeout=15}]}]`;
+// ---------- 채팅방 참여자의 두뇌 ----------
+// 크루는 지침만 갖는다. 두뇌(Claude/Codex)·생각 깊이·대화명은 방의 참여자(conv.agent)가 갖는다.
+// conv.agent = { brain, model?, effort?, nick?, since? }. since(첫 메시지를 보낸 시각)가 있으면 그 방의 두뇌는 더 바꾸지 않는다.
+// model·effort가 비면 더보기 › AI의 그 두뇌 기본값을 따른다
+const BRAINS = ['claude', 'codex'];
+const AGENT_FIELDS = ['brain', 'model', 'effort', 'cxModel', 'cxEffort']; // 예전 크루 설정(projectConf)에 있던 두뇌 항목
+// 예전 크루 설정의 두뇌를 참여자 모양으로 (옮기기 전의 방, 옮기는 중에만 쓴다)
+function legacyAgent(crew) {
+  const c = projectConf[crew] || {};
+  // 크루 설정이 없으면 Claude. 단 Claude가 설치되지 않았고 Codex가 연결돼 있으면 Codex로 시작한다
+  const codex = c.brain === 'codex' || (!c.brain && !claudeAvailable() && codexReady());
+  const a = { brain: codex ? 'codex' : 'claude' };
+  const model = codex ? c.cxModel : c.model, effort = codex ? c.cxEffort : c.effort;
+  if (model) a.model = String(model);
+  if (effort) a.effort = String(effort);
+  return a;
+}
+const agentOk = (a) => !!a && typeof a === 'object' && BRAINS.includes(a.brain);
+function publicAgent(conv) {
+  const a = conv && conv.agent;
+  if (!agentOk(a)) return null;
+  return { brain: a.brain, model: a.model || '', effort: a.effort || '', nick: a.nick || '', locked: !!a.since };
+}
+const codexReady = () => codexInstalled() && codexAccount().ok;
+// 이 방의 두뇌: 정한 방은 그 두뇌, 아직 안 정한 방은 Claude로 본다 (압축·대화 길이 표시용)
+function roomBrain(project) {
+  let conv = null;
+  try { conv = fs.existsSync(convFile(project)) ? peekConv(project) : null; } catch { /* 격리된 방 */ }
+  return agentOk(conv && conv.agent) ? conv.agent.brain : 'claude';
+}
+// 대화명: 앞뒤 공백·줄바꿈·제어 문자를 빼고 30자까지. @로 부르므로 공백과 @는 쓰지 않는다
+function cleanNick(v) {
+  return String(v || '').replace(/[\u0000-\u001f\u007f@\s]/g, '').slice(0, 30);
+}
+// 시작할 때 한 번: 예전 크루 설정의 두뇌·모델·생각 깊이를 그 크루의 방들(대화가 있는 방)로 옮기고, 크루 설정에서는 지운다
+function migrateCrewBrains() {
+  const has = (k) => projectConf[k] && AGENT_FIELDS.some((f) => projectConf[k][f]);
+  if (!Object.keys(projectConf).some(has) && !fs.existsSync(CONV_DIR)) return;
+  const rids = new Set();
+  try {
+    for (const crew of ['', ...listProjects()]) {
+      rids.add(crew);
+      for (const r of roomFilesOf(crew)) rids.add(r.rid);
+    }
+  } catch (e) { console.error('두뇌 옮기기: 방 목록을 읽지 못했어요:', e.message); return; }
+  // 첫 버전은 크루 설정을 읽기 전에 옮겨서 모든 방이 '빈 Claude'로 고정됐다.
+  // 크루 설정에 옛 항목이 아직 남아 있으면(=제대로 옮긴 적 없음) 그런 방은 다시 옮긴다.
+  const legacyLeft = Object.keys(projectConf).some(has);
+  const bareClaude = (a) => a.brain === 'claude' && Object.keys(a).every((k) => k === 'brain' || k === 'since');
+  let moved = 0;
+  for (const rid of rids) {
+    try {
+      if (!fs.existsSync(convFile(rid))) continue;
+      const conv = peekConv(rid);
+      if (!conv) continue;
+      if (agentOk(conv.agent) && !(legacyLeft && bareClaude(conv.agent))) continue;
+      if (!(conv.messages || []).some((m) => m.role === 'user' || m.role === 'bot')) continue;
+      if (Array.isArray(conv.participants) && conv.participants.length > 1) continue; // 그룹 방은 아직 쓰지 않는다
+      const crew = typeof conv.crew === 'string' && rid.startsWith('@') ? conv.crew : crewOf(rid);
+      conv.agent = { ...legacyAgent(crew), since: (conv.agent && conv.agent.since) || conv.updatedAt || Date.now() };
+      if (saveConv(rid)) moved++;
+    } catch (e) { console.error(`두뇌 옮기기 실패(${rid}):`, e.message); }
+  }
+  let stripped = false;
+  for (const k of Object.keys(projectConf)) {
+    if (!has(k)) continue;
+    for (const f of AGENT_FIELDS) delete projectConf[k][f];
+    stripped = true;
+  }
+  if (stripped) saveProjectConf();
+  if (moved || stripped) console.log(`크루의 두뇌 설정을 채팅방으로 옮겼어요: 방 ${moved}개`);
+}
+// 시작할 때 한 번: 대화명이 없거나 크루 이름 그대로인 방(두 글자 대화명이 생기기 전에 만든 방)에 두 글자 대화명을 붙인다.
+// 화면의 두 줄(대화명 / 크루 · 두뇌)에 크루 이름이 겹쳐 보이지 않게. 한 번 하고 나면 표식을 남겨 다시 하지 않는다
+const NICK_MIG_FILE = path.join(DATA_DIR, 'nick-migration.json');
+function migrateNicks() {
+  if (fs.existsSync(NICK_MIG_FILE) || !fs.existsSync(CONV_DIR)) return;
+  const rids = new Set();
+  try {
+    for (const crew of ['', ...listProjects()]) {
+      rids.add(crew);
+      for (const r of roomFilesOf(crew)) rids.add(r.rid);
+    }
+  } catch (e) { console.error('대화명 붙이기: 방 목록을 읽지 못했어요:', e.message); return; }
+  const norm = (v) => String(v || '').replace(/[\s@]/g, '').toLowerCase();
+  const crewNames = (crew) => {
+    const n = norm(crew), t = norm(String(crew || '').replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''));
+    return [n, t];
+  };
+  const isCrewNick = (nick, crew) => !nick || crewNames(crew).some((c) => c && norm(nick).replace(/\d+$/, '') === c);
+  let fixed = 0, failed = false;
+  for (const rid of rids) {
+    try {
+      if (!fs.existsSync(convFile(rid))) continue;
+      const conv = peekConv(rid);
+      if (!conv) continue;
+      let changed = false;
+      if (Array.isArray(conv.members) && conv.members.length) {
+        for (const m of conv.members) {
+          if (!isCrewNick(m.nick, m.crew)) continue;
+          m.nick = uniqueNick(conv, randomNick(conv), m.id);
+          changed = true;
+        }
+        if (changed) syncLeader(conv);
+        const l = leaderOf(conv);
+        if (l && agentOk(conv.agent) && conv.agent.nick !== l.nick) { conv.agent.nick = l.nick; changed = true; }
+      } else if (agentOk(conv.agent)) {
+        const crew = typeof conv.crew === 'string' && rid.startsWith('@') ? conv.crew : crewOf(rid);
+        if (isCrewNick(conv.agent.nick, crew)) { conv.agent.nick = randomNick(conv); changed = true; }
+      }
+      if (changed) { if (saveConv(rid)) fixed++; else failed = true; }
+    } catch (e) { failed = true; console.error(`대화명 붙이기 실패(${rid}):`, e.message); }
+  }
+  if (!failed) { try { fs.writeFileSync(NICK_MIG_FILE, JSON.stringify({ at: Date.now(), fixed })); } catch { /* 다음에 다시 */ } }
+  if (fixed) console.log(`예전 채팅방에 두 글자 대화명을 붙였어요: 방 ${fixed}개`);
+}
+// Codex가 받아 둔 모델 목록 (~/.codex/models_cache.json). 목록에 보이는 것(visibility: list)만
+function codexModels() {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(CODEX_HOME, 'models_cache.json'), 'utf8'));
+    return (d.models || []).filter((m) => m && m.slug && m.visibility === 'list').map((m) => ({
+      id: String(m.slug), name: String(m.display_name || m.slug), desc: String(m.description || '').slice(0, 120),
+      efforts: (m.supported_reasoning_levels || []).map((x) => String((x && x.effort) || x || '')).filter((x) => /^[a-z]{1,12}$/.test(x)),
+      defEffort: /^[a-z]{1,12}$/.test(String(m.default_reasoning_level || '')) ? String(m.default_reasoning_level) : '',
+    }));
+  } catch { return []; }
+}
+// 훅이 남긴 기록(blocked: 막은 명령, denied: 허용 카드로 물을 명령)을 읽고 지운다
+function takeHookLog(kind, sid) {
+  const f = path.join(DATA_DIR, kind, `${String(sid || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80)}.jsonl`);
+  try {
+    const rows = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x && x.cmd);
+    fs.unlinkSync(f);
+    return rows;
+  } catch { return []; }
+}
+// Codex가 실행한 명령은 "/bin/bash -lc '...'"로 감싸여 오니 안쪽만 보여 준다
+function codexShownCmd(c) {
+  const m = /^\S*\/(?:ba)?sh -lc '([\s\S]*)'$/.exec(String(c || ''));
+  return m ? m[1].replace(/'\\''/g, "'") : String(c || '');
+}
 // 아무 코드나 돌릴 수 있는 프로그램: "항상 허용"도 그 명령 그대로만 (인자가 달라지면 다시 묻는다)
 const PERM_EXACT = new Set(['node', 'nodejs', 'python', 'python3', 'bash', 'sh', 'zsh', 'perl', 'ruby', 'php', 'deno', 'bun', 'awk', 'gawk', 'find', 'xargs', 'env', 'time', 'timeout', 'watch', 'script', 'docker', 'make', 'sed', 'tar', 'unzip']);
 const PERM_SUBCMD = new Set(['git', 'gh', 'cargo', 'go', 'systemctl']);
@@ -2405,6 +3664,16 @@ function runApproved(cmd, cwd) {
   });
 }
 const permResults = new Map(); // 프로젝트 -> 감자알이 대신 실행한 결과 글 (다음 메시지에 붙여 크루에게 전한다)
+// 허용 카드가 뜬 명령을 기록한다 (자주 걸리는데 안전한 명령을 찾아 규칙을 고치려고). 1MB가 넘으면 .old로 넘기고 새로 쓴다
+const PERM_LOG = path.join(DATA_DIR, 'perm-cards.jsonl');
+const PERF_LOG = path.join(DATA_DIR, 'perf.jsonl'); // 걸린 시간 기록 (/api/perf)
+function logPermCard(cmd, cwd, inApp) {
+  try {
+    try { if (fs.statSync(PERM_LOG).size > 1024 * 1024) fs.renameSync(PERM_LOG, PERM_LOG + '.old'); } catch {}
+    const why = permTier(cmd, inApp ? [] : [__dirname, DATA_DIR]).why;
+    fs.appendFileSync(PERM_LOG, JSON.stringify({ ts: new Date().toISOString(), cwd: String(cwd || ''), cmd: cmd.slice(0, 500), why }) + '\n');
+  } catch { /* 기록 실패는 무시 */ }
+}
 // 막힌 Bash 명령 → 화면에 보여 줄 카드 (최대 3개, 같은 명령은 한 번만)
 function deniedCards(denials, cwd) {
   const out = [];
@@ -2416,6 +3685,7 @@ function deniedCards(denials, cwd) {
     if (permTier(cmd, inApp ? [] : [__dirname, DATA_DIR]).tier === 'danger') continue; // 위험한 명령은 카드 없이 조용히 막는다
     const c = classifyCommand(cmd);
     out.push({ id: crypto.randomBytes(6).toString('hex'), cmd, risk: c.risk, once: c.once, always: c.always });
+    logPermCard(cmd, cwd, inApp);
     if (out.length >= 3) break;
   }
   return out;
@@ -2430,8 +3700,8 @@ function permRulesFor(crew) {
 const roomDirPrompt = (crewDir, guide) => '이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 이 방에서 만드는 파일은 지금 폴더 안에만 저장하세요. 그래야 다른 채팅방의 결과물과 섞이지 않고, 화면 위쪽 👀 결과물에는 이 방에서 만든 것만 보여요.' +
   (crewDir ? ` 이 크루의 폴더(${crewDir})에는 크루의 지침과 자료가 있어요. 읽어서 참고하는 건 자유지만, 그 폴더의 파일을 고치는 건 사용자가 따로 부탁할 때만 하세요.` : '') +
   (guide ? `\n[이 크루의 지침 — 그대로 따르세요]\n${guide}` : '');
-const TALK_ROOM_PROMPT = '지금은 특정 크루가 아닌 감자 톡톡 대화예요. 이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 지금 폴더 안에만 저장하세요. 그 밖의 폴더(다른 채팅방, 크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.';
-const TALK_PROMPT = `지금은 특정 크루가 아닌 감자 톡톡 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
+const TALK_ROOM_PROMPT = '지금은 특정 크루가 아닌 감자쑥쑥 대화예요. 이 채팅방은 자기만의 작업 폴더(지금 폴더)를 써요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 지금 폴더 안에만 저장하세요. 그 밖의 폴더(다른 채팅방, 크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.';
+const TALK_PROMPT = `지금은 특정 크루가 아닌 감자쑥쑥 대화예요. 사용자가 문서·그림·웹페이지·표 같은 파일을 만들어 달라고 하면 반드시 ${TALK_DIR_NAME} 폴더 안에만 저장하세요(폴더가 없으면 만드세요). 그 밖의 폴더(크루 폴더, gamja 등)의 파일은 고치거나 만들지 마세요. 만든 뒤에는 "화면 위쪽 👀 결과물에서 볼 수 있어요"라고 알려 주세요. 오래 걸리고 깊은 작업(홈페이지 개발, 사주 풀이 등)이면 그 일에 맞는 크루를 크루 탭에서 만들거나 골라 이어서 하라고 추천하세요.`;
 const PERM_PROMPT = '이 폰에서는 명령이 위험 수준에 따라 처리돼요. 작업 폴더 안에서 파일을 읽고 만들고 고치고 지우는 일과 일반 프로그램 실행은 묻지 않고 바로 실행돼요. 작업 폴더 밖의 파일을 바꾸거나 밖에서 내려받고 설치하는 명령은 화면에 사용자가 고를 수 있는 "허용 카드"가 나와요. 감자알 폴더·비밀번호 파일·시스템을 건드리는 명령은 아예 막히니, 막히면 다른 방법을 쓰고 사용자에게 이유를 쉬운 말로 알려 주세요. 허용 카드가 뜨는 명령이 막히면 다른 방법으로 우회하거나 같은 명령을 다시 시도하지 말고, 무엇을 하려던 건지 쉬운 말로 한 문장만 설명한 뒤 "아래 카드에서 허용해 주시면 이어서 할게요"라고 안내하세요. 여러 명령을 &&·;·|로 이은 명령도 카드로 물을 수 있어요. 사용자가 허용하면 감자알이 그 명령을 대신 실행하고 결과를 다음 메시지로 알려 주니, 같은 명령을 다시 실행하지 말고 그 결과로 이어서 일하세요.';
 
 // 같은 와이파이 접속이 꺼져 있을 때 다른 기기의 브라우저가 보는 안내 화면 (한국어·영어)
@@ -2647,7 +3917,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
     }
     if (p === '/api/me') {
       const authed = isAuthed(req);
-      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null, sys: authed ? sysHealth() : undefined, maintenance: authed ? maint.publicInfo() : undefined });
+      return send(res, 200, { authed, boot: BOOT_ID, lastUpdate: authed ? recentUpdates().at(-1) || null : null, sys: authed ? sysHealth() : undefined, maintenance: authed ? maint.publicInfo() : undefined, ai: authed ? { claude: claudeAvailable(), claudeInstalled: claudeInstalled(), claudeInstalling: claudeJob.installing, codex: false, codexLogin: codexAccount().ok } : undefined });
     }
 
     const inst = p.match(/^\/(install|bundle)\/([\w.-]+)$/);
@@ -2780,6 +4050,9 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             extra: name.includes('@'), // 크루의 첫 방이 아닌 방 (만들어진 순간부터 목록에 보인다)
             crew: crewOf(name), // 이 방이 속한 크루 (새 방 "@번호"는 아이디에서 알 수 없어 알려 준다)
             members: Array.isArray(conv.participants) && conv.participants.length ? conv.participants : [crewOf(name)], // 참여자(크루) 목록
+            archived: !!conv.archived, // 보관한 방: 채팅 목록에서 빠지고 "보관한 채팅"에서만 보인다
+            agent: publicAgent(conv), // 이 방 참여자의 두뇌·대화명 (아직 안 정한 방은 null)
+            group: publicGroup(conv), // 그룹 방의 참여자 목록 (방장 표시 포함). 혼자 방은 null
             ts: last ? last.ts : 0,
             last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null,
             running: !!run,
@@ -2921,6 +4194,19 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         if (changed) saveSeen();
         return send(res, 200, { seen: publicSeen() });
       }
+      // 걸린 시간 기록: 화면이 "누른 뒤 다 그려지기까지"를 알려 주면 data/perf.jsonl에 한 줄씩 남긴다 (속도 개선 효과 확인용)
+      if (p === '/api/perf' && req.method === 'POST') {
+        const b = await readBody(req);
+        const kind = ['list', 'room', 'room-same'].includes(b.kind) ? b.kind : '';
+        const ms = Number(b.ms), n = Number(b.n) || 0;
+        if (kind && Number.isFinite(ms) && ms >= 0 && ms < 60000) {
+          try {
+            try { if (fs.statSync(PERF_LOG).size > 512 * 1024) fs.renameSync(PERF_LOG, PERF_LOG + '.old'); } catch {}
+            fs.appendFileSync(PERF_LOG, JSON.stringify({ ts: new Date().toISOString(), kind, ms: Math.round(ms), n: Math.min(Math.max(0, Math.round(n)), 100000) }) + '\n');
+          } catch {}
+        }
+        return send(res, 200, { ok: true });
+      }
       // 삭제한 크루 목록 (크루 탭의 "삭제한 크루 복구하기"): 같은 때 지워진 한 크루가 한 줄. 30일 안에 복구할 수 있다
       if (p === '/api/trash' && req.method === 'GET') {
         const found = new Map();
@@ -3024,6 +4310,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             delete cv.archivedFrom;
             cv.crew = newName;
             if (Array.isArray(cv.participants)) cv.participants = cv.participants.map((c) => (c === crew ? newName : c));
+            if (Array.isArray(cv.members)) for (const m of cv.members) if (m.crew === crew) m.crew = newName;
             try { fs.writeFileSync(convFile(to), JSON.stringify(cv)); } catch { /* 기록용이라 실패해도 복구는 계속 */ }
           }
           rooms.push({ id: f.slice(0, -5), from, to });
@@ -3039,7 +4326,8 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const body = await readBody(req);
         const crews = Array.isArray(body.crews) ? body.crews.map(String) : [String(body.crew ?? '')];
         if (!crews.length) return send(res, 400, { error: '참여할 크루를 골라 주세요.' });
-        if (crews.length > 1 && !GROUP_CHAT_ENABLED) return send(res, 400, { error: '그룹 채팅은 준비 중이에요.' });
+        // 그룹 방은 한 크루로 방을 만든 뒤 방 설정에서 초대해서 만든다 (그 크루가 방장)
+        if (crews.length > 1) return send(res, 400, { error: '한 크루로 방을 만든 뒤 방 설정에서 초대해 주세요.' });
         if (crews.length > MAX_ROOM_MEMBERS) return send(res, 400, { error: `한 방에는 크루를 ${MAX_ROOM_MEMBERS}명까지 넣을 수 있어요.` });
         if (new Set(crews).size !== crews.length || crews.some((c) => c.includes('@') || !resolveProject(c))) return send(res, 400, { error: '알 수 없는 크루' });
         // 한 명이면 그 크루의 방, 여러 명이면 어느 크루에도 속하지 않는 그룹 방이다 (참여한 크루 하나를 지워도 방은 그대로 남는다)
@@ -3047,55 +4335,112 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         // 방 아이디는 크루 이름과 상관없는 "@번호"이고, 어느 크루의 방인지는 대화 파일의 crew에 적는다
         let rid;
         do { rid = `@${Math.random().toString(36).slice(2, 7).padEnd(5, '0')}`; } while (fs.existsSync(convFile(rid)));
+        const brain = BRAINS.includes(body.brain) ? body.brain : 'claude';
+        if (brain === 'codex' && !codexReady()) return send(res, 400, { error: 'Codex가 연결되어 있지 않아요. 더보기 → AI → Codex에서 먼저 연결해 주세요.' });
         const conv = loadConv(rid);
         conv.participants = crews;
         if (crew) conv.crew = crew;
+        if (crews.length === 1) conv.agent = { brain, nick: randomNick(conv) }; // 이 방 참여자의 두뇌 (첫 메시지를 보내면 고정된다)와 두 글자 대화명
         if (crews.length === 1) conv.dir = `chat-${rid.slice(1)}`; // 이 방 전용 작업 폴더 (그룹 방은 아직 따로 두지 않는다)
         saveConv(rid); // 빈 대화 파일이 곧 방이다
         if (conv.dir) { try { fs.mkdirSync(resolveProject(rid), { recursive: true }); } catch (e) { console.error('방 폴더 만들기 실패:', e.message); } }
         return send(res, 200, { room: rid, members: crews });
       }
-      // 채팅방 참여자 초대·내보내기 (첫 방이 아닌 방에서만). 둘 이상이면 그룹 채팅이 된다. 그룹 방은 크루가 두 명 이상 남아 있어야 한다
+      // 채팅방 참여자: 초대(add {crew, brain, nick?}) · 내보내기(remove 참여자 id) · 방장 정하기(leader 참여자 id). "@번호" 방에서만.
+      // 처음 초대하면 그 방의 원래 크루가 방장이 되어 하던 일을 그대로 잇는다. 같은 크루를 다른 두뇌로 또 넣을 수 있다. 한 명만 남으면 다시 혼자 방이 된다
       if (p === '/api/rooms/members' && req.method === 'POST') {
         if (!GROUP_CHAT_ENABLED) return send(res, 400, { error: '그룹 채팅은 준비 중이에요.' });
         const b = await readBody(req);
         const room = String(b.room || '');
-        if (!room.includes('@') || !resolveProject(room)) return send(res, 400, { error: '첫 방에는 참여자를 초대할 수 없어요. 새 채팅방을 만들어 주세요.' });
+        if (!room.startsWith('@') || !resolveProject(room)) return send(res, 400, { error: '이 방에는 참여자를 초대할 수 없어요. 새 채팅방을 만들어 주세요.' });
         if (projectRuns.has(room)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 해 주세요.' });
         const names = b.names && typeof b.names === 'object' ? b.names : {};
-        const label = (c) => String(names[c] || (c === '' ? '감자 톡톡' : c)).slice(0, 40);
         const conv = loadConv(room);
-        let members = Array.isArray(conv.participants) && conv.participants.length ? conv.participants.slice() : [crewOf(room)];
-        const notes = [];
-        for (const c of Array.isArray(b.add) ? b.add.map(String) : []) {
-          if (c.includes('@') || !resolveProject(c)) return send(res, 400, { error: '알 수 없는 크루' });
-          if (!members.includes(c)) { members.push(c); notes.push(`${label(c)} 님이 참여했어요`); }
+        if (!isGroup(conv) && !crewOf(room) && !(Array.isArray(conv.participants) && conv.participants.length > 1)) return send(res, 400, { error: '이 방에는 참여자를 초대할 수 없어요. 새 채팅방을 만들어 주세요.' });
+        // 먼저 모두 확인하고 나서 바꾼다 (중간에 실패해도 방이 반쯤 바뀌지 않게)
+        let add = null;
+        if (b.add && typeof b.add === 'object') {
+          const crew = String(b.add.crew || '');
+          if (!crew || crew.includes('@') || !listProjects().includes(crew)) return send(res, 400, { error: '알 수 없는 크루' });
+          const brain = BRAINS.includes(b.add.brain) ? b.add.brain : 'claude';
+          if (brain === 'codex' && !codexReady()) return send(res, 400, { error: 'Codex가 연결되어 있지 않아요. 더보기 → AI → Codex에서 먼저 연결해 주세요.' });
+          const count = isGroup(conv) ? conv.members.length : Math.max(1, (conv.participants || []).length);
+          if (count >= MAX_ROOM_MEMBERS) return send(res, 400, { error: `한 방에는 ${MAX_ROOM_MEMBERS}명까지 참여할 수 있어요.` });
+          add = { crew, brain, nick: b.add.nick };
         }
-        if (members.length > MAX_ROOM_MEMBERS) return send(res, 400, { error: `한 방에는 크루를 ${MAX_ROOM_MEMBERS}명까지 넣을 수 있어요.` });
+        const wasGroup = isGroup(conv);
+        if ((b.remove !== undefined || b.leader !== undefined) && !wasGroup) return send(res, 400, { error: '그룹 방이 아니에요.' });
+        const target = (id) => conv.members.find((m) => m.id === String(id));
         if (b.remove !== undefined) {
-          const c = String(b.remove);
-          if (!members.includes(c)) return send(res, 404, { error: '이 방의 참여자가 아니에요.' });
-          if (members.length < 3) return send(res, 400, { error: '그룹 방에는 크루가 두 명 이상 있어야 해요.' });
-          members = members.filter((x) => x !== c);
-          notes.push(`${label(c)} 님이 나갔어요`);
+          const m = target(b.remove);
+          if (!m) return send(res, 404, { error: '이 방의 참여자가 아니에요.' });
+          if (m.id === conv.leader) return send(res, 400, { error: '방장은 내보낼 수 없어요. 먼저 다른 참여자를 방장으로 정해 주세요.' });
         }
-        conv.participants = members;
+        if (b.leader !== undefined && !target(b.leader)) return send(res, 404, { error: '이 방의 참여자가 아니에요.' });
+        if (!add && b.remove === undefined && b.leader === undefined) return send(res, 400, { error: '바꿀 내용이 없어요.' });
+
+        ensureMembers(conv, room, names);
+        const notes = [];
+        if (add) {
+          conv.memberSeq = Math.max(conv.memberSeq || 0, conv.members.length) + 1;
+          const id = `#${conv.memberSeq}`;
+          const m = { id, crew: add.crew, brain: add.brain };
+          m.nick = uniqueNick(conv, cleanNick(add.nick) || randomNick(conv), id);
+          fillColors(conv);
+          m.color = pickColor(conv);
+          conv.members.push(m);
+          notes.push(`${m.nick} 님이 참여했어요`);
+        }
+        if (b.remove !== undefined) {
+          const m = target(b.remove);
+          conv.members = conv.members.filter((x) => x.id !== m.id);
+          notes.push(`${m.nick} 님이 나갔어요`);
+        }
+        if (b.leader !== undefined) {
+          const m = target(b.leader);
+          if (m.id !== conv.leader) {
+            conv.leader = m.id;
+            // 방장의 기억(이어가기)은 사람마다 따로라 새로 시작한다. 첫 메시지에 최근 대화를 붙여 준다
+            if (conv.sessionId || conv.codexThread) conv.recap = 'leader';
+            delete conv.sessionId; delete conv.codexThread;
+            conv.brain = m.brain;
+            notes.push(`${m.nick} 님이 방장이 됐어요`);
+          }
+        }
+        if (conv.members.length > 1) {
+          if (!wasGroup) { conv.leaderSeen = Date.now(); ensureRoomDir(conv, room); } // 지금까지의 대화는 방장의 기억에 있다
+          syncLeader(conv);
+        } else ungroup(conv);
         for (const t of notes) conv.messages.push({ role: 'notice', text: t, ts: Date.now() });
         saveConv(room);
-        return send(res, 200, { members });
+        return send(res, 200, { group: publicGroup(conv), agent: publicAgent(conv), members: conv.participants });
       }
+      // 채팅방 보관·꺼내기: 파일은 그 자리에 두고 대화 파일에 표시만 한다 (아이디·폴더·두뇌·기억이 그대로라 꺼내면 이어서 대화한다)
+      if (p === '/api/rooms/archive' && req.method === 'POST') {
+        const b = await readBody(req);
+        const room = String(b.room || '');
+        if (!room || room.startsWith('~') || !resolveProject(room)) return send(res, 400, { error: '보관할 수 없는 방이에요.' });
+        if (b.on && projectRuns.has(room)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 보관해 주세요.' });
+        const conv = loadConv(room);
+        if (b.on) conv.archived = Date.now(); else delete conv.archived;
+        if (!saveConv(room)) return send(res, 500, { error: '저장하지 못했어요.' });
+        return send(res, 200, { ok: true, archived: !!conv.archived });
+      }
+      // 채팅방 삭제: 대화 기록과 방 폴더(결과물)를 바로 지운다. 복구할 수 없다 (보관은 /api/rooms/archive)
+      // 크루의 첫 방(아이디 = 크루 이름)은 대화 기록만 지운다. 그 방이 일하던 곳은 크루 폴더라 크루와 함께 남는다
       if (p === '/api/rooms/delete' && req.method === 'POST') {
         const room = String((await readBody(req)).room || '');
-        if (!room.includes('@') || !resolveProject(room)) return send(res, 400, { error: '지울 수 없는 방이에요.' });
+        if (!room || room.startsWith('~') || !resolveProject(room)) return send(res, 400, { error: '지울 수 없는 방이에요.' });
         if (projectRuns.has(room)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 지워 주세요.' });
-        // 바로 지우지 않고 휴지통으로: 대화 기록과 방 폴더(결과물)를 함께 옮겨 두고, 30일 안에 복구할 수 있다
-        const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-');
-        const box = path.join(ROOM_TRASH_DIR, `${stamp}__${encodeURIComponent(room)}`);
         const dirName = roomDirName(room);
-        fs.mkdirSync(box, { recursive: true });
-        fs.renameSync(convFile(room), path.join(box, 'conv.json'));
+        if (dirName) {
+          const dir = path.join(ROOMS_DIR, dirName);
+          try { await appRunner.forget(dir); } catch { /* 켜 둔 앱이 없으면 그냥 지운다 */ }
+          if (path.dirname(dir) === ROOMS_DIR) fs.rmSync(dir, { recursive: true, force: true });
+        }
+        fs.rmSync(convFile(room), { force: true });
         convCache.delete(room);
-        if (dirName && fs.existsSync(path.join(ROOMS_DIR, dirName))) fs.renameSync(path.join(ROOMS_DIR, dirName), path.join(box, 'folder'));
+        forgetRoomUi(room);
         return send(res, 200, { ok: true });
       }
       // 지운 채팅방 목록 (채팅 탭 아래의 "삭제한 채팅 복구하기")
@@ -3187,7 +4532,66 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           runId: run ? run.runId : null,
           live: run ? run.live : null,
           prefs: conv.prefs || {}, // 이 방만의 설정 (읽어주기·목소리·글자 크기). 없는 항목은 더보기의 기본값을 따른다
+          agent: publicAgent(conv), // 이 방 참여자의 두뇌·생각 깊이·대화명
+          group: publicGroup(conv), // 그룹 방의 참여자 목록
         });
+      }
+      // 채팅방 참여자 정보: 두뇌(첫 메시지 전까지만 바꿀 수 있다)·생각 깊이·대화명. 고를 수 있는 값과 더보기 › AI의 기본값도 함께
+      if (p === '/api/room-agent' && req.method === 'GET') {
+        const room = url.searchParams.get('room') || '';
+        if (room.startsWith('~') || !resolveProject(room)) return send(res, 400, { error: '알 수 없는 방이에요.' });
+        const conv = fs.existsSync(convFile(room)) ? peekConv(room) : null;
+        const ready = codexReady();
+        // 그룹 방: member=참여자 id면 그 참여자의 정보
+        const g = isGroup(conv) ? publicGroup(conv) : null;
+        const gm = g && url.searchParams.get('member') ? g.find((m) => m.id === url.searchParams.get('member')) : null;
+        return send(res, 200, {
+          agent: gm ? { brain: gm.brain, model: gm.model, effort: gm.effort, nick: gm.nick, locked: gm.locked } : publicAgent(conv),
+          member: gm || null,
+          group: g,
+          claude: { model: settings.model || '', effort: settings.effort || '', efforts: EFFORTS.filter(Boolean) },
+          codex: { ready, models: ready ? codexModels() : [], defaults: ready ? codexDefaults() : {}, model: settings.cxModel || '', effort: settings.cxEffort || '' },
+        });
+      }
+      if (p === '/api/room-agent' && req.method === 'POST') {
+        const b = await readBody(req);
+        const room = String(b.room ?? '');
+        if (room.startsWith('~') || !resolveProject(room)) return send(res, 400, { error: '알 수 없는 방이에요.' });
+        if (projectRuns.has(room)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 바꿔 주세요.' });
+        const conv = loadConv(room);
+        // 그룹 방: member=참여자 id (없으면 방장). 방장을 바꾸면 방의 두뇌(conv.agent)도 따라 바뀐다
+        const mem = isGroup(conv) ? (b.member !== undefined ? conv.members.find((m) => m.id === String(b.member)) : leaderOf(conv)) : null;
+        if (isGroup(conv) && !mem) return send(res, 404, { error: '이 방의 참여자가 아니에요.' });
+        const a = mem ? agentPart(mem) : agentOk(conv.agent) ? { ...conv.agent } : legacyAgent(crewOf(room));
+        if (b.brain !== undefined) {
+          if (!BRAINS.includes(b.brain)) return send(res, 400, { error: '알 수 없는 두뇌' });
+          if (b.brain !== a.brain) {
+            if (a.since) return send(res, 409, { error: '대화를 시작한 방의 두뇌는 바꿀 수 없어요. 다른 두뇌로 새 채팅방을 만들어 주세요.' });
+            if (b.brain === 'codex' && !codexReady()) return send(res, 400, { error: 'Codex가 연결되어 있지 않아요. 더보기 → AI → Codex에서 먼저 연결해 주세요.' });
+            a.brain = b.brain; delete a.model; delete a.effort; // 두뇌가 바뀌면 그 두뇌의 기본값부터
+          }
+        }
+        if (b.effort !== undefined) {
+          const effort = String(b.effort || '');
+          if (a.brain === 'claude' ? !EFFORTS.includes(effort) : !/^([a-z]{1,12})?$/.test(effort)) return send(res, 400, { error: '알 수 없는 생각 깊이' });
+          if (effort) a.effort = effort; else delete a.effort;
+        }
+        if (b.nick !== undefined) {
+          const nick = cleanNick(b.nick);
+          if (mem) a.nick = uniqueNick(conv, nick || (b.names && b.names[mem.crew]) || mem.crew, mem.id); // 그룹에서는 @로 부르므로 대화명이 늘 있어야 한다
+          else a.nick = nick || randomNick(conv); // 비우면 두 글자 이름을 새로 붙인다 (크루 이름이 두 줄에 겹쳐 보이지 않게)
+        }
+        if (mem) {
+          for (const k of MEMBER_AGENT_KEYS) delete mem[k];
+          Object.assign(mem, a);
+          syncLeader(conv);
+          saveConv(room);
+          const gm = publicGroup(conv).find((m) => m.id === mem.id);
+          return send(res, 200, { agent: { brain: gm.brain, model: gm.model, effort: gm.effort, nick: gm.nick, locked: gm.locked }, member: gm, group: publicGroup(conv) });
+        }
+        conv.agent = a;
+        saveConv(room);
+        return send(res, 200, { agent: publicAgent(conv) });
       }
       // 방별 설정 저장: 이 방에서만 더보기 기본값보다 우선한다. 보낸 항목만 남기고 나머지는 "기본값 따르기"
       if (p === '/api/room-prefs' && req.method === 'POST') {
@@ -3212,10 +4616,12 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const orig = req.headers['x-gamja-file'];
         const ext = orig ? '' : IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0].trim()];
         if (!orig && !ext) return send(res, 400, { error: '이 형식은 첨부할 수 없어요' });
-        if (orig && /\.(mp4|m4v|mov|avi|mkv|webm|3gp|3g2|wmv|flv|mpe?g|m2ts|hevc)$/i.test(safeFileName(orig))) return send(res, 400, { error: '영상은 아직 보낼 수 없어요' });
+        // 영상(화면 녹화 등)은 커서 100MB까지 받는다. 크루는 영상 도구로 장면을 뽑아 본다
+        const video = !!orig && VIDEO_FILE_RE.test(safeFileName(orig));
+        const limit = !orig ? 10e6 : video ? MAX_VIDEO_BYTES : MAX_FILE_BYTES;
         let data;
-        try { data = await readRaw(req, orig ? MAX_FILE_BYTES : 10e6); }
-        catch { return send(res, 413, { error: `파일이 너무 커요 (${orig ? 50 : 10}MB까지)` }); }
+        try { data = await readRaw(req, limit); }
+        catch { return send(res, 413, { error: `파일이 너무 커요 (${Math.round(limit / 1e6)}MB까지)` }); }
         if (!data.length) return send(res, 400, { error: '빈 파일이에요' });
         const stamp = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
         const name = orig ? `${stamp}-${safeFileName(orig)}` : `${stamp}.${ext}`;
@@ -3263,8 +4669,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         let instructions = '';
         try { instructions = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'); } catch {}
         return send(res, 200, {
-          project, instructions, model: projectConf[project]?.model || '', models: MODELS,
-          effort: projectConf[project]?.effort || '', info: project ? crewTplInfo(project) : null,
+          project, instructions, info: project ? crewTplInfo(project) : null, // 크루는 지침만. 두뇌·모델·생각 깊이는 채팅방의 참여자가 갖는다
           locked: !project || holdsApp(dir), // 루트·GAMJA 폴더는 이름 바꾸기·삭제 불가
         });
       }
@@ -3274,10 +4679,6 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const dir = resolveCrew(project);
         if (!dir) return send(res, 400, { error: '알 수 없는 프로젝트' });
         if (exportFolderLocked(dir)) return send(res, 409, { error: '이 크루의 폴더를 내보내는 중이에요. 잠시 뒤에 저장해 주세요.', code: 'export-running' }); // 지침(CLAUDE.md)은 내보내는 폴더 안의 파일이다
-        const model = String(b.model || '');
-        if (!MODELS.includes(model)) return send(res, 400, { error: '알 수 없는 모델' });
-        const effort = String(b.effort || '');
-        if (!EFFORTS.includes(effort)) return send(res, 400, { error: '알 수 없는 생각 깊이' });
         // 프로젝트 지침 = 그 폴더의 CLAUDE.md (Claude Code가 자동으로 읽음). 비우면 파일을 지운다
         const md = path.join(dir, 'CLAUDE.md');
         const text = String(b.instructions || '').slice(0, 50000);
@@ -3285,10 +4686,6 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         else fs.rmSync(md, { force: true });
         const newTpl = cleanTpl(b.tpl); // 시험한 템플릿으로 새로 만들 때만 온다: 어떤 버전의 지침으로 만들었는지 기록
         if (newTpl && text.trim()) projectConf[project] = { ...projectConf[project], tpl: { ...newTpl, hash: instrHash(text.endsWith('\n') ? text : text + '\n') } };
-        if (model) projectConf[project] = { ...projectConf[project], model };
-        else if (projectConf[project]) delete projectConf[project].model;
-        if (effort) projectConf[project] = { ...projectConf[project], effort };
-        else if (projectConf[project]) delete projectConf[project].effort;
         saveProjectConf();
         return send(res, 200, { ok: true });
       }
@@ -3366,37 +4763,33 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             fs.renameSync(r.file, convFile(newName + r.rid.slice(project.length)));
             convCache.delete(r.rid);
           }
+          // 그룹 방의 참여자 자리도 새 이름으로 (다른 크루가 방장인 방 포함)
+          try {
+            for (const f of fs.readdirSync(CONV_DIR)) {
+              if (!f.startsWith('p_%40') || !f.endsWith('.json')) continue;
+              const rid = `@${f.slice(5, -5)}`;
+              if (!ROOM_SUFFIX.test(rid.slice(1)) || isQuarantinedName(rid)) continue;
+              const cv = peekConv(rid);
+              if (!cv) continue;
+              let changed = false;
+              for (const m of Array.isArray(cv.members) ? cv.members : []) if (m.crew === project) { m.crew = newName; changed = true; }
+              if (Array.isArray(cv.participants) && cv.participants.includes(project)) { cv.participants = cv.participants.map((c) => (c === project ? newName : c)); changed = true; }
+              if (changed) saveConv(rid);
+            }
+          } catch (e) { console.error('그룹 방 참여자 이름 바꾸기 실패:', e.message); }
           if (projectConf[project]) { projectConf[newName] = projectConf[project]; delete projectConf[project]; saveProjectConf(); }
           try { if (fs.existsSync(crewBackupDir(project))) fs.renameSync(crewBackupDir(project), crewBackupDir(newName)); } catch { /* 백업을 못 옮겨도 이름 바꾸기는 계속 */ }
           clearCrewPerms(project, newName); // 이름이 바뀌면 옛 이름·새 이름 권한을 모두 비운다
           return send(res, 200, { project: newName });
         }
-        // 삭제: 바로 지우지 않고 휴지통(TRASH_DIR)으로 옮긴다
-        const trash = TRASH_DIR;
-        const stamp = new Date().toLocaleString('sv-SE').replace(/[: ]/g, '-');
-        fs.mkdirSync(trash, { recursive: true });
-        fs.renameSync(dir, path.join(trash, `${project}_${stamp}`));
+        // 삭제: 이 크루가 들어가 있는 채팅방(진행 중·보관)이 하나라도 있으면 지울 수 없다. 없으면 크루 폴더와 지침을 바로 지운다 (복구할 수 없다)
+        const use = crewRoomUsage(project);
+        if (use.rooms) return send(res, 409, { error: `이 크루가 들어가 있는 채팅방이 ${use.rooms}개 있어요${use.archived ? ` (보관 ${use.archived}개 포함)` : ''}. 채팅방을 먼저 삭제하면 크루를 지울 수 있어요.`, code: 'crew-has-rooms', rooms: use.rooms, archived: use.archived });
+        fs.rmSync(dir, { recursive: true, force: true });
+        for (const r of rooms) { fs.rmSync(r.file, { force: true }); convCache.delete(r.rid); } // 목록에 안 보이던 빈 첫 방의 대화 파일
+        forgetRoomUi(project);
         clearCrewPerms(project); // 삭제된 크루의 권한은 남기지 않는다
-        // 대화는 크루와 따로 간다: 크루를 지워도 대화 기록은 남겨 두고, 채팅 목록에서 읽기만 되는 "삭제된 크루" 방으로 보여 준다
-        // 첫 방과 다른 방들이 모두 남는다 (30일 안에 복구할 수 있다)
-        if (rooms.length) {
-          fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
-          for (const r of rooms) {
-            // 보관 파일 이름에는 크루 이름이 들어가야 복구 때 알아본다: 새 방(@번호)은 "크루@번호"로 보관한다
-            const archived = r.rid.startsWith('@') ? project + r.rid : r.rid;
-            if (r.rid.startsWith('@')) { loadConv(r.rid).archivedFrom = r.rid; saveConv(r.rid); } // 복구하면 원래 아이디로 돌아온다
-            fs.renameSync(r.file, path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(archived)}.json`));
-            convCache.delete(r.rid);
-          }
-          // 크루별 모델·생각 깊이 설정도 같이 보관해 둔다 (복구할 때 되살린다)
-          if (projectConf[project]) fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.conf`), JSON.stringify(projectConf[project]));
-        }
-        if (!rooms.length) {
-          // 대화가 한 번도 없던 크루도 "삭제한 크루 복구하기"에 나오도록 빈 보관 파일을 남긴다 (복구하는 길잡이)
-          fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
-          fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.json`), JSON.stringify({ messages: [] }));
-          if (projectConf[project]) fs.writeFileSync(path.join(ARCHIVE_DIR, `${stamp}__${encodeURIComponent(project)}.conf`), JSON.stringify(projectConf[project]));
-        }
+        try { fs.rmSync(crewBackupDir(project), { recursive: true, force: true }); } catch { /* 지침 백업이 없으면 그대로 */ }
         delete projectConf[project];
         saveProjectConf();
         return send(res, 200, { ok: true });
@@ -3444,7 +4837,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             for (const e of fs.readdirSync(d, { withFileTypes: true })) {
               if (tooBig) return;
               const name = e.name;
-              if (e.isSymbolicLink() || name === 'node_modules' || name === '.git' || name === '.env' || GH_SECRET.test(name)) continue;
+              if (e.isSymbolicLink() || name === 'node_modules' || name === '.git' || name === CREW_WT_DIR || name === '.env' || GH_SECRET.test(name)) continue;
               if (legacy && d === srcDir && (name === 'CLAUDE.md' || name.startsWith('.') || ROOM_DIR_RE.test(name))) continue;
               const abs = path.join(d, name);
               if (e.isDirectory()) walk(abs, `${rel}${name}/`);
@@ -3494,7 +4887,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             const hid = `handoff-export-${Date.now()}`;
             const sumDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gamja-hnote-'));
             try {
-              const sum = await Promise.race([askOnce({
+              const sum = await Promise.race([askSummary({
                 cwd: sumDir, noTools: true,
                 prompt: `아래는 사용자와 크루의 지난 대화예요. 다른 폰의 감자에서 새 채팅방을 열어 바로 이어서 일할 수 있도록 인계 노트를 써 주세요.\n"목표", "정해진 것(규칙·합의·결정)", "진행 상황", "다음 할 일" 네 부분으로 쓰고, 사용자가 정한 규칙과 호칭은 빠뜨리지 마세요. 6000자 안으로 쓰세요.\n\n===== 대화 기록 =====\n${transcript}\n===== 대화 기록 끝 =====`,
                 system: '당신은 대화를 인계 노트로 정리하는 도우미예요. 인사말 없이 노트 본문만 써요. 파일을 만들거나 명령을 실행하지 않아요.',
@@ -3642,7 +5035,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         let transcript = lines.join('\n');
         if (transcript.length > 24000) transcript = '(앞부분 생략)\n' + transcript.slice(-24000);
         const hid = `handoff-${Date.now()}`;
-        const sum = await askOnce({
+        const sum = await askSummary({
           cwd: oldDir && fs.existsSync(oldDir) ? oldDir : WORK_BASE,
           prompt: `아래는 사용자와 크루의 지난 대화예요. 새 채팅방에서 바로 이어서 일할 수 있도록 인계 노트를 써 주세요.\n"목표", "정해진 것", "진행 상황", "다음 할 일", "만든 파일" 다섯 부분으로 각 1~4줄, 전체 900자 안쪽으로 써요. 대화에 없는 내용은 지어내지 말고, 파일을 고치거나 명령을 실행하지 않아요.\n\n${transcript}`,
           system: '당신은 대화를 인계 노트로 정리하는 도우미예요. 인사말 없이 노트 본문만 써요.',
@@ -3659,6 +5052,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         conv.participants = [crew];
         if (crew) conv.crew = crew;
         if (old.prefs) conv.prefs = { ...old.prefs }; // 방 설정도 그대로 이어간다
+        if (agentOk(old.agent)) { conv.agent = { ...old.agent }; delete conv.agent.since; } // 두뇌·생각 깊이·대화명도 (새 방의 첫 메시지에서 다시 고정)
         conv.dir = `chat-${rid.slice(1)}`;
         const newDir = path.join(ROOMS_DIR, conv.dir);
         try { fs.mkdirSync(newDir, { recursive: true }); } catch (e) { console.error('방 폴더 만들기 실패:', e.message); }
@@ -3670,7 +5064,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
           const MAX_BYTES = ZIP_MAX_BYTES;
           const skip = (s) => {
             const name = path.basename(s);
-            if (name === 'node_modules' || name === '.git') return true;
+            if (name === 'node_modules' || name === '.git' || name === CREW_WT_DIR) return true;
             if (!legacy) return false;
             if (s === srcDir) return false;
             if (name.startsWith('.')) return true;
@@ -3696,6 +5090,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         const { project = '' } = await readBody(req);
         if (!resolveProject(project)) return send(res, 400, { error: '알 수 없는 프로젝트' });
         if (projectRuns.has(project)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 해 주세요.' });
+        if (roomBrain(project) === 'codex') return send(res, 400, { error: 'Codex 크루는 대화가 길어지면 스스로 압축해요.' });
         if (!loadConv(project).sessionId) return send(res, 400, { error: '아직 압축할 대화가 없어요.' });
         handleChat(null, nullRes(), { message: '/compact', project }, { label: '🗜 대화를 압축하는 중... (오래된 대화를 요약본으로 바꿔요)', compact: true });
         return send(res, 200, { ok: true });
@@ -3747,7 +5142,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
             gamjaVersion: JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version,
             pro: PRO_MODE, // 개발자·Pro 모드인지 (감자알 로그, 외부 접속 주소 같은 개발자용 화면을 보여 준다)
             build: RUNNING_BUILD, // 감자 앱 설치본의 빌드 번호 (개발용은 0)
-            updates: recentUpdates().slice(-8).reverse(), // 최근 자동 업데이트 기록 (최신이 먼저)
+            updates: updatesWithNotes(), // 최근 자동 업데이트 기록 (최신이 먼저) + 그 버전에서 바뀐 내용
             local: isLocal, // 이 폰 안에서 연 화면인지 (비밀번호 바꿀 때 현재 비밀번호를 묻지 않음)
             claudeVersion,
             model: lastModel,
@@ -3828,7 +5223,7 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
       }
       if (p === '/api/update-check' && req.method === 'POST') {
         // 🔄 감자알 업데이트 지금 확인: 3시간을 기다리지 않고 바로 확인하고, 새 버전이 있으면 받아서 재시작한다
-        if (!SUPERVISED || !fs.existsSync(BUILD_FILE)) return send(res, 200, { status: 'off' }); // 개발용 감자알은 자동 업데이트가 꺼져 있다
+        if (!SUPERVISED || !fs.existsSync(BUILD_FILE) || AUTO_UPDATE_OFF) return send(res, 200, { status: 'off' }); // 개발용 감자알은 자동 업데이트가 꺼져 있다
         if (checkingUpdate) return send(res, 200, { status: 'checking' });
         checkingUpdate = true;
         try { return send(res, 200, { status: await updateOnce() }); }
@@ -3921,8 +5316,9 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         if (projectRuns.has(project)) return send(res, 409, { error: '응답이 진행 중이에요. 끝난 뒤에 다시 해 주세요.' });
         const conv = loadConv(project);
         if (p === '/api/history/reset') {
-          // 새 대화
+          // 새 대화 (Codex의 기억도 새로. 두뇌·대화명은 그대로)
           conv.sessionId = null;
+          delete conv.codexThread;
           conv.messages = [];
         } else if (p === '/api/history/resume') {
           // 터미널 등에서 시작한 기존 세션 이어가기
@@ -3940,6 +5336,100 @@ const server = http.createServer(HTTP_OPTS, async (req, res) => {
         }
         saveConv(project);
         return send(res, 200, { sessionId: conv.sessionId, messages: conv.messages, running: false });
+      }
+      if (p === '/api/usage/now' && req.method === 'GET') {
+        const d = url.searchParams.get('last') ? lastClaudeUsage() : await claudeNowUsage();
+        // a: 계정 구분값 (계정 번호를 줄여 섞은 것). 화면은 지난번에 본 계정과 다르면 불러오는 중 표시를 보여 준다
+        const acct = currentClaudeAcct();
+        return send(res, 200, { d, a: acct ? crypto.createHash('sha256').update(acct).digest('hex').slice(0, 12) : '' });
+      }
+      // 채팅방 입력창 위 말풍선: 이 방 두뇌(Claude/Codex)의 지금 계정 5시간·주간 사용량과 계정 목록 (2개 이상이면 계정 변경 버튼)
+      if (p === '/api/usage/room' && req.method === 'GET') {
+        const brain = roomBrain(url.searchParams.get('room') || '');
+        if (brain === 'codex') {
+          const accounts = listCodexAccounts(), usage = codexAccountsUsage(), cur = accounts.find((x) => x.active);
+          return send(res, 200, { brain, now: cur ? usage[cur.id] || null : null, accounts, usage });
+        }
+        const accounts = listClaudeAccounts(), d = await claudeNowUsage();
+        return send(res, 200, { brain, now: d ? { d: { pct: d.pct, resetsAt: d.resetsAt, idle: !!d.idle }, w: d.w || null, stale: !!d.stale } : null, accounts });
+      }
+      // [변경] 시트의 두뇌 탭: 그 두뇌의 계정 목록과 계정별 사용량 (Claude는 계정마다 물어봐서 조금 걸린다)
+      if (p === '/api/usage/accounts' && req.method === 'GET') {
+        if (url.searchParams.get('brain') === 'codex') {
+          if (!codexInstalled()) return send(res, 200, { brain: 'codex', ready: false, accounts: [], usage: {} });
+          return send(res, 200, { brain: 'codex', ready: codexReady(), accounts: listCodexAccounts(), usage: codexAccountsUsage() });
+        }
+        saveCurrentAccount();
+        return send(res, 200, { brain: 'claude', ready: true, accounts: listClaudeAccounts(), usage: await claudeAccountsUsage() });
+      }
+      if (p === '/api/auth/claude/accounts' && req.method === 'POST') {
+        const b = await readBody(req);
+        if (b.action === 'usage') { saveCurrentAccount(); return send(res, 200, { usage: await claudeAccountsUsage() }); }
+        if (b.action === 'switch') {
+          if (projectRuns.size) return send(res, 409, { error: '답변이 진행 중이에요. 끝난 뒤에 바꿔 주세요.' });
+          try { switchClaudeAccount(String(b.id || '')); } catch (e) { return send(res, 400, { error: e.message }); }
+        } else if (b.action === 'remove') {
+          const id = String(b.id || '');
+          if (!/^[0-9a-f-]{36}$/.test(id)) return send(res, 400, { error: '알 수 없는 계정' });
+          if (listClaudeAccounts().find((x) => x.id === id)?.active) return send(res, 400, { error: '지금 쓰는 계정은 지울 수 없어요.' });
+          try { fs.unlinkSync(path.join(ACCT_DIR, id + '.json')); } catch {}
+        }
+        return send(res, 200, { accounts: listClaudeAccounts() });
+      }
+      if (p === '/api/auth/codex' && req.method === 'POST') {
+        const b = await readBody(req);
+        if (b.action === 'install') codexInstall();
+        else if (b.action === 'login') { if (!codexInstalled()) return send(res, 400, { error: 'Codex를 먼저 설치해 주세요.' }); codexLoginStart(); }
+        else if (b.action === 'stop') codexLoginStop();
+        else if (b.action === 'logout') { codexLoginStop(); await new Promise((r) => codexLogout(r)); }
+        else if (b.action === 'switch') { try { switchCodexAccount(String(b.id || '')); } catch (err) { return send(res, 400, { error: err.message }); } }
+        else if (b.action === 'remove') {
+          const id = String(b.id || '');
+          if (!/^\w{1,40}$/.test(id)) return send(res, 400, { error: '알 수 없는 계정' });
+          if (id === saveCodexAccount()) return send(res, 400, { error: '지금 쓰는 계정은 지울 수 없어요.' });
+          try { fs.unlinkSync(path.join(CX_ACCT_DIR, id + '.json')); } catch {}
+        } else if (b.action === 'usage') return send(res, 200, { usage: codexAccountsUsage() });
+        return send(res, 200, codexState());
+      }
+      // 더보기 › AI › Codex 대화 설정: 감자 전체의 Codex 모델·생각 깊이·압축 (크루 설정이 있으면 크루 설정이 먼저)
+      if (p === '/api/codex/settings') {
+        if (req.method === 'POST') {
+          const b = await readBody(req);
+          const cxModel = String(b.cxModel || ''), cxEffort = String(b.cxEffort || ''), cxCompact = String(b.cxCompact || '');
+          if (cxModel && !/^[\w.-]{1,60}$/.test(cxModel)) return send(res, 400, { error: '알 수 없는 모델' });
+          if (cxEffort && !/^[a-z]{1,12}$/.test(cxEffort)) return send(res, 400, { error: '알 수 없는 생각 깊이' });
+          if (cxCompact && !CX_COMPACT[cxCompact]) return send(res, 400, { error: '알 수 없는 압축 설정' });
+          settings = { ...settings, cxModel, cxEffort, cxCompact };
+          saveSettings();
+        }
+        const project = url.searchParams.get('project') || '';
+        const conv = resolveProject(project) && roomBrain(project) === 'codex' ? loadConv(project) : null;
+        return send(res, 200, {
+          cxModel: settings.cxModel || '', cxEffort: settings.cxEffort || '', cxCompact: settings.cxCompact || '',
+          defaults: codexDefaults(), models: codexModels(),
+          context: conv ? codexContext(conv.codexThread) : null, codexRoom: !!conv,
+        });
+      }
+      // Claude Code 설치 (더보기 › AI › Claude): action install | status
+      if (p === '/api/auth/claude/install' && req.method === 'POST') {
+        const b = await readBody(req);
+        if (b.action === 'install') claudeInstall();
+        return send(res, 200, claudeInstallState());
+      }
+      // Claude 로그인 (웹에서): 감자 앱의 로그인 화면과 같은 흐름. 공식 Claude Code 화면을 가상 터미널로 띄우고, 화면 글자를 읽어 단계를 알려 준다
+      if (p === '/api/auth/claude/cli' && req.method === 'POST') {
+        const b = await readBody(req);
+        if (b.action === 'start') {
+          if (!claudeInstalled()) return send(res, 400, { error: CLAUDE_MISSING });
+          saveCurrentAccount(); // 새 계정으로 로그인하기 전에 지금 계정을 보관해 둔다
+          cliLoginStart(!!b.relogin);
+        } else if (b.action === 'key') {
+          cliLoginKey(String(b.k || ''), String(b.text || ''), !!b.submit);
+        } else if (b.action === 'stop') {
+          cliLoginStop();
+          return send(res, 200, { ok: true });
+        }
+        return send(res, 200, cliLoginState());
       }
       if (p === '/api/admin/restart' && req.method === 'POST') {
         // 수동 재시작 (검사 후)
@@ -4084,6 +5574,38 @@ function purgeTrash() {
   }
 }
 
+// 채팅방 삭제가 "바로 지우기"로 바뀌기 전에 휴지통(roomtrash)에 들어간 방: 대화가 있으면 원래 자리로 돌려놓고 "보관됨"으로 바꾼다.
+// 대화가 없거나, 크루가 없어졌거나, 자리가 이미 차 있으면 그대로 둔다 (예전처럼 30일 뒤 정리된다)
+function migrateRoomTrash() {
+  let names = [];
+  try { names = fs.readdirSync(ROOM_TRASH_DIR); } catch { return; }
+  for (const n of names) {
+    try {
+      const m = /^\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d__([\w.%-]+)$/.exec(n);
+      if (!m) continue;
+      const rid = decodeURIComponent(m[1]);
+      const box = path.join(ROOM_TRASH_DIR, n);
+      const rd = readConvPath(path.join(box, 'conv.json'));
+      if (rd.state !== 'ok' || !(rd.conv.messages || []).some((x) => x.role === 'user' || x.role === 'bot')) continue;
+      const crew = rid.startsWith('@') ? (typeof rd.conv.crew === 'string' ? rd.conv.crew : '') : crewOf(rid);
+      if (!crew || !listProjects().includes(crew) || fs.existsSync(convFile(rid))) continue;
+      const dir = typeof rd.conv.dir === 'string' && ROOM_DIR_RE.test(rd.conv.dir) ? rd.conv.dir : '';
+      if (dir && fs.existsSync(path.join(box, 'folder'))) {
+        if (fs.existsSync(path.join(ROOMS_DIR, dir))) continue;
+        fs.mkdirSync(ROOMS_DIR, { recursive: true });
+        fs.renameSync(path.join(box, 'folder'), path.join(ROOMS_DIR, dir));
+      }
+      const conv = { ...rd.conv, archived: rd.conv.archived || Date.now() };
+      fs.mkdirSync(CONV_DIR, { recursive: true });
+      fs.writeFileSync(convFile(rid) + '.tmp', JSON.stringify(conv));
+      fs.renameSync(convFile(rid) + '.tmp', convFile(rid));
+      convCache.delete(rid);
+      fs.rmSync(box, { recursive: true, force: true });
+      console.log(`휴지통의 채팅방을 보관함으로 옮겼어요: ${rid}`);
+    } catch (e) { console.error(`휴지통 채팅방 옮기기 실패(${n}):`, e.message); }
+  }
+}
+
 // 예전에 설치한 폰(.env에 PORT=3000)은 26514로 옮긴다: .env의 PORT 줄만 바꾸고 끝내면, start.sh 루프가 3초 뒤 새 포트로 다시 띄운다 (앱도 .env를 읽어서 같은 포트로 붙는다)
 if (PORT === 3000 && SUPERVISED) {
   try {
@@ -4110,6 +5632,10 @@ server.listen(PORT, HOST, () => {
   if (GAMJA_HOME) { // 새 구조의 폴더를 미리 만들어 둔다
     for (const d of [DATA_DIR, CREWS_DIR, WORK_BASE, TRASH_DIR]) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { console.error(`폴더를 만들지 못했어요: ${d} (${e.message})`); } }
   }
+  loadProjectConf(); // 두뇌 옮기기가 크루 설정을 읽어야 하므로 먼저 읽는다
+  migrateRoomTrash();
+  migrateCrewBrains();
+  migrateNicks();
   purgeTrash();
   cleanExportTmp();
   setInterval(writeActivityState, 500).unref();
@@ -4121,6 +5647,7 @@ server.listen(PORT, HOST, () => {
   let pending = null;
   try { pending = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8')); } catch {}
   fs.rmSync(PENDING_FILE, { force: true });
+  const freshNotes = syncWhatsNew(!!(pending && pending.update)); // 이번에 들어온 "바뀐 내용" (업데이트 기록에 붙인다)
   const project = pending && resolveProject(pending.project) ? pending.project : 'gamja';
   const depth = pending ? (pending.depth || 0) + 1 : 1;
   if (fs.existsSync(ROLLBACK_NOTE)) {
@@ -4131,7 +5658,7 @@ server.listen(PORT, HOST, () => {
       runAuto(project, AUTO_MSG.rolledBack(), depth, '🤖 복구 사실을 Claude에게 전달했어요. 원인을 살피는 중...');
     }
   } else if (pending && pending.update) {
-    recordUpdate(pending.update); // 자동 업데이트는 대화에 안내를 남기지 않고, 화면의 짧은 알림과 설정의 업데이트 기록으로 알린다
+    recordUpdate(pending.update, freshNotes); // 자동 업데이트는 대화에 안내를 남기지 않고, 화면의 짧은 알림과 설정의 업데이트 기록으로 알린다
   } else if (pending && resolveProject(project)) {
     addNotice(project, `${pending.text} (코드 ${RUNNING_HASH})`);
     // Claude가 직접 "반영 완료"를 보고하도록 결과를 전달

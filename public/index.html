@@ -82,15 +82,24 @@
 
     <!-- 입력창: 둥근 상자 하나 안에 첨부·입력·받아쓰기·보내기. 2줄부터 버튼들이 아래 줄로 내려간다 -->
     <footer class="composer">
+      <!-- AI 계정이 없을 때: 입력창 위 "더보기 → AI에서 연결하세요" 안내 (app.js renderAi) -->
+      <div id="aiNotice" class="ai-notice hidden" data-no-i18n></div>
       <div id="composerBox" class="composer-box">
         <div id="interim" class="interim hidden"></div>
         <div id="attachments" class="attachments hidden"></div>
         <div class="composer-main">
           <button id="attachBtn" class="cbtn attach-btn" title="파일 첨부" type="button">＋</button>
+          <!-- 그룹 방에서만: 누르면 @ 바로 오른쪽에 참여자(@대화명) 버튼이 펼쳐지고 좌우로 밀어서 고른다 -->
+          <button id="mentionBtn" class="cbtn mention-btn hidden" type="button" data-no-i18n>@</button>
+          <div id="mentionBar" class="mention-bar hidden" data-no-i18n></div>
           <textarea id="input" rows="1" placeholder="메시지 입력" enterkeyhint="send"></textarea>
           <div class="composer-actions">
+            <!-- 사용량 보기 켜고 끄기 (바늘 = 5시간 사용량). app.js usageView -->
+            <button id="usageBtn" class="cbtn usage-btn hidden" type="button" data-no-i18n><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 16.5a8 8 0 0 1 16 0"/><line class="g-needle" x1="12" y1="16.5" x2="12" y2="10"/><circle cx="12" cy="16.5" r="1.4" fill="currentColor" stroke="none"/></svg></button>
             <button id="micBtn" class="cbtn" title="받아쓰기" type="button">🎤</button>
             <button id="sendBtn" class="send-btn" type="button" title="전송" disabled>➤</button>
+            <!-- 사용량 보기 켜짐: 🎤·➤ 위를 덮는 [변경]. 같은 줄 안에 있어서 입력창 모양이 바뀌어도 늘 그 자리 -->
+            <button id="uvSwitch" class="uv-switch" type="button" data-no-i18n></button>
           </div>
         </div>
         <!-- ＋를 누르면 사진(갤러리)·파일 중에 고른다. 안드로이드는 accept가 없으면 파일 앱만 열려서 사진 칸을 따로 둔다 -->
@@ -98,11 +107,15 @@
           <button id="attachPhotoBtn" class="menu-item" type="button" data-no-i18n></button>
           <button id="attachFileBtn" class="menu-item" type="button" data-no-i18n></button>
         </div>
-        <input id="photoInput" type="file" accept="image/*" multiple hidden>
-        <!-- 아이폰: ＋를 누르면 메뉴 없이 바로 이 칸을 연다. 아이폰이 사진 보관함·사진 촬영·파일 선택을 한 메뉴로 보여 준다 (image/*라서 사진 보관함에 영상은 안 보인다) -->
-        <input id="iosInput" type="file" multiple hidden accept="image/*,application/*,text/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.csv,.txt,.md,.json">
+        <input id="photoInput" type="file" accept="image/*,video/*" multiple hidden>
+        <!-- 아이폰: ＋를 누르면 메뉴 없이 바로 이 칸을 연다. 아이폰이 사진 보관함·사진 촬영·파일 선택을 한 메뉴로 보여 준다 (video/*도 있어 화면 녹화 같은 영상도 고를 수 있다) -->
+        <input id="iosInput" type="file" multiple hidden accept="image/*,video/*,application/*,text/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.csv,.txt,.md,.json">
         <!-- 파일 칸은 사진·영상 형식을 빼야 안드로이드에서 카메라·캠코더 없이 파일 앱이 바로 열리고, 아이폰도 사진 보관함 대신 파일 앱이 열린다 -->
         <input id="fileInput" type="file" multiple hidden accept="application/*,text/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.csv,.txt,.md,.json">
+      </div>
+      <!-- 사용량 보기 켜짐: 입력창 대신 위(세션)·아래(주간) 두 줄 글자 + [변경](🎤·➤ 자리를 합친 크기, 입력창 버튼 줄 안에 있다). 게이지는 입력창의 그 버튼이 제자리에 그대로 남는다. 바탕색 두 줄은 켜고 끄기와 상관없이 늘 보인다 -->
+      <div id="usageView" class="usage-view hidden" data-no-i18n>
+        <div class="uv-rows"><span id="uvD"></span><span id="uvW"></span></div>
       </div>
     </footer>
   </section>
@@ -220,22 +233,7 @@
 
       <div id="projTplBox"></div>
 
-      <h3>🤖 이 크루의 모델</h3>
-      <div class="radio-list">
-        <label><input type="radio" name="projModel" value=""> 전체 설정 따르기 <span>⚙️ 설정의 모델</span></label>
-        <label><input type="radio" name="projModel" value="opus"> Opus <span>가장 똑똑함, 조금 느림</span></label>
-        <label><input type="radio" name="projModel" value="sonnet"> Sonnet <span>빠르고 균형 잡힘</span></label>
-      </div>
-
-      <h3>🧠 이 크루의 생각 깊이</h3>
-      <div class="radio-list">
-        <label><input type="radio" name="projEffort" value=""> 전체 설정 따르기 <span>⚙️ 설정의 생각 깊이</span></label>
-        <label><input type="radio" name="projEffort" value="low"> 빠르게 <span>간단한 질문·대화</span></label>
-        <label><input type="radio" name="projEffort" value="medium"> 보통 <span>속도와 꼼꼼함의 균형</span></label>
-        <label><input type="radio" name="projEffort" value="high"> 깊게 <span>어려운 코딩·설계, 느림</span></label>
-      </div>
-
-      <p class="settings-note">모델·생각 깊이는 <b>다음 메시지부터</b> 적용돼요.</p>
+      <p id="projBrainNote" class="settings-note"></p>
 
       <button id="projExport" class="settings-ghost" type="button">📤 이 크루 공유하기</button>
       <button id="projDelete" class="settings-danger" type="button">🗑 크루 삭제</button>
@@ -303,7 +301,7 @@
   <section id="rtrashPanel" class="settings ui ui-big hidden">
     <header class="settings-bar">
       <button id="rtrashBack" class="icon-btn" title="닫기">←</button>
-      <h2>삭제한 채팅</h2>
+      <h2 id="rtrashBar">삭제한 채팅</h2>
     </header>
     <div class="settings-body">
       <h1 id="rtrashH" class="ui-title"></h1>
@@ -366,6 +364,8 @@
         <button id="newBtn" class="settings-danger" type="button"></button>
         <p id="roomNewNote" class="settings-note"></p>
       </div>
+      <button id="roomArchive" class="settings-ghost" type="button"></button>
+      <p id="roomArchiveNote" class="settings-note"></p>
       <p id="roomDeleteNote" class="settings-note"></p>
       <button id="roomDelete" class="settings-danger" type="button"></button>
     </div>
@@ -401,9 +401,8 @@
       <!-- 설정 목록: 항목을 누르면 그 화면이 열린다. 바꾸는 즉시 저장돼요 -->
       <div id="setList">
         <button class="set-row" data-page="me"><span class="pick-icon">👤</span><span><b>나에 대해</b><small>호칭, 답변 스타일</small></span><i>›</i></button>
-        <button class="set-row" data-page="ai"><span class="pick-icon">🤖</span><span><b>AI 설정</b><small>모델, 생각 깊이, 대화 압축</small></span><i>›</i></button>
-        <button class="set-row" data-page="look"><span class="pick-icon">🔊</span><span><b>소리·화면</b><small>답변 읽어주기, 테마</small></span><i>›</i></button>
-        <button class="set-row" data-page="lang"><span class="pick-icon">🌐</span><span><b>언어 설정</b><small>화면 언어: 자동, 한국어, English</small></span><i>›</i></button>
+        <button class="set-row" data-page="ai"><span class="pick-icon">🤖</span><span><b>AI</b><small>Claude Code, Codex CLI</small></span><i>›</i></button>
+        <button class="set-row" data-page="look"><span class="pick-icon">🖥</span><span><b>화면 및 언어 설정</b><small>테마, 화면 언어</small></span><i>›</i></button>
         <button class="set-row" data-page="security"><span class="pick-icon">🔒</span><span><b>보안</b><small>비밀번호, 로그아웃</small></span><i>›</i></button>
         <button class="set-row" data-page="connect"><span class="pick-icon">🌐</span><span><b>연결</b><small>외부 접속 주소, GitHub, 다른 폰에 설치</small></span><i>›</i></button>
         <button class="set-row" data-page="tools"><span class="pick-icon">🛠</span><span><b>도구 상자</b><small>크루가 문서·그림·영상·소리를 만드는 도구</small></span><i>›</i></button>
@@ -421,8 +420,33 @@
       <p class="settings-note">호칭·답변 스타일은 <b>새 대화부터</b> 적용돼요. (⋯ → ＋ 새 대화)</p>
       </div>
 
-      <div id="page-ai" class="set-page hidden" data-title="🤖 AI 설정">
-      <h3>🤖 AI 모델</h3>
+      <div id="page-ai" class="set-page hidden" data-title="🤖 AI">
+        <p class="settings-note">감자가 일을 맡길 AI 두뇌를 고르고 설정해요.</p>
+        <h3 class="ai-head">🅲 Claude <small id="aiClaudeSub"></small></h3>
+        <!-- Claude 계정이 연결 안 됐을 때만 보이는 로그인 카드 (글은 app.js renderAi가 i18n으로 넣는다) -->
+        <div id="claudeConnect" class="ai-connect hidden" data-no-i18n></div>
+        <div id="claudeRows">
+          <button class="set-row" data-page="claude-account"><span class="pick-icon">🔑</span><span><b>계정 설정</b><small>로그인, 계정 추가, 계정 삭제</small></span><i>›</i></button>
+          <button class="set-row" data-page="claude-brain"><span class="pick-icon">🧠</span><span><b>대화 설정</b><small>모델, 대화 길이, 압축</small></span><i>›</i></button>
+        </div>
+        <h3 class="ai-head">🅾 Codex <small id="aiCodexSub"></small></h3>
+        <button class="set-row" data-page="codex-account"><span class="pick-icon">🔑</span><span><b>계정 설정</b><small>로그인, 계정 추가, 계정 삭제</small></span><i>›</i></button>
+        <button class="set-row" data-page="codex-brain"><span class="pick-icon">🧠</span><span><b>대화 설정</b><small>모델, 대화 길이, 압축</small></span><i>›</i></button>
+      </div>
+
+      <div id="page-claude-account" class="set-page hidden" data-title="🔑 Claude 계정 설정">
+        <h3>연결된 계정</h3>
+        <div id="acctList"></div>
+        <p class="settings-note" id="acctHint">ⓘ 계정을 누르면 그 계정으로 바뀌어요. 대화 기록과 기억은 그대로예요.</p>
+        <h3>계정 관리</h3>
+        <button id="acctAdd" class="set-row"><span class="pick-icon">➕</span><span><b>계정 추가</b><small>다른 계정으로 로그인해 목록에 저장해요</small></span><i>›</i></button>
+        <button id="acctDelToggle" class="set-row"><span class="pick-icon">🗑</span><span><b>계정 삭제</b><small>저장된 계정을 목록에서 지워요</small></span><i>›</i></button>
+        <h3>문제가 생겼을 때</h3>
+        <button id="appLogin" class="set-row"><span class="pick-icon">🔄</span><span><b>Claude 다시 로그인</b><small>로그인이 풀렸거나 오류가 날 때 지금 계정으로 다시 로그인해요</small></span><i>›</i></button>
+      </div>
+
+      <div id="page-claude-brain" class="set-page hidden" data-title="🧠 Claude 대화 설정">
+      <h3>🤖 모델</h3>
       <p class="settings-note">지금 사용 중: <b id="infoModel">-</b></p>
       <div id="setModel" class="radio-list">
         <label><input type="radio" name="model" value=""> 기본값 <span>Claude Code 기본 설정</span></label>
@@ -453,31 +477,35 @@
       <p class="settings-note">모델·생각 깊이는 <b>다음 메시지부터</b> 적용돼요. 크루마다 따로 정하려면 크루의 📁 크루 설정에서 바꾸세요.</p>
       </div>
 
-      <div id="page-look" class="set-page hidden" data-title="🔊 소리·화면">
-      <h3>🔊 답변 읽어주기</h3>
-      <label class="share-check"><input id="setTts" type="checkbox"> 답이 끝나면 소리로 읽어 줘요</label>
-      <button id="setVoiceBtn" class="settings-ghost" type="button"></button>
-      <p class="settings-note">ⓘ 🗣 음성 대화 모드는 이 설정과 관계없이 답을 읽어 줘요.</p>
-      <h3>🔍 대화 글자 크기</h3>
-      <div class="radio-list seg">
-        <label><input type="radio" name="textSize" value="0.5"> 50%</label>
-        <label><input type="radio" name="textSize" value="0.75"> 75%</label>
-        <label><input type="radio" name="textSize" value="1"> 100%</label>
-        <label><input type="radio" name="textSize" value="1.25"> 125%</label>
-        <label><input type="radio" name="textSize" value="1.5"> 150%</label>
-        <label><input type="radio" name="textSize" value="2"> 200%</label>
+      <div id="page-codex-account" class="set-page hidden" data-title="🔑 Codex 계정 설정">
+        <!-- Claude 계정 설정과 같은 구성: 연결된 계정 · 계정 관리 · 문제가 생겼을 때. 설치·로그인 중에는 위에 안내 카드가 나온다. 글은 app.js renderCodex가 i18n으로 넣는다 -->
+        <div id="cxBox" data-no-i18n></div>
+        <div id="cxMain" data-no-i18n>
+          <h3 id="cxHead"></h3>
+          <div id="cxAcctList"></div>
+          <p class="settings-note" id="cxHint"></p>
+          <h3 id="cxMgmtHead"></h3>
+          <button id="cxAdd" class="set-row" type="button"><span class="pick-icon">➕</span><span><b></b><small></small></span><i>›</i></button>
+          <button id="cxDelToggle" class="set-row" type="button"><span class="pick-icon">🗑</span><span><b></b><small></small></span><i>›</i></button>
+          <h3 id="cxTroubleHead"></h3>
+          <button id="cxRelogin" class="set-row" type="button"><span class="pick-icon">🔄</span><span><b></b><small></small></span><i>›</i></button>
+        </div>
       </div>
-      <p class="settings-note">ⓘ 대화 화면에서 <b>두 손가락으로 벌리거나 오므려도</b> 바뀌어요. 위쪽 줄과 입력창은 그대로예요.</p>
+
+      <div id="page-codex-brain" class="set-page hidden" data-title="🧠 Codex 대화 설정">
+      <!-- 모델·생각 깊이·압축. 기본값은 Codex 자체 설정(config.toml)에서 읽어 보여 준다. 글은 app.js renderCxBrain이 i18n으로 넣는다 -->
+      <div id="cxBrainBox" data-no-i18n></div>
+      </div>
+
+      <div id="page-look" class="set-page hidden" data-title="🖥 화면 및 언어 설정">
       <h3>🌓 테마</h3>
       <div class="radio-list seg">
         <label><input type="radio" name="theme" value="auto"> 폰 설정 따르기</label>
         <label><input type="radio" name="theme" value="light"> ☀️ 밝게</label>
         <label><input type="radio" name="theme" value="dark"> 🌙 어둡게</label>
       </div>
-      </div>
-
-      <!-- 언어 설정: 고르면 새로고침돼서 바뀐다. 영어는 아직 번역 중이라 일부 글은 한국어로 보일 수 있다 -->
-      <div id="page-lang" class="set-page hidden" data-title="🌐 언어 설정" data-no-i18n>
+      <!-- 언어: 고르면 새로고침돼서 바뀐다 -->
+      <div data-no-i18n>
         <h3>🌐 화면 언어 / Language</h3>
         <div class="radio-list seg">
           <label><input type="radio" name="lang" value="auto"> 자동 / Auto</label>
@@ -485,6 +513,7 @@
           <label><input type="radio" name="lang" value="en"> English</label>
         </div>
         <p class="settings-note">자동은 폰의 언어를 따라가요. 영어는 아직 번역 중이라 일부 글이 한국어로 보일 수 있어요. / Auto follows your phone's language. English is still being translated, so some text may appear in Korean.</p>
+      </div>
       </div>
 
       <!-- 도구 상자: 크루가 문서·그림·영상·소리를 만들 때 쓰는 도구를 설치한다 (app.js의 renderTools가 그린다) -->
@@ -528,7 +557,6 @@
       <!-- 감자 앱 안에서 열었을 때만 보인다 (앱이 알려 주는 정보와 기능) -->
       <div id="appGroup" class="hidden">
         <h3>🥔 감자 앱</h3>
-        <button id="appLogin" class="set-row"><span class="pick-icon">🤖</span><span><b>Claude 로그인 다시 하기</b><small>공식 Claude 로그인 화면을 열어요</small></span><i>›</i></button>
         <button id="appBattery" class="set-row"><span class="pick-icon">🔋</span><span><b>배터리 설정</b><small>화면이 꺼져도 감자알이 계속 돌게 해요</small></span><i>›</i></button>
         <button id="appLicense" class="set-row"><span class="pick-icon">⚖️</span><span><b>오픈소스 라이선스</b><small>감자가 사용하는 오픈소스 목록</small></span><i>›</i></button>
       </div>
@@ -537,8 +565,7 @@
       <!-- 지금 로그인 상태: 감자(이 화면)와 Claude 계정은 서로 다른 로그인이에요 -->
       <div id="acctCard">
         <p class="settings-row"><span>🥔 감자 로그인</span><b id="acctGamja">-</b></p>
-        <p class="settings-row"><span>🤖 Claude 계정</span><b id="acctClaude">-</b></p>
-        <p class="settings-note">ⓘ <b>감자 로그인</b>은 이 화면에 들어오는 비밀번호 로그인이고, <b>Claude 계정</b>은 Anthropic 공식 로그인이에요. Claude 계정은 위쪽 감자 앱 → Claude 로그인 다시 하기에서 바꿔요.</p>
+        <p class="settings-note">ⓘ <b>감자 로그인</b>은 이 화면에 들어오는 비밀번호 로그인이에요. Claude 계정은 더보기 → AI → Claude에서 볼 수 있어요.</p>
       </div>
       <!-- 버전 오른쪽의 🔄를 누르면 그 업데이트를 바로 확인한다 (감자는 앱 안에서만 보인다) -->
       <p id="infoAppRow" class="settings-row hidden"><span class="ver-label">감자 버전<button id="appUpdate" class="ver-btn" type="button" aria-label="감자 업데이트 확인" title="감자 업데이트 확인">🔄</button></span><b id="infoApp">-</b></p>
@@ -581,8 +608,27 @@
   <!-- 연결 상태 안내줄: 감자알이 다시 켜지는 중이거나 접속이 끊겼을 때만 위쪽에 나타난다 -->
   <div id="connBar" class="conn-bar hidden" role="status" aria-live="polite"><span id="connText"></span><button id="connRetry" class="hidden" type="button"></button></div>
 
+  <!-- Claude 로그인 화면 (감자 앱의 로그인 화면과 같은 흐름). app.js보다 위에 있어야 버튼이 연결된다 -->
+  <div id="loginOv" class="hidden">
+    <div class="lo-card">
+      <div class="lo-top"><span id="loStep">준비 중</span><button id="loExit" type="button">나가기</button></div>
+      <h2 id="loTitle">Claude Code를 여는 중...</h2>
+      <p id="loText">잠시만 기다려 주세요. 아래 검은 화면이 Claude 공식 화면이에요.</p>
+      <button id="loBtn" type="button" class="hidden"></button>
+      <div id="loCodeRow" class="hidden">
+        <input id="loCode" type="text" placeholder="복사한 코드를 여기에 붙여넣기" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="loCodeBtn" type="button">코드 붙여넣고 완료하기</button>
+      </div>
+    </div>
+    <pre id="loTerm"></pre>
+    <div class="lo-keys">
+      <button type="button" data-k="up">↑</button><button type="button" data-k="down">↓</button><button type="button" data-k="enter">Enter</button><button type="button" data-k="esc">Esc</button><button type="button" id="loPaste">붙여넣기</button>
+    </div>
+  </div>
+
   <script src="icons.js"></script>
   <script src="i18n.js"></script>
+  <script src="i18n-en.js"></script>
   <script src="qr.js"></script>
   <script src="markdown.js"></script>
   <script src="templates.js"></script>

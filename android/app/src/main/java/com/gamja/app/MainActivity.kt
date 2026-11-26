@@ -30,7 +30,7 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * 화면 흐름: 준비(첫 실행) → 배터리 설정 → Claude 로그인(공식 화면) → 홈.
+ * 화면 흐름: 준비(첫 실행) → 배터리 설정 → 홈. AI 계정(Claude) 연결은 감자콘솔의 더보기 → AI에서 한다.
  * 감자 콘솔(채팅 화면)은 앱 안이 아니라 폰의 브라우저로 연다.
  */
 class MainActivity : Activity() {
@@ -50,7 +50,7 @@ class MainActivity : Activity() {
         when {
             !p.isInstalled() -> showSetup()
             prefs.getBoolean("needBattery", false) && !batteryAllowed() -> showBattery()
-            !p.isLoggedIn() && !prefs.getBoolean("skipLogin", false) -> showLogin()
+            // Claude 로그인은 앱에서 하지 않는다: 감자콘솔 → 더보기 → AI에서 계정을 연결한다 (콘솔이 안내해 준다)
             else -> showHome()
         }
     }
@@ -215,8 +215,6 @@ class MainActivity : Activity() {
         trouble.addView(infoRow("감자알 다시 시작", "›") {
             confirmSheet("감자알을 다시 시작할까요?", "진행 중인 답변이 있으면 끊겨요. 보통 10초쯤 걸려요.", "다시 시작", "취소") { restartEgg() }
         })
-        trouble.addView(divider())
-        trouble.addView(infoRow("Claude 다시 로그인", "›") { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) })
         trouble.addView(divider())
         trouble.addView(infoRow("감자알 로그 보기", "›") { showLog() })
         trouble.addView(divider())
@@ -417,11 +415,15 @@ class MainActivity : Activity() {
      * 감자콘솔을 기본 브라우저로 연다. 앱이 한 번만 쓰는 로그인 표를 받아 함께 넘기므로 비밀번호를 다시 치지 않아도 된다.
      * 같은 앱 표시(EXTRA_APPLICATION_ID)를 붙여서, 전에 감자가 열어 둔 탭이 있으면 새 탭을 만들지 않고 그 탭에서 연다
      */
-    private fun openInBrowser(project: String?) {
+    private fun openInBrowser(project: String?, page: String? = null) {
         thread {
             val ticket = runCatching { loginTicket() }.getOrNull()
             ui.post {
-                val to = if (project != null) "/?project=" + Uri.encode(project) else "/"
+                val to = when {
+                    project != null -> "/?project=" + Uri.encode(project)
+                    page != null -> "/?page=" + Uri.encode(page)
+                    else -> "/"
+                }
                 val url = if (ticket != null) "$BASE/api/app-login?t=${Uri.encode(ticket)}&to=${Uri.encode(to)}" else "$BASE$to"
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).putExtra(Browser.EXTRA_APPLICATION_ID, packageName)) }
                     .onFailure { Toast.makeText(this, "브라우저를 찾지 못했어요. 폰에 크롬 같은 브라우저를 설치해 주세요.", Toast.LENGTH_LONG).show() }
@@ -438,8 +440,11 @@ class MainActivity : Activity() {
 
     // ---------- 1. 준비 화면 ----------
     private fun showSetup() {
-        val root = pageRoot("처음 설정 1/3", "감자 준비하기",
-            "이 폰을 나만의 Claude Code로 만들어요. 처음 한 번만 필요하고 10~20분쯤 걸려요. 와이파이에 연결하고 충전기를 꽂아 주세요.")
+        val root = pageRoot("처음 설정 1/2", "감자 준비하기",
+            "안녕하세요. 감자팀 u에요. 🙂😀😄\n\n" +
+            "감자는 안드로이드 기기를\n나만의 AI 작업실로 만들어 줘요.\n\n" +
+            "처음 한 번만 설치하고\n인터넷 속도에 따라 최대 5분 쯤 걸려요.\n" +
+            "설치 완료 후 와이파이 연결과 충전기를 연결해 주세요.")
         val stepText = label("시작하기를 누르면 준비를 시작해요", 15f, HOME_INK, bold = true)
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = Installer.TOTAL_STEPS
@@ -500,36 +505,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- 2. 로그인 안내 ----------
-    private fun showLogin() {
-        val root = pageRoot("처음 설정 3/3", "Claude 로그인",
-            "이제 공식 Claude Code 화면을 열어요. 감자는 화면을 띄워 주기만 하고, 로그인 정보는 감자를 거치지 않고 Anthropic과 직접 주고받아요.")
-        root.addView(sectionLabel("이렇게 하세요"))
-        root.addView(card().apply {
-            val steps = listOf(
-                "처음 설정 화면이 나오면 Enter로 넘어가세요.",
-                "로그인 방법에서 Claude 계정(구독)을 고르세요.",
-                "'로그인 주소 열기'를 눌러 브라우저에서 로그인하세요.",
-                "받은 코드를 복사한 뒤 '붙여넣기'를 누르세요.",
-                "로그인이 끝나면 /exit 를 입력해 나오세요.",
-            )
-            steps.forEachIndexed { i, s ->
-                if (i > 0) addView(divider())
-                addView(infoRow("${i + 1}. $s", ""))
-            }
-        })
-        val go = primaryButton("Claude 로그인 화면 열기").apply {
-            setOnClickListener { startActivityForResult(Intent(this@MainActivity, LoginActivity::class.java), REQ_LOGIN) }
-        }
-        // 로그인을 마쳐야 감자를 쓸 수 있다. 미루려면 앱을 종료하고, 다시 열면 이 화면에서 시작한다
-        val later = ghostButton("나중에 할게요").apply {
-            setOnClickListener {
-                confirmSheet("앱을 종료할까요?", "Claude 로그인을 마쳐야 감자를 쓸 수 있어요.\n앱을 종료하고, 다시 열면 이 화면에서 시작해요.", "종료하기", "취소") { finishAndRemoveTask() }
-            }
-        }
-        showPage(root, listOf(go, later))
-    }
-
     /** 아래에서 올라오는 확인 창 */
     private fun confirmSheet(title: String, message: String, ok: String, cancel: String, onOk: () -> Unit) {
         val dlg = android.app.Dialog(this)
@@ -561,7 +536,7 @@ class MainActivity : Activity() {
 
     private fun showBattery() {
         onBatteryPage = true
-        val root = pageRoot("처음 설정 2/3", "배터리 설정",
+        val root = pageRoot("처음 설정 2/2", "배터리 설정",
             "화면이 꺼져 있어도 감자알이 계속 돌아가게 해 주세요. 허용하지 않으면 폰이 감자알을 멈춰서 답변을 받지 못할 수 있어요.")
         root.addView(card().apply {
             addView(infoRow("지금 상태", if (batteryAllowed()) "허용됨" else "허용 안 됨"))
@@ -629,15 +604,6 @@ class MainActivity : Activity() {
         setTextColor(HOME_INK)
         stateListAnimator = null
         background = rounded(HOME_LINE, 20)
-    }
-
-    @Deprecated("Activity 결과 API (minSdk 26, AndroidX 없이 사용)")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_LOGIN) {
-            if (p.isLoggedIn()) getPreferences(MODE_PRIVATE).edit().remove("skipLogin").apply()
-            route()
-        }
     }
 
     /**
@@ -816,9 +782,6 @@ class MainActivity : Activity() {
             ■ libandroid-shmem — BSD 계열
             Termux 저장소의 빌드를 그대로 넣었어요.
 
-            ■ Termux terminal-view — Apache-2.0
-            Claude 로그인 화면에 쓰는 터미널 화면이에요. https://github.com/termux/termux-app
-
             ■ Apache Commons Compress — Apache-2.0
             압축 풀기에 써요. https://commons.apache.org/proper/commons-compress/
 
@@ -826,7 +789,7 @@ class MainActivity : Activity() {
             첫 실행 때 공식 저장소에서 내려받아 설치해요. Ubuntu의 각 패키지는 자기 라이선스를 따르고, Node.js는 MIT 라이선스예요.
 
             ■ Claude Code
-            Anthropic의 프로그램이에요. 감자에 들어 있지 않고, 첫 실행 때 공식 설치 방법으로 내려받아요. 사용 약관은 Anthropic을 따릅니다.
+            Anthropic의 프로그램이에요. 감자에 들어 있지 않고, 감자 콘솔 → 더보기 → AI에서 고르면 공식 설치 방법으로 내려받아요. 사용 약관은 Anthropic을 따릅니다.
 
             GPL·LGPL 프로그램의 소스는 위 주소에서 받을 수 있어요.
         """.trimIndent()
@@ -876,7 +839,6 @@ class MainActivity : Activity() {
         const val EXTRA_UPDATE = "update"
         /** 감자 화면이 지금 보이는지 (보이면 완료 알림을 띄우지 않음) */
         @Volatile var visible = false
-        private const val REQ_LOGIN = 1
         private const val REQ_NOTIF = 5
     }
 }

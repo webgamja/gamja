@@ -2,7 +2,7 @@
   "name": "감자",
   "short_name": "감자",
   "start_url": "/",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#FBF5E6",
   "theme_color": "#1d1a14",
   "icons": [

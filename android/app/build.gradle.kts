@@ -3,12 +3,19 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// 개발판(GAMJA_DEV=1, dev 브랜치 빌드): 운영 감자 옆에 따로 설치되는 "감자 개발" 앱. 앱 아이디·이름·포트가 다르고 자동 업데이트를 하지 않는다
+val gamjaDev = System.getenv("GAMJA_DEV") == "1"
+
 android {
     namespace = "com.gamja.app"
     compileSdk = 34
 
+    buildFeatures { buildConfig = true }
+
     defaultConfig {
-        applicationId = "com.gamja.app"
+        applicationId = if (gamjaDev) "com.gamja.app.dev" else "com.gamja.app"
+        buildConfigField("boolean", "DEV", gamjaDev.toString())
+        manifestPlaceholders["appLabel"] = if (gamjaDev) "감자 개발" else "GAMJA"
         minSdk = 26
         // 28로 고정: 29 이상을 대상으로 하면 앱이 내려받은 리눅스 프로그램(Ubuntu, Node, Claude Code)을
         // 실행할 수 없다 (Termux와 같은 이유). 홈페이지 직접 배포라 Play 스토어 요구 사항은 해당 없음.
@@ -58,8 +65,6 @@ android {
 }
 
 dependencies {
-    // 공식 Claude Code 로그인 화면을 그대로 보여 주기 위한 터미널 화면 (Apache 2.0)
-    implementation("com.github.termux.termux-app:terminal-view:v0.118.0")
     // Ubuntu와 감자 서버 압축 풀기 (Apache 2.0)
     implementation("org.apache.commons:commons-compress:1.26.2")
 }

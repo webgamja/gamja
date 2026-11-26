@@ -13,7 +13,7 @@ import java.net.URL
 import java.security.SecureRandom
 
 /**
- * 첫 실행 준비: 리눅스 도구 → Ubuntu → Node.js → 공식 Claude Code → 감자 서버.
+ * 첫 실행 준비: 리눅스 도구 → Ubuntu → Node.js·git → 감자 서버. (AI는 감자 콘솔에서 골라 설치)
  * 단계마다 완료 표시를 남겨서, 중간에 실패해도 "다시 시도"하면 끝난 단계는 건너뛴다.
  */
 class Installer(
@@ -28,14 +28,12 @@ class Installer(
         step(1, "리눅스 도구 준비", "bin", always = true) { extractBin() }
         step(2, "Ubuntu 내려받기 (약 30MB)", "rootfs") { installUbuntu() }
         step(3, "기본 설정", "config", always = true) { writeConfigs() }
-        step(4, "Node.js 설치 (몇 분 걸려요)", "node") {
+        step(4, "Node.js·git 설치 (몇 분 걸려요)", "node") {
             sh("apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends " +
-                "ca-certificates curl nodejs tar procps")
+                "ca-certificates curl nodejs tar procps git")
         }
-        step(5, "Claude Code 설치 (공식 설치 스크립트)", "claude") {
-            if (!p.claudeBin.exists()) sh("curl -fsSL https://claude.ai/install.sh | bash")
-        }
-        step(6, "감자 설치", "gamja", always = true) { installGamja() }
+        // Claude Code는 여기서 설치하지 않는다: Codex처럼 감자 콘솔 → 더보기 → AI에서 고른 AI만 설치한다
+        step(5, "감자 설치", "gamja", always = true) { installGamja() }
         p.marker("installed").createNewFile()
         onLog("✅ 준비 완료!")
     }
@@ -93,7 +91,7 @@ class Installer(
         File(p.rootfs, "root/projects").mkdirs()
     }
 
-    // 6. 감자 서버 (APK에 들어 있는 묶음) + 비밀번호
+    // 5. 감자 서버 (APK에 들어 있는 묶음) + 비밀번호
     private fun installGamja() {
         p.appDir.mkdirs()
         // 이름이 .gz로 끝나면 안드로이드 빌드 도구가 압축을 풀고 이름을 바꿔 버려서 .pack을 쓴다 (내용은 tar.gz)
@@ -102,7 +100,7 @@ class Installer(
             val pw = randomPassword()
             // GAMJA_HOME: 사용자 정보(data/ crews/ workspaces/ trash/)를 한 폴더에 모으는 새 구조. DATA_DIR도 함께 적어서 start.sh의 자동 복구가 같은 data를 보게 한다.
             // 이 줄이 없는 예전 설치는 예전 방식(~/projects) 그대로 동작한다
-            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=${Ports.DEFAULT}\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\nGAMJA_HOME=/root/gamja\nDATA_DIR=/root/gamja/data\n")
+            p.envFile.writeText("APP_PASSWORD=$pw\nPORT=${Ports.DEFAULT}\nHOST=0.0.0.0\nCLAUDE_BIN=/root/.local/bin/claude\nGAMJA_HOME=/root/gamja\nDATA_DIR=/root/gamja/data\n" + (if (BuildConfig.DEV) "GAMJA_AUTO_UPDATE=off\n" else ""))
             onLog("· 로그인 비밀번호를 만들었어요 (앱 메뉴 → 다른 기기에서 접속)")
         }
     }
@@ -142,7 +140,7 @@ class Installer(
     }
 
     companion object {
-        const val TOTAL_STEPS = 6
+        const val TOTAL_STEPS = 5
 
         /** tar.gz 풀기: 심볼릭 링크·권한 유지, 하드 링크는 복사로 대신 */
         fun untar(input: InputStream, dest: File) {

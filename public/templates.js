@@ -482,7 +482,7 @@
   ];
 
   // 추천 크루 맨 앞에 보여 줄 깊은 전문가 크루 (이 순서대로)
-  const FEATURED = ['c-site', 'd-site', 'd-webapp', 'c-cs', 's-review', 's-sales', 'l-interview', 'l-english'];
+  const FEATURED = ['c-site', 'l-english', 'd-webapp', 'c-cs', 's-review', 's-sales', 'l-interview']; // 홈페이지 개발(d-site)은 홈페이지 크루와 겹쳐서 추천에서 뺀다
   // 나는 어떤 사람이에요? 고르면 그 사람에게 맞는 크루 묶음을 보여 준다 (agents는 보여 줄 순서)
   const PERSONAS = [
     { id: 'owner', icon: '🏪', name: '동네 가게 사장님', desc: '손님 응대·리뷰 답글·매출 장부·메뉴판', agents: ['s-review', 's-sales', 'c-cs', 's-sns', 's-menu', 's-notice', 's-book'] },

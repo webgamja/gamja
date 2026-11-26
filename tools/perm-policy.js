@@ -81,11 +81,15 @@ const PUBLIC_PUSH = /^git -C (?:\/root\/projects\/gamja\/)?data\/public-export -
 const unquote = (a) => a.replace(/^['"]+|['"]+$/g, '');
 // 작업 폴더 밖을 가리킬 수 있는 글자인지 (절대 경로, ~, .., 변수)
 const outsideArg = (a) => /^(\/|~|\$)/.test(a) || /(^|\/)\.\.(\/|$)/.test(a);
+// 써도 시스템에 영향이 없는 곳: /dev/null(버리는 곳), /tmp 안(임시 폴더). ..이 들어가면 밖으로 나갈 수 있어서 제외
+const harmlessOut = (a) => a === '/dev/null' || (/^\/tmp\/[^$~]+$/.test(a) && !/(^|\/)\.\.(\/|$)/.test(a));
+const outsideWrite = (a) => outsideArg(a) && !harmlessOut(a);
 
 // 글을 다른 프로그램으로 실행할 수 있는 말: 이런 말이 있으면 따옴표 안의 >도 진짜 리다이렉트일 수 있어서 예전처럼 그대로 검사한다
 const RUNS_TEXT = /(^|[\s;&|(`'"=])(eval|exec|source|\.|sh|bash|zsh|dash|ksh|csh|fish|xargs|sudo|su|env|nohup|watch|timeout|time|script|ssh|awk|gawk|mawk|sed|perl|ruby|php|lua|tclsh|deno|bun|node|nodejs|python[\d.]*|sqlite3)(?=$|[\s;&|)`'"])/;
-const OLD_REDIRECT = />>?\s*(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/;
-const OUT_TARGET = /^\s*['"]?(?!\/dev\/null\b)(\/|~|\$|\.\.\/)/;
+// /dev/null(버리는 곳)과 /tmp 안(임시 폴더, ..이 없을 때)으로 쓰는 건 작업 폴더 밖으로 치지 않는다
+const OLD_REDIRECT = />>?\s*(?!\/dev\/null\b)(?!\/tmp\/(?![^\s;&|]*\.\.)[^\s;&|'"<>]+)(\/|~|\$|\.\.\/)/;
+const OUT_TARGET = /^\s*['"]?(?!\/dev\/null\b)(?!\/tmp\/(?![^\s;&|]*\.\.)[^\s;&|'"<>]+)(\/|~|\$|\.\.\/)/;
 // 작업 폴더 밖으로 가는 리다이렉트(> 또는 >>)가 있는지. 따옴표 안의 글자(문장·커밋 메시지 등)는 리다이렉트가 아니므로 건너뛴다
 function redirectsOutside(text) {
   if (RUNS_TEXT.test(text)) return OLD_REDIRECT.test(text);
@@ -187,8 +191,9 @@ function tier(cmd, guardDirs = [], depth = 0, opts = {}) {
     const args = rest.filter((a) => !a.startsWith('-')).map(unquote);
     const sub = rest.find((a) => !a.startsWith('-')) || '';
     if (prog === 'curl' || prog === 'wget') {
+      // 보내기(POST 등)는 같은 폰(127.0.0.1·localhost)으로 가도 묻는다: 감자알의 관리 기능(되돌리기 등)을 부를 수 있어서
       if (netSends(rest)) return { tier: 'caution', why: '인터넷으로 보내거나 설정 파일을 읽어요' };
-      if (args.some(outsideArg)) return { tier: 'caution', why: '작업 폴더 밖에 저장해요' };
+      if (args.some(outsideWrite)) return { tier: 'caution', why: '작업 폴더 밖에 저장해요' };
       continue; // 읽기, 또는 작업 폴더 안에 저장 → 안전
     }
     if (NET_ALWAYS.has(prog)) return { tier: 'caution', why: '밖에서 내려받거나 설치해요' };
@@ -210,7 +215,8 @@ function tier(cmd, guardDirs = [], depth = 0, opts = {}) {
     if (prog === 'xargs' || prog === 'find') { const r = execCheck(prog, rest); if (r) return r; }
     if (PATH_WRITERS.has(prog)) {
       if (DELETERS.has(prog) && args.some(outsideArg)) return { tier: 'danger', why: '작업 폴더 밖의 파일을 지우거나 옮기려고 했어요' };
-      if (args.some(outsideArg)) return { tier: 'caution', why: '작업 폴더 밖의 파일을 바꿔요' };
+      // 지우기·옮기기는 위에서 /tmp도 막는다 (다른 방의 임시 파일일 수 있다). 만들기·복사는 /tmp 안이면 안전
+      if (args.some(outsideWrite)) return { tier: 'caution', why: '작업 폴더 밖의 파일을 바꿔요' };
       if (prog === 'rm' && args.some((a) => /^(\.|\.\/|\*|\.\/\*|\*\.\*)$/.test(a))) return { tier: 'danger', why: '작업 폴더 전체를 지우려고 했어요' };
     }
   }

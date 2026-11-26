@@ -51,6 +51,7 @@
     mic: '<rect class="a" x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
     micoff: '<rect class="a" x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="x" d="M4 20L20 4"/>',
     send: '<path class="a" d="M4 12l16-8-6 16-3-7z"/>',
+    mail: '<rect class="a" x="3" y="6" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6.5 8.5-6.5"/>',
     star: '<path class="a" d="M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.5l6-.8z"/>',
     people: '<circle class="a" cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14a6.5 6.5 0 0 1 3.5 6"/>',
     wrench: '<path class="a" d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.4 2.4-2.6-.6-.6-2.6z"/>',
@@ -81,10 +82,14 @@
     coder: '<rect class="a" x="3" y="4" width="18" height="13" rx="2.5"/><path d="M10 8.5L7.5 10.5 10 12.5M14 8.5l2.5 2-2.5 2M2 20h20"/>',
     crystal: '<circle class="a" cx="12" cy="10.5" r="7"/><path d="M6 20h12M8 17l-1 3M16 17l1 3M9 8.5a3.5 3.5 0 0 1 3-2"/>',
     hourglass:'<path d="M6 3h12M6 21h12"/><path class="a" d="M7 3c0 5 5 6 5 9s-5 4-5 9h10c0-5-5-6-5-9s5-4 5-9z"/>',
+    display: '<rect class="a" x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>',
+    key: '<circle class="a" cx="7.5" cy="12" r="4.5"/><path d="M12 12h9M17.5 12v3.5M21 12v3"/>',
+    addc: '<circle class="a" cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+    codex: '<rect class="a" x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.5"/>',
   };
   // 이모지(변형 문자 FE0E·FE0F를 뺀 것) → 아이콘 이름
   const BY_EMOJI = {
-    '🥔': 'potato', '✳': 'potato', '🏠': 'home', '🌐': 'globe', '📄': 'doc', '💬': 'chat', '🔎': 'search', '📊': 'chart',
+    '🥔': 'potato', '✳': 'potato', '🏠': 'home', '🌐': 'globe', '✉': 'mail', '📧': 'mail', '📄': 'doc', '💬': 'chat', '🔎': 'search', '📊': 'chart',
     '📅': 'calendar', '🗓': 'calendar', '🍽': 'menu', '📣': 'camera', '🧾': 'receipt', '🎟': 'ticket', '📚': 'book',
     '💰': 'wallet', '✍': 'pencil', '🧳': 'suitcase', '🏢': 'company', '🏪': 'store', '🙋': 'person', '📁': 'folder',
     '👤': 'person', '🤖': 'spark', '🔊': 'sound', '🔇': 'sound', '🔒': 'lock', '👀': 'eye', '🗜': 'compress', '＋': 'plus',
@@ -96,6 +101,7 @@
     '❌': 'fail', '📝': 'pencil', '📖': 'book', '💻': 'laptop', '📂': 'folder', '🗒': 'note', '🔗': 'link', '⏹': 'stop', '☆': 'starline',
     '🔐': 'shield', '🛡': 'shield', '🧰': 'wrench', '☯': 'yinyang', '🃏': 'tarot', '🔮': 'crystal', '📲': 'phone', '📱': 'phone', '🎓': 'grad', '🚀': 'rocket', '⭐': 'star', '🧑‍💻': 'coder', '🎴': 'tarot',
     '🎵': 'music', '🎬': 'film', '✕': 'close', '✏': 'pencil', '⏸': 'pause', '⏳': 'hourglass', '←': 'back',
+    '🖥': 'display', '🔑': 'key', '➕': 'addc', '🅾': 'codex',
   };
   const clean = (s) => String(s).replace(/[︎️]/g, '');
   const svg = (name) => `<svg class="gi-s gi-n-${name}" viewBox="0 0 24 24" aria-hidden="true">${P[name]}</svg>`;
